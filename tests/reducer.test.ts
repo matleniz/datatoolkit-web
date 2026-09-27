@@ -199,3 +199,78 @@ describe("selection row / cell", () => {
     expect(s.selection.columns).toEqual(["city"]);
   });
 });
+
+describe("Stream W1 reducer actions", () => {
+  it("ADD_ALIGN_STEP inserts step after existing align steps and before normal steps", () => {
+    const ws = {
+      name: "churn",
+      datasets: { train: { x: { kind: "csv" as const, path: "" } } },
+      label: { mode: "order" as const },
+      merges: [],
+      variables: [],
+      steps: [
+        { op: "rename", target: "test" as const, params: {}, align: true },
+        { op: "scale", target: "both" as const, params: {} },
+      ],
+    };
+
+    let s: AppState = { ...initialState, workspace: ws };
+    s = appReducer(s, {
+      type: "ADD_ALIGN_STEP",
+      step: { op: "cast", target: "test", params: {} },
+    });
+
+    expect(s.workspace?.steps.map((st) => st.op)).toEqual([
+      "rename",
+      "cast",
+      "scale",
+    ]);
+    expect(s.workspace?.steps[1]!.align).toBe(true);
+  });
+
+  it("REMOVE_STEP_BY_INDEX removes step", () => {
+    const ws = {
+      name: "churn",
+      datasets: { train: { x: { kind: "csv" as const, path: "" } } },
+      label: { mode: "order" as const },
+      merges: [],
+      variables: [],
+      steps: [
+        { op: "rename", target: "test" as const, params: {}, align: true },
+        { op: "scale", target: "both" as const, params: {} },
+      ],
+    };
+
+    let s: AppState = { ...initialState, workspace: ws };
+    s = appReducer(s, { type: "REMOVE_STEP_BY_INDEX", index: 0 });
+    expect(s.workspace?.steps.map((st) => st.op)).toEqual(["scale"]);
+  });
+
+  it("SET_TEST_DECIMAL updates test csv source decimal", () => {
+    const ws = {
+      name: "churn",
+      datasets: {
+        train: { x: { kind: "csv" as const, path: "" } },
+        test: { x: { kind: "csv" as const, path: "test.csv" } },
+      },
+      label: { mode: "order" as const },
+      merges: [],
+      variables: [],
+      steps: [],
+    };
+
+    let s: AppState = { ...initialState, workspace: ws };
+    s = appReducer(s, { type: "SET_TEST_DECIMAL", decimal: "," });
+    expect((s.workspace?.datasets.test?.x as { decimal?: string }).decimal).toBe(",");
+
+    s = appReducer(s, { type: "SET_TEST_DECIMAL", decimal: null });
+    expect((s.workspace?.datasets.test?.x as { decimal?: string }).decimal).toBeUndefined();
+  });
+
+  it("SET_ALIGN_TO_DECIDE_COUNT updates count", () => {
+    let s = initialState;
+    s = appReducer(s, { type: "SET_ALIGN_TO_DECIDE_COUNT", count: 3 });
+    expect(s.alignToDecideCount).toBe(3);
+  });
+});
+

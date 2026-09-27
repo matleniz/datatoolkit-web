@@ -231,7 +231,12 @@ export type ColumnKind =
   | "bool"
   | "text"
   | "date"
-  | "identifier";
+  | "identifier"
+  | "num"
+  | "bin"
+  | "cat"
+  | "id"
+  | string;
 
 export interface WorkspaceRowsColumn {
   name: string;

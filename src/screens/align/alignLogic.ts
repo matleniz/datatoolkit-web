@@ -1,0 +1,322 @@
+import type {
+  AlignReportRow,
+  AlignStatus,
+  Step,
+} from "../../api/types";
+
+export type FixActionType = "set_decimal" | "add_step";
+
+export interface AlignFixAction {
+  id: string;
+  label: string;
+  type: FixActionType;
+  decimal?: string;
+  step?: Step;
+  primary?: boolean;
+  disabled?: boolean;
+  tip?: string;
+}
+
+export interface RowFixes {
+  note: string;
+  actions: AlignFixAction[];
+}
+
+/**
+ * Format step subtitle / parameter summary in the style of the prototype.
+ */
+export function formatStepSummary(step: Step): string {
+  const op = step.op;
+  const p = step.params as Record<string, unknown>;
+
+  if (op === "rename" && p.mapping && typeof p.mapping === "object") {
+    const entries = Object.entries(p.mapping as Record<string, string>);
+    const first = entries[0];
+    if (first) {
+      return `${first[0]} → ${first[1]}`;
+    }
+  }
+
+  if (op === "drop_columns" && Array.isArray(p.columns)) {
+    return (p.columns as string[]).join(", ");
+  }
+
+  if (op === "cast" && p.dtypes && typeof p.dtypes === "object") {
+    const entries = Object.entries(p.dtypes as Record<string, string>);
+    const first = entries[0];
+    if (first) {
+      return `${first[0]} → ${first[1]}`;
+    }
+  }
+
+  return JSON.stringify(p);
+}
+
+/**
+ * Format a full alignment step line for the aside list.
+ */
+export function formatAlignmentStep(step: Step): string {
+  const summary = formatStepSummary(step);
+  return `${step.op} · ${summary} · ${step.target}`;
+}
+
+export function formatSample(samples: unknown[]): string {
+  if (!samples || samples.length === 0) return "";
+  return samples
+    .slice(0, 3)
+    .map((v) => {
+      if (v === null || v === undefined) return "∅";
+      if (typeof v === "string") return `"${v}"`;
+      if (typeof v === "number") {
+        return Number.isInteger(v) ? String(v) : (Math.round(v * 1000) / 1000).toString();
+      }
+      return String(v);
+    })
+    .join(", ");
+}
+
+export function formatMean(val: number | null): string {
+  if (val === null || val === undefined || isNaN(val)) return "—";
+  return (Math.round(val * 1000) / 1000).toString();
+}
+
+/**
+ * Compute the difflib-style similarity ratio between two strings.
+ * Formula: 2 * M / (len(s1) + len(s2)) where M is the number of matching
+ * characters in matching blocks (Ratcliff/Obershelp / SequenceMatcher).
+ */
+export function stringSimilarityRatio(a: string, b: string): number {
+  const s1 = a.toLowerCase();
+  const s2 = b.toLowerCase();
+  if (s1 === s2) return 1;
+  const len1 = s1.length;
+  const len2 = s2.length;
+  if (len1 + len2 === 0) return 1;
+
+  function countMatches(
+    aStart: number,
+    aEnd: number,
+    bStart: number,
+    bEnd: number,
+  ): number {
+    if (aStart >= aEnd || bStart >= bEnd) return 0;
+
+    let bestLen = 0;
+    let bestA = aStart;
+    let bestB = bStart;
+
+    for (let i = aStart; i < aEnd; i++) {
+      for (let j = bStart; j < bEnd; j++) {
+        let k = 0;
+        while (
+          i + k < aEnd &&
+          j + k < bEnd &&
+          s1[i + k] === s2[j + k]
+        ) {
+          k++;
+        }
+        if (k > bestLen) {
+          bestLen = k;
+          bestA = i;
+          bestB = j;
+        }
+      }
+    }
+
+    if (bestLen === 0) return 0;
+
+    return (
+      bestLen +
+      countMatches(aStart, bestA, bStart, bestB) +
+      countMatches(bestA + bestLen, aEnd, bestB + bestLen, bEnd)
+    );
+  }
+
+  const matches = countMatches(0, len1, 0, len2);
+  return (2 * matches) / (len1 + len2);
+}
+
+/**
+ * Check if candidate column name is similar to train column name.
+ * Only similar when its name contains the train name or vice versa,
+ * or difflib-style ratio >= 0.6.
+ */
+export function isSimilarCandidate(
+  trainName: string,
+  candidateName: string,
+): boolean {
+  if (!trainName || !candidateName) return false;
+  const t = trainName.toLowerCase();
+  const c = candidateName.toLowerCase();
+  if (t === c) return true;
+  if (t.includes(c) || c.includes(t)) return true;
+  return stringSimilarityRatio(t, c) >= 0.6;
+}
+
+/**
+ * Compute the note and fix actions for an alignment report row.
+ */
+export function computeRowFixes(
+  row: AlignReportRow,
+  testOnlyCols: string[],
+  castError?: string | null,
+): RowFixes {
+  const actions: AlignFixAction[] = [];
+  let note = "";
+
+  if (row.status === "type_mismatch") {
+    if (row.numbers_as_text) {
+      note = "Test stores numbers as text with a comma decimal.";
+      actions.push({
+        id: "re_read_decimal",
+        label: 'Re-read test with decimal ","',
+        type: "set_decimal",
+        decimal: ",",
+        primary: true,
+        tip: 'Source option: csv decimal=","',
+      });
+
+      const colName = row.train?.name ?? row.test?.name ?? "";
+      actions.push({
+        id: "cast_test_float",
+        label: "Cast test to float",
+        type: "add_step",
+        disabled: Boolean(castError),
+        tip: castError || "",
+        step: {
+          op: "cast",
+          target: "test",
+          params: { dtypes: { [colName]: "float" } },
+          align: true,
+        },
+      });
+    } else {
+      const trainKind = row.train?.kind ?? "unknown";
+      const testKind = row.test?.kind ?? "unknown";
+      note = `Types differ: ${trainKind} vs ${testKind}.`;
+
+      const colName = row.train?.name ?? row.test?.name ?? "";
+      const targetType =
+        trainKind === "text" || trainKind === "cat" ? "str" : "float";
+      actions.push({
+        id: "cast_test_train_type",
+        label: "Cast test to train type",
+        type: "add_step",
+        step: {
+          op: "cast",
+          target: "test",
+          params: { dtypes: { [colName]: targetType } },
+          align: true,
+        },
+      });
+    }
+  } else if (row.status === "missing_in_test") {
+    const colName = row.train?.name ?? "";
+    if (testOnlyCols.length > 0) {
+      note =
+        "Match it with a test-only column (renames it in test), or drop it from train.";
+    } else {
+      note = "No test column left to match: drop it from train.";
+    }
+    // Sort similar candidate names first
+    const sortedTestCols = [...testOnlyCols].sort((a, b) => {
+      const aSim = isSimilarCandidate(colName, a);
+      const bSim = isSimilarCandidate(colName, b);
+      if (aSim && !bSim) return -1;
+      if (!aSim && bSim) return 1;
+      return a.localeCompare(b);
+    });
+
+    for (const t of sortedTestCols) {
+      const isSimilar = isSimilarCandidate(colName, t);
+      actions.push({
+        id: `rename_${t}_to_${colName}`,
+        label: `↔ ${t}${isSimilar ? " (similar name)" : ""}`,
+        type: "add_step",
+        tip: `rename ${t} → ${colName} in test`,
+        step: {
+          op: "rename",
+          target: "test",
+          params: { mapping: { [t]: colName } },
+          align: true,
+        },
+      });
+    }
+
+    actions.push({
+      id: `drop_train_${colName}`,
+      label: "Drop from train",
+      type: "add_step",
+      step: {
+        op: "drop_columns",
+        target: "train",
+        params: { columns: [colName] },
+        align: true,
+      },
+    });
+  } else if (row.status === "extra_in_test") {
+    const colName = row.test?.name ?? "";
+    note = "Only in test: a model fitted on train cannot use it.";
+    actions.push({
+      id: `drop_test_${colName}`,
+      label: "Drop from test",
+      type: "add_step",
+      step: {
+        op: "drop_columns",
+        target: "test",
+        params: { columns: [colName] },
+        align: true,
+      },
+    });
+  } else if (row.status === "label") {
+    note = "Expected: test has no label.";
+  }
+
+  return { note, actions };
+}
+
+/**
+ * Counts of columns by status category.
+ */
+export function countAlignStatuses(rows: AlignReportRow[]): {
+  ok: number;
+  fix: number;
+  info: number;
+} {
+  let ok = 0;
+  let fix = 0;
+  let info = 0;
+
+  for (const r of rows) {
+    if (r.status === "match") {
+      ok++;
+    } else if (r.status === "label") {
+      info++;
+    } else {
+      fix++;
+    }
+  }
+
+  return { ok, fix, info };
+}
+
+export function getStatusBadgeInfo(status: AlignStatus): {
+  text: string;
+  color: string;
+  bg: string;
+} {
+  switch (status) {
+    case "match":
+      return { text: "match", color: "#1f5a2b", bg: "#e2f0e3" };
+    case "type_mismatch":
+      return { text: "type mismatch", color: "#8f3809", bg: "#fbe9dc" };
+    case "missing_in_test":
+      return { text: "missing in test", color: "#8f3809", bg: "#fbe9dc" };
+    case "extra_in_test":
+      return { text: "extra in test", color: "#8f3809", bg: "#fbe9dc" };
+    case "label":
+      return { text: "label · train only", color: "#4f4390", bg: "#ece8f7" };
+    default:
+      return { text: status, color: "#5b5850", bg: "#eeede8" };
+  }
+}

@@ -1,4 +1,4 @@
-import type { Step, VariableSpec, Workspace } from "../api/types";
+import type { CsvSource, Step, VariableSpec, Workspace } from "../api/types";
 
 export type ScreenId = "sources" | "align" | "bench";
 export type Role = "train" | "test";
@@ -73,6 +73,8 @@ export interface AppState {
   sugStage: CourseStage;
   /** Badge count for the Suggestions tab (updated by SuggestionsTab). */
   sugCount: number;
+  /** Number of alignment items to decide (shown in header tab badge). */
+  alignToDecideCount?: number | null;
 }
 
 export const MAX_DOCK_TOOLS = 4;
@@ -110,6 +112,7 @@ export const initialState: AppState = {
   showExport: false,
   sugStage: "all",
   sugCount: 0,
+  alignToDecideCount: null,
 };
 
 /** Keep `align: true` steps first (prototype / FRONT-WEB alignment rule). */
@@ -164,7 +167,12 @@ export type AppAction =
   | { type: "REMOVE_VARIABLE"; name: string }
   | { type: "SET_VARIABLES"; variables: VariableSpec[] }
   /** Insert `@name` into the formula editor (opens it if needed). W2 consumes. */
-  | { type: "INSERT_FORMULA_TOKEN"; token: string };
+  | { type: "INSERT_FORMULA_TOKEN"; token: string }
+  /* ---------- Stream W1 actions (Sources & Alignment) ---------- */
+  | { type: "SET_ALIGN_TO_DECIDE_COUNT"; count: number | null }
+  | { type: "ADD_ALIGN_STEP"; step: Step }
+  | { type: "REMOVE_STEP_BY_INDEX"; index: number }
+  | { type: "SET_TEST_DECIMAL"; decimal: string | null };
 
 function openTool(tools: ToolId[], id: ToolId): ToolId[] {
   const next = [...tools];
@@ -442,6 +450,61 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ctx: null,
       };
     }
+    /* ---------- Stream W1 actions (Sources & Alignment) ---------- */
+    case "SET_ALIGN_TO_DECIDE_COUNT":
+      return { ...state, alignToDecideCount: action.count };
+
+    case "ADD_ALIGN_STEP": {
+      if (!state.workspace) return state;
+      const s = { ...action.step, align: true };
+      const current = state.workspace.steps;
+      const alignCount = current.filter((x) => x.align).length;
+      const steps = [...current];
+      steps.splice(alignCount, 0, s);
+      return {
+        ...state,
+        workspace: {
+          ...state.workspace,
+          steps,
+        },
+      };
+    }
+
+    case "REMOVE_STEP_BY_INDEX": {
+      if (!state.workspace) return state;
+      const steps = state.workspace.steps.filter((_, i) => i !== action.index);
+      return {
+        ...state,
+        workspace: {
+          ...state.workspace,
+          steps,
+        },
+      };
+    }
+
+    case "SET_TEST_DECIMAL": {
+      if (!state.workspace || !state.workspace.datasets.test) return state;
+      const testX = state.workspace.datasets.test.x;
+      if (testX.kind !== "csv") return state;
+      const updatedX: CsvSource = {
+        ...testX,
+        decimal: action.decimal ?? undefined,
+      };
+      return {
+        ...state,
+        workspace: {
+          ...state.workspace,
+          datasets: {
+            ...state.workspace.datasets,
+            test: {
+              ...state.workspace.datasets.test,
+              x: updatedX,
+            },
+          },
+        },
+      };
+    }
+
     default:
       return state;
   }

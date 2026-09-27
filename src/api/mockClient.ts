@@ -156,7 +156,30 @@ export class MockApiClient implements ApiClient {
     });
   }
 
-  runKey(_id: string, _params: Record<string, unknown>): Promise<Result> {
+  runKey(id: string, params: Record<string, unknown>): Promise<Result> {
+    if (id === "file_inspect") {
+      const path = String(params.path ?? "");
+      const isTest = path.includes("churn_test");
+      return Promise.resolve({
+        metrics: {
+          delimiter: "','",
+          encoding_guess: "utf-8",
+          header_line: 1,
+          decimal_guess: isTest ? "." : ".",
+          load_spec: JSON.stringify({
+            kind: "csv",
+            path,
+            sep: ",",
+            encoding: "utf-8",
+            decimal: isTest ? "." : ".",
+            header: 0,
+          }),
+        },
+        tables: [],
+        figures: [],
+        text: "",
+      });
+    }
     return Promise.resolve({
       metrics: { rows: TRAIN.rows.length, columns: TRAIN.columns.length },
       tables: [],
@@ -335,7 +358,7 @@ export class MockApiClient implements ApiClient {
   columnProfiles(
     _workspace: Workspace,
     role: Role,
-    version: number | null,
+    version: number | null = null,
   ): Promise<ColumnProfiles> {
     const frame = role === "train" ? TRAIN : TEST;
     return Promise.resolve({
