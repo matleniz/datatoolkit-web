@@ -1,0 +1,1210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>datatoolkit Studio</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Instrument+Serif&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f4f3ef;font-family:'IBM Plex Sans',system-ui,sans-serif;color:#1c1b18}
+button{font:inherit;color:inherit;cursor:pointer}
+button:disabled{cursor:not-allowed}
+button:focus-visible,input:focus-visible{outline:2px solid #1d5b86;outline-offset:1px}
+[data-h]:hover{filter:brightness(0.96)}
+[data-drag]{cursor:grab}
+a{color:#1d5b86}a:hover{color:#123d5b}
+</style>
+</helmet>
+<div data-root="1" style="position: relative; width: 1440px; height: 900px; display: flex; flex-direction: column; background: #f4f3ef; color: #1c1b18; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 13px; overflow: hidden">
+
+<header style="height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 18px; padding: 0 16px; background: #ffffff; border-bottom: 1px solid #e3e1da">
+<div style="display: flex; align-items: baseline; gap: 8px">
+<span style="font-family: 'Instrument Serif', Georgia, serif; font-size: 26px; line-height: 1">datatoolkit</span>
+<span style="font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #5b5850">Studio</span>
+</div>
+<nav aria-label="Screens" style="display: flex; gap: 4px">
+<sc-for list="{{screens}}" as="sc" hint-placeholder-count="3">
+<button onClick="{{sc.pick}}" style="{{sc.style}}" data-h="1">
+<span style="{{sc.numStyle}}">{{sc.n}}</span><span>{{sc.label}}</span>
+<sc-if value="{{sc.hasBadge}}" hint-placeholder-val="{{false}}"><span style="{{sc.badgeStyle}}">{{sc.badge}}</span></sc-if>
+</button>
+</sc-for>
+</nav>
+<div style="flex-grow: 1"></div>
+<div style="display: flex; align-items: center; gap: 8px; padding: 5px 10px; border: 1px solid #e3e1da; border-radius: 6px; background: #faf9f6; font-size: 12px; color: #5b5850">
+<span style="font-weight: 600; color: #1c1b18">{{wsName}}</span>
+<span>train {{trainShape}}</span><span>·</span><span>test {{testShape}}</span><span>·</span>
+<span>target <strong style="color: #1d5b86">{{targetLabel}}</strong></span>
+</div>
+<sc-if value="{{isBench}}" hint-placeholder-val="{{true}}">
+<div role="group" aria-label="Dataset shown" style="display: flex; border: 1px solid #d6d3ca; border-radius: 6px; overflow: hidden">
+<button onClick="{{pickTrain}}" style="{{trainBtnStyle}}">Train</button>
+<button onClick="{{pickTest}}" style="{{testBtnStyle}}">Test</button>
+</div>
+</sc-if>
+</header>
+
+<sc-if value="{{isWs}}" hint-placeholder-val="{{false}}">
+<div style="flex-grow: 1; min-height: 0; display: flex">
+<aside style="width: 300px; flex-shrink: 0; padding: 20px 16px; background: #faf9f6; border-right: 1px solid #e3e1da; display: flex; flex-direction: column; gap: 10px">
+<div style="font-family: 'Instrument Serif', Georgia, serif; font-size: 26px">Workspaces</div>
+<div style="font-size: 12px; color: #5b5850; line-height: 1.5">A workspace = which files make train and test, how the label joins, and the ordered log of steps.</div>
+<sc-for list="{{wsList}}" as="wl" hint-placeholder-count="3">
+<button onClick="{{wl.pick}}" style="{{wl.style}}" data-h="1">
+<span style="font-weight: 600; font-family: 'IBM Plex Mono', monospace">{{wl.name}}</span>
+<span style="font-size: 12px; color: #5b5850">{{wl.meta}}</span>
+</button>
+</sc-for>
+<button style="height: 36px; border: 1px dashed #b9b6ac; border-radius: 8px; background: transparent; color: #5b5850">+ New workspace</button>
+</aside>
+<div style="flex-grow: 1; min-width: 0; overflow-y: auto; padding: 20px 28px; display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; align-items: baseline; gap: 12px">
+<span style="font-family: 'Instrument Serif', Georgia, serif; font-size: 30px">Sources of “churn”</span>
+<span style="font-size: 12px; color: #5b5850">Roles were guessed from the file names. Check them: nothing is loaded until you continue.</span>
+</div>
+
+<section style="background: #ffffff; border: 1px solid #e3e1da; border-radius: 10px; overflow: hidden">
+<div style="display: flex; padding: 10px 14px; background: #faf9f6; border-bottom: 1px solid #e3e1da; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5b5850">
+<span style="width: 250px">File</span><span style="width: 300px">Detected (file_inspect)</span><span style="flex-grow: 1">Role</span>
+</div>
+<sc-for list="{{files}}" as="fl" hint-placeholder-count="4">
+<div style="display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid #f0efea">
+<div style="width: 250px; display: flex; flex-direction: column; gap: 2px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-weight: 500">{{fl.name}}</span>
+<span style="font-size: 11px; color: #5b5850; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 235px">{{fl.cols}}</span>
+</div>
+<div style="width: 300px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5b5850">{{fl.detected}}</div>
+<div style="flex-grow: 1; display: flex; gap: 4px; flex-wrap: wrap">
+<sc-for list="{{fl.roles}}" as="ro" hint-placeholder-count="5">
+<button onClick="{{ro.pick}}" style="{{ro.style}}">{{ro.text}}</button>
+</sc-for>
+</div>
+</div>
+</sc-for>
+<div style="padding: 10px 14px"><button style="height: 30px; padding: 0 12px; border: 1px dashed #b9b6ac; border-radius: 6px; background: transparent; color: #5b5850">+ Add a file (csv, parquet, excel, json, sql query)</button></div>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px">
+<section style="background: #ffffff; border: 1px solid #e3e1da; border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+<div style="font-family: 'Instrument Serif', Georgia, serif; font-size: 22px">Target</div>
+<div style="display: flex; gap: 6px; flex-wrap: wrap">
+<sc-for list="{{labelModes}}" as="lm" hint-placeholder-count="2"><button onClick="{{lm.pick}}" style="{{lm.style}}" title="{{lm.tip}}">{{lm.text}}</button></sc-for>
+</div>
+<sc-if value="{{isYFile}}" hint-placeholder-val="{{true}}">
+<div style="font-size: 12px; color: #5b5850">Join y onto train X</div>
+<div style="display: flex; gap: 6px; flex-wrap: wrap">
+<sc-for list="{{yJoins}}" as="yj" hint-placeholder-count="2"><button onClick="{{yj.pick}}" style="{{yj.style}}" disabled="{{yj.disabled}}" title="{{yj.tip}}">{{yj.text}}</button></sc-for>
+</div>
+</sc-if>
+<sc-if value="{{isColMode}}" hint-placeholder-val="{{false}}">
+<div style="font-size: 12px; color: #5b5850">Which column of train X is the target?</div>
+<div style="display: flex; gap: 4px; flex-wrap: wrap">
+<sc-for list="{{targetChips}}" as="tc" hint-placeholder-count="6"><button onClick="{{tc.pick}}" style="{{tc.style}}">{{tc.text}}</button></sc-for>
+</div>
+</sc-if>
+<div style="{{labelInfoStyle}}">{{labelInfo}}</div>
+</section>
+<section style="background: #ffffff; border: 1px solid #e3e1da; border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+<div style="font-family: 'Instrument Serif', Georgia, serif; font-size: 22px">Merge</div>
+<sc-if value="{{hasMerge}}" hint-placeholder-val="{{true}}">
+<div style="font-size: 12px; color: #5b5850">Left join <strong style="font-family: 'IBM Plex Mono', monospace; color: #1c1b18">{{mergeFile}}</strong> on key</div>
+<div style="display: flex; gap: 4px; flex-wrap: wrap">
+<sc-for list="{{mergeKeys}}" as="mk" hint-placeholder-count="2"><button onClick="{{mk.pick}}" style="{{mk.style}}">{{mk.text}}</button></sc-for>
+</div>
+<div style="display: flex; gap: 6px">
+<button onClick="{{toggleMergeTest}}" style="{{mergeTestStyle}}">Also merge into test: {{mergeTestLabel}}</button>
+</div>
+<div style="{{mergeInfoStyle}}">{{mergeInfo}}</div>
+</sc-if>
+<sc-if value="{{noMerge}}" hint-placeholder-val="{{false}}">
+<div style="font-size: 12px; color: #5b5850; line-height: 1.5">Give a file the role “Merge” to join extra columns (one row per key) onto train and test.</div>
+</sc-if>
+</section>
+</div>
+
+<section style="background: #ffffff; border: 1px solid #e3e1da; border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: baseline; gap: 12px">
+<span style="font-family: 'Instrument Serif', Georgia, serif; font-size: 22px">Result</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px">train {{trainShape}} · test {{testShape}}</span>
+</div>
+<div style="display: flex; gap: 4px; flex-wrap: wrap">
+<sc-for list="{{resCols}}" as="rc" hint-placeholder-count="10"><span style="{{rc.style}}">{{rc.text}}</span></sc-for>
+</div>
+<div style="display: flex; gap: 14px; font-size: 11px; color: #5b5850">
+<span>■ <span style="color: #1c1b18">X</span></span><span style="color: #1d5b86">■ y (label)</span><span style="color: #2f6b3a">■ merged</span>
+</div>
+<sc-for list="{{wsErrors}}" as="we" hint-placeholder-count="0"><div style="padding: 8px 10px; border-radius: 6px; background: #f7e1e2; color: #7d1c22; font-size: 12px">{{we}}</div></sc-for>
+</section>
+<div style="display: flex; gap: 10px">
+<button onClick="{{goAlign}}" style="height: 38px; padding: 0 18px; border: none; border-radius: 6px; background: #1c1b18; color: #ffffff; font-weight: 500" data-h="1">Check train / test alignment →</button>
+<button onClick="{{goBench}}" style="height: 38px; padding: 0 18px; border: 1px solid #1c1b18; border-radius: 6px; background: #ffffff; font-weight: 500" data-h="1">Open workbench</button>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isAlign}}" hint-placeholder-val="{{false}}">
+<div style="flex-grow: 1; min-height: 0; display: flex">
+<div style="flex-grow: 1; min-width: 0; overflow-y: auto; padding: 20px 28px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: baseline; gap: 12px">
+<span style="font-family: 'Instrument Serif', Georgia, serif; font-size: 30px">Train / test alignment</span>
+<span style="font-size: 12px; color: #5b5850">Test must carry train's columns with the same types before any fitted step. You decide each fix.</span>
+</div>
+<div style="display: flex; gap: 8px">
+<sc-for list="{{aCounts}}" as="ac" hint-placeholder-count="3"><span style="{{ac.style}}">{{ac.text}}</span></sc-for>
+</div>
+<section style="background: #ffffff; border: 1px solid #e3e1da; border-radius: 10px; overflow: hidden">
+<div style="display: flex; gap: 12px; padding: 10px 14px; background: #faf9f6; border-bottom: 1px solid #e3e1da; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5b5850">
+<span style="width: 220px">Train</span><span style="width: 130px">Status</span><span style="width: 220px">Test</span><span style="width: 150px">Train / test mean</span><span style="flex-grow: 1">Your fix</span>
+</div>
+<sc-for list="{{aRows}}" as="ar" hint-placeholder-count="9">
+<div style="{{ar.style}}">
+<div style="width: 220px; display: flex; flex-direction: column; gap: 2px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-weight: 500">{{ar.tName}}</span>
+<span style="font-size: 11px; color: #5b5850; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ar.tInfo}}</span>
+</div>
+<div style="width: 130px"><span style="{{ar.statusStyle}}">{{ar.status}}</span></div>
+<div style="width: 220px; display: flex; flex-direction: column; gap: 2px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-weight: 500">{{ar.eName}}</span>
+<span style="font-size: 11px; color: #5b5850; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ar.eInfo}}</span>
+</div>
+<div style="width: 150px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5b5850">{{ar.means}}</div>
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 12px; color: #5b5850">{{ar.note}}</span>
+<div style="display: flex; gap: 4px; flex-wrap: wrap">
+<sc-for list="{{ar.actions}}" as="aa" hint-placeholder-count="2"><button onClick="{{aa.pick}}" style="{{aa.style}}" disabled="{{aa.disabled}}" title="{{aa.tip}}">{{aa.text}}</button></sc-for>
+</div>
+</div>
+</div>
+</sc-for>
+</section>
+</div>
+<aside style="width: 330px; flex-shrink: 0; padding: 20px 16px; background: #faf9f6; border-left: 1px solid #e3e1da; display: flex; flex-direction: column; gap: 10px">
+<div style="font-family: 'Instrument Serif', Georgia, serif; font-size: 22px">Your alignment</div>
+<div style="font-size: 12px; color: #5b5850; line-height: 1.5">Source options re-read a file. Steps are test-only (or train-only) and sit first in the pipeline. Remove any of them to undo.</div>
+<div style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5b5850; margin-top: 4px">Source options</div>
+<sc-for list="{{aSrc}}" as="as" hint-placeholder-count="1">
+<div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #ffffff; border: 1px solid #e3e1da; border-radius: 6px"><span style="flex-grow: 1; font-family: 'IBM Plex Mono', monospace; font-size: 12px">{{as.text}}</span><button onClick="{{as.remove}}" style="border: none; background: none; color: #a3242c; font-size: 12px">Remove</button></div>
+</sc-for>
+<sc-if value="{{aNoSrc}}" hint-placeholder-val="{{false}}"><div style="font-size: 12px; color: #5b5850">None.</div></sc-if>
+<div style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5b5850; margin-top: 4px">Alignment steps</div>
+<sc-for list="{{aSteps}}" as="ast" hint-placeholder-count="2">
+<div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #ffffff; border: 1px solid #e3e1da; border-radius: 6px"><span style="flex-grow: 1; font-family: 'IBM Plex Mono', monospace; font-size: 12px">{{ast.text}}</span><button onClick="{{ast.remove}}" style="border: none; background: none; color: #a3242c; font-size: 12px">Remove</button></div>
+</sc-for>
+<sc-if value="{{aNoSteps}}" hint-placeholder-val="{{false}}"><div style="font-size: 12px; color: #5b5850">None yet.</div></sc-if>
+<div style="flex-grow: 1"></div>
+<div style="{{aReadyStyle}}">{{aReady}}</div>
+<button onClick="{{goBench}}" style="height: 38px; border: none; border-radius: 6px; background: #1c1b18; color: #ffffff; font-weight: 500" data-h="1">Open workbench →</button>
+<button onClick="{{goWs}}" style="height: 34px; border: 1px solid #d6d3ca; border-radius: 6px; background: #ffffff">← Back to sources</button>
+</aside>
+</div>
+</sc-if>
+
+<sc-if value="{{isBench}}" hint-placeholder-val="{{true}}">
+<section aria-label="Pipeline" style="height: 96px; flex-shrink: 0; display: flex; align-items: center; gap: 0; padding: 0 16px; background: #faf9f6; border-bottom: 1px solid #e3e1da">
+<div style="flex-grow: 1; min-width: 0; display: flex; align-items: center; overflow-x: auto; padding: 8px 0">
+<sc-for list="{{nodes}}" as="n" hint-placeholder-count="3">
+<div style="display: flex; align-items: center; flex-shrink: 0">
+<sc-if value="{{n.arrow}}" hint-placeholder-val="{{true}}">
+<svg width="28" height="16" viewBox="0 0 28 16" aria-hidden="true" style="flex-shrink: 0"><path d="M2 8h20M17 3l6 5-6 5" fill="none" stroke="#a8a499" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</sc-if>
+<div style="position: relative; flex-shrink: 0">
+<button onClick="{{n.pick}}" style="{{n.style}}" title="{{n.tip}}" data-h="1">
+<span style="{{n.barStyle}}"></span>
+<span style="display: flex; align-items: baseline; gap: 6px"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5b5850">{{n.ver}}</span><span style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{n.title}}</span></span>
+<span style="display: block; font-size: 11px; color: #5b5850; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{n.sub}}</span>
+<span style="display: flex; gap: 6px; align-items: center; font-size: 11px; font-family: 'IBM Plex Mono', monospace"><span>{{n.shape}}</span><span style="{{n.deltaStyle}}">{{n.delta}}</span><span style="margin-left: auto; color: #5b5850">{{n.badge}}</span></span>
+</button>
+<sc-if value="{{n.canDelete}}" hint-placeholder-val="{{false}}">
+<button onClick="{{n.remove}}" aria-label="Remove this step and replay" title="Remove step (the pipeline replays)" style="position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; padding: 0; border-radius: 10px; border: 1px solid #d6d3ca; background: #ffffff; display: flex; align-items: center; justify-content: center">
+<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2l-6 6" stroke="#5b5850" stroke-width="1.5" stroke-linecap="round"></path></svg>
+</button>
+</sc-if>
+</div>
+</div>
+</sc-for>
+<sc-if value="{{showPendingNode}}" hint-placeholder-val="{{false}}">
+<svg width="28" height="16" viewBox="0 0 28 16" aria-hidden="true" style="flex-shrink: 0"><path d="M2 8h20M17 3l6 5-6 5" fill="none" stroke="#1d5b86" stroke-width="1.6" stroke-dasharray="3 3" stroke-linecap="round"></path></svg>
+<div style="flex-shrink: 0; width: 164px; height: 66px; box-sizing: border-box; padding: 8px 10px; border: 1.5px dashed #1d5b86; border-radius: 8px; background: #e3eef6; display: flex; flex-direction: column; gap: 3px">
+<span style="font-size: 11px; color: #1d5b86; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em">Editing</span>
+<span style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{pendingTitle}}</span>
+<span style="font-size: 11px; font-family: 'IBM Plex Mono', monospace; color: #1d5b86">{{pendingDelta}}</span>
+</div>
+</sc-if>
+<svg width="28" height="16" viewBox="0 0 28 16" aria-hidden="true" style="flex-shrink: 0"><path d="M2 8h20" fill="none" stroke="#c9c5ba" stroke-width="1.6" stroke-dasharray="3 3"></path></svg>
+<button onClick="{{addStep}}" style="flex-shrink: 0; height: 40px; padding: 0 14px; border: 1.5px dashed #9c988c; border-radius: 8px; background: #ffffff; font-weight: 500" data-h="1">+ Step</button>
+</div>
+<div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 3px; padding-left: 14px; margin-left: 10px; border-left: 1px solid #e3e1da; font-size: 11px; color: #5b5850">
+<sc-for list="{{stageLegend}}" as="sl" hint-placeholder-count="5"><span style="display: flex; align-items: center; gap: 6px" title="{{sl.course}}"><span style="{{sl.dot}}"></span>{{sl.label}}</span></sc-for>
+</div>
+</section>
+
+<div style="flex-grow: 1; min-height: 0; display: flex">
+<aside aria-label="Variables, suggestions and recipe" style="width: 280px; flex-shrink: 0; display: flex; flex-direction: column; background: #faf9f6; border-right: 1px solid #e3e1da; min-height: 0">
+<div role="tablist" style="display: flex; gap: 2px; padding: 10px 12px 0; border-bottom: 1px solid #e3e1da">
+<sc-for list="{{leftTabs}}" as="lt" hint-placeholder-count="3"><button role="tab" onClick="{{lt.pick}}" style="{{lt.style}}">{{lt.text}}</button></sc-for>
+</div>
+<div style="flex-grow: 1; overflow-y: auto; padding: 12px">
+
+<sc-if value="{{tabVars}}" hint-placeholder-val="{{true}}">
+<div style="font-size: 12px; color: #5b5850; line-height: 1.5; margin-bottom: 10px">Named statistics, computed on <strong>train</strong> at the latest version. Use them as <span style="font-family: 'IBM Plex Mono', monospace">@name</span> in a formula: the step freezes their train value, so test reuses the same number.</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{varList}}" as="vr" hint-placeholder-count="2">
+<div style="padding: 8px 10px; background: #ffffff; border: 1px solid #e3e1da; border-radius: 6px">
+<div style="display: flex; align-items: baseline; gap: 6px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: #1d5b86">@{{vr.name}}</span>
+<span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-weight: 500">{{vr.value}}</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; margin-top: 3px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5b5850">{{vr.def}}</span>
+<button onClick="{{vr.insert}}" style="margin-left: auto; border: none; background: none; padding: 2px 0; font-size: 11px; color: #1d5b86">{{vr.insertLabel}}</button>
+<button onClick="{{vr.remove}}" aria-label="Delete variable" style="border: none; background: none; padding: 2px 0; font-size: 11px; color: #a3242c">Delete</button>
+</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top: 14px; padding: 10px; background: #ffffff; border: 1px solid #e3e1da; border-radius: 8px; display: flex; flex-direction: column; gap: 8px">
+<div style="font-weight: 600">New variable</div>
+<label for="nv-name" style="font-size: 11px; color: #5b5850">Name</label>
+<input id="nv-name" value="{{nvName}}" onChange="{{nvOnName}}" placeholder="e.g. spend_p90" style="height: 30px; padding: 0 8px; border: 1px solid #d6d3ca; border-radius: 5px; font-family: 'IBM Plex Mono', monospace; font-size: 12px">
+<span style="font-size: 11px; color: #5b5850">Statistic</span>
+<div style="display: flex; gap: 3px; flex-wrap: wrap"><sc-for list="{{nvStats}}" as="ns" hint-placeholder-count="8"><button onClick="{{ns.pick}}" style="{{ns.style}}">{{ns.text}}</button></sc-for></div>
+<span style="font-size: 11px; color: #5b5850">Column</span>
+<div style="display: flex; gap: 3px; flex-wrap: wrap"><sc-for list="{{nvCols}}" as="nc" hint-placeholder-count="6"><button onClick="{{nc.pick}}" style="{{nc.style}}">{{nc.text}}</button></sc-for></div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #5b5850">{{nvPreview}}</div>
+<button onClick="{{nvAdd}}" disabled="{{nvDisabled}}" style="{{nvAddStyle}}">Add variable</button>
+</div>
+<button onClick="{{openFormula}}" style="margin-top: 10px; width: 100%; height: 34px; border: 1px solid #8a5a9e; border-radius: 6px; background: #f5eef8; color: #6a3f7d; font-weight: 500" data-h="1">ƒ New formula step</button>
+</sc-if>
+
+<sc-if value="{{tabSug}}" hint-placeholder-val="{{false}}">
+<div style="font-size: 12px; color: #5b5850; line-height: 1.5; margin-bottom: 8px">What the analysis keys flag on the latest train. A suggestion only opens the editor: nothing changes until you apply.</div>
+<div style="display: flex; gap: 3px; flex-wrap: wrap; margin-bottom: 10px"><sc-for list="{{sugStages}}" as="ss" hint-placeholder-count="5"><button onClick="{{ss.pick}}" style="{{ss.style}}">{{ss.text}}</button></sc-for></div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<sc-for list="{{cards}}" as="cd" hint-placeholder-count="3">
+<div style="padding: 10px 12px; background: #ffffff; border: 1px solid #e3e1da; border-radius: 8px">
+<div style="display: flex; align-items: center; gap: 6px"><span style="{{cd.dotStyle}}"></span><span style="font-size: 11px; color: #5b5850">{{cd.stageLabel}}</span></div>
+<div style="font-weight: 600; margin-top: 4px; line-height: 1.3">{{cd.title}}</div>
+<div style="font-size: 12px; color: #5b5850; margin-top: 3px; line-height: 1.4">{{cd.detail}}</div>
+<button onClick="{{cd.fix}}" style="margin-top: 8px; height: 28px; padding: 0 10px; border-radius: 5px; border: 1px solid #1d5b86; background: #ffffff; color: #1d5b86; font-size: 12px; font-weight: 500" data-h="1">{{cd.fixLabel}}</button>
+</div>
+</sc-for>
+<sc-if value="{{noCards}}" hint-placeholder-val="{{false}}"><div style="padding: 12px; border: 1px dashed #c9c5ba; border-radius: 8px; color: #5b5850">Nothing flagged here.</div></sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{tabSteps}}" hint-placeholder-val="{{false}}">
+<div style="font-size: 12px; color: #5b5850; line-height: 1.5; margin-bottom: 8px">The recipe, in replay order. Click a step to see the data after it.</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<sc-for list="{{recipe}}" as="rc" hint-placeholder-count="4">
+<button onClick="{{rc.pick}}" style="{{rc.style}}" data-h="1">
+<span style="display: flex; gap: 6px; align-items: baseline; width: 100%"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5b5850">{{rc.ver}}</span><span style="font-weight: 500">{{rc.title}}</span><span style="margin-left: auto; font-size: 10px; color: #5b5850">{{rc.badge}}</span></span>
+<span style="font-size: 11px; color: #5b5850">{{rc.sub}}</span>
+</button>
+</sc-for>
+</div>
+<div style="margin-top: 10px; font-size: 12px; color: #2f6b3a">{{leakText}}</div>
+</sc-if>
+</div>
+</aside>
+
+<main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; background: #ffffff">
+<sc-if value="{{showExport}}" hint-placeholder-val="{{false}}">
+<div style="flex-shrink: 0; display: flex; gap: 16px; padding: 12px 16px; border-bottom: 1px solid #e3e1da; background: #f6f5f2; height: 220px; box-sizing: border-box">
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 8px"><span style="font-family: 'Instrument Serif', Georgia, serif; font-size: 20px">Export</span><span style="font-size: 11px; color: #5b5850">workspace JSON, what save_workspace stores</span></div>
+<div style="flex-grow: 1; padding: 8px 10px; background: #1c1b18; color: #ece9e1; border-radius: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; line-height: 1.55; white-space: pre; overflow: auto">{{codeText}}</div>
+</div>
+<div style="width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 12px; font-weight: 600">Outputs</div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; line-height: 1.6; color: #5b5850">train.parquet  {{trainShape}}<br>test.parquet   {{testShape}}<br>manifest.json  steps, states, hashes</div>
+<div style="font-size: 12px; color: #2f6b3a">{{leakText}}</div>
+<button onClick="{{doExport}}" style="height: 34px; border: none; border-radius: 6px; background: #1c1b18; color: #ffffff; font-weight: 500" data-h="1">Export parquet + manifest</button>
+<sc-if value="{{exported}}" hint-placeholder-val="{{false}}"><div style="font-size: 12px; color: #2f6b3a">Written to [EXPORT DIR]/churn/</div></sc-if>
+<button onClick="{{closeExport}}" style="height: 28px; border: 1px solid #d6d3ca; border-radius: 6px; background: #ffffff; font-size: 12px">Close</button>
+</div>
+</div>
+</sc-if>
+
+<div style="height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid #eeede8">
+<span style="font-weight: 500">{{selText}}</span>
+<button onClick="{{toggleMulti}}" style="{{multiStyle}}" aria-pressed="{{multiOn}}">Multi-select {{multiLabel}}</button>
+<span style="font-size: 12px; color: #5b5850">Right-click a header for its menu · shift-click adds columns</span>
+<div style="flex-grow: 1"></div>
+<sc-for list="{{legend}}" as="lg" hint-placeholder-count="5"><span style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: #5b5850"><span style="{{lg.style}}"></span>{{lg.label}}</span></sc-for>
+<button onClick="{{openExport}}" style="height: 28px; padding: 0 12px; border: none; border-radius: 6px; background: #1c1b18; color: #ffffff; font-size: 12px; font-weight: 500" data-h="1">Export</button>
+</div>
+
+<sc-if value="{{showPendingBanner}}" hint-placeholder-val="{{false}}">
+<div style="flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: #e3eef6; border-bottom: 1px solid #b9d0e2">
+<span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #1d5b86">Live preview</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px">{{pendingCode}}</span>
+<span style="color: #33526b">{{pendingDelta}}</span>
+<div style="flex-grow: 1"></div>
+<button onClick="{{cancelPending}}" style="height: 30px; padding: 0 12px; border-radius: 5px; border: 1px solid #9fbbd1; background: #ffffff" data-h="1">Discard</button>
+<button onClick="{{applyPending}}" style="height: 30px; padding: 0 14px; border-radius: 5px; border: none; background: #1d5b86; color: #ffffff; font-weight: 500" data-h="1">Apply step</button>
+</div>
+</sc-if>
+<sc-if value="{{showViewBanner}}" hint-placeholder-val="{{false}}">
+<div style="flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: #fdf3d8; border-bottom: 1px solid #ecd9a2">
+<span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #7a5a06">Time travel</span>
+<span>Viewing <strong>{{viewLabel}}</strong> · read-only. Later steps are kept.</span>
+<div style="flex-grow: 1"></div>
+<button onClick="{{backToLatest}}" style="height: 30px; padding: 0 12px; border-radius: 5px; border: 1px solid #c9a94b; background: #ffffff" data-h="1">Back to latest</button>
+</div>
+</sc-if>
+<sc-if value="{{hasReplayError}}" hint-placeholder-val="{{false}}">
+<div style="flex-shrink: 0; padding: 8px 16px; background: #f7e1e2; border-bottom: 1px solid #e7b3b6; color: #7d1c22">{{replayError}}</div>
+</sc-if>
+
+<div style="{{workStyle}}">
+<sc-if value="{{showGrid}}" hint-placeholder-val="{{true}}">
+<div style="flex-grow: 1; min-height: 0; min-width: 0; overflow: auto">
+<div style="{{gridStyle}}">
+<div style="display: flex; position: sticky; top: 0; z-index: 2; background: #faf9f6; border-bottom: 1px solid #d6d3ca">
+<div style="width: 44px; flex-shrink: 0; position: sticky; left: 0; z-index: 3; background: #faf9f6; border-right: 1px solid #e3e1da"></div>
+<sc-for list="{{headers}}" as="h" hint-placeholder-count="8">
+<button onClick="{{h.pick}}" onContextMenu="{{h.ctx}}" style="{{h.style}}" title="{{h.tip}}" data-h="1">
+<span style="display: flex; align-items: center; gap: 5px; width: 100%">
+<span style="{{h.nameStyle}}">{{h.name}}</span>
+<sc-if value="{{h.isTarget}}" hint-placeholder-val="{{false}}"><svg width="13" height="13" viewBox="0 0 14 14" aria-label="target" style="flex-shrink: 0"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#1d5b86" stroke-width="1.4"></circle><circle cx="7" cy="7" r="2" fill="#1d5b86"></circle></svg></sc-if>
+</span>
+<span style="display: flex; gap: 6px; align-items: center; font-size: 10px; color: #5b5850; width: 100%"><span style="{{h.kindStyle}}">{{h.kind}}</span><span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace">{{h.missLabel}}</span></span>
+<span style="display: flex; align-items: flex-end; gap: 1px; height: 22px; width: 100%"><sc-for list="{{h.bars}}" as="b" hint-placeholder-count="10"><span style="{{b.style}}" title="{{b.tip}}"></span></sc-for></span>
+<span style="{{h.missBarStyle}}"><span style="{{h.missFillStyle}}"></span></span>
+<span style="display: flex; gap: 3px; height: 16px; width: 100%; overflow: hidden"><sc-for list="{{h.alerts}}" as="al" hint-placeholder-count="1"><span style="{{al.style}}">{{al.text}}</span></sc-for></span>
+</button>
+</sc-for>
+</div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="12">
+<div style="display: flex; border-bottom: 1px solid #f0efea">
+<button onClick="{{r.pick}}" style="{{r.numStyle}}" aria-label="Select row {{r.num}}">{{r.num}}</button>
+<sc-for list="{{r.cells}}" as="c" hint-placeholder-count="8"><button onClick="{{c.pick}}" style="{{c.style}}" title="{{c.tip}}">{{c.text}}</button></sc-for>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{dockOpen}}" hint-placeholder-val="{{true}}">
+<div style="{{dockStyle}}">
+<div style="height: 30px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; font-size: 11px; color: #5b5850">
+<span style="font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em">Windows</span>
+<div role="group" aria-label="Dock position" style="display: flex; border: 1px solid #d6d3ca; border-radius: 5px; overflow: hidden"><sc-for list="{{dockPosChips}}" as="dp" hint-placeholder-count="2"><button onClick="{{dp.pick}}" style="{{dp.style}}">{{dp.text}}</button></sc-for></div>
+<div role="group" aria-label="Dock size" style="display: flex; border: 1px solid #d6d3ca; border-radius: 5px; overflow: hidden"><sc-for list="{{dockSizeChips}}" as="ds" hint-placeholder-count="3"><button onClick="{{ds.pick}}" style="{{ds.style}}">{{ds.text}}</button></sc-for></div>
+<span>Drag a title bar to reorder</span>
+</div>
+<div style="{{winsStyle}}">
+<sc-for list="{{wins}}" as="w" hint-placeholder-count="2">
+<section style="{{w.style}}">
+<div data-drag="1" draggable="true" onDragStart="{{w.dragStart}}" onDragOver="{{w.dragOver}}" onDrop="{{w.drop}}" style="height: 34px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 10px; border-bottom: 1px solid #eeede8; background: #faf9f6">
+<svg width="10" height="14" viewBox="0 0 10 14" aria-hidden="true" style="flex-shrink: 0"><g fill="#a8a499"><circle cx="3" cy="3" r="1.2"></circle><circle cx="7" cy="3" r="1.2"></circle><circle cx="3" cy="7" r="1.2"></circle><circle cx="7" cy="7" r="1.2"></circle><circle cx="3" cy="11" r="1.2"></circle><circle cx="7" cy="11" r="1.2"></circle></g></svg>
+<span style="font-weight: 600; white-space: nowrap">{{w.title}}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #5b5850; padding: 1px 5px; border: 1px solid #e3e1da; border-radius: 3px">{{w.key}}</span>
+<span style="font-size: 11px; color: #5b5850; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1">{{w.bound}}</span>
+<button onClick="{{w.left}}" aria-label="Move window earlier" title="Move earlier" style="width: 24px; height: 24px; padding: 0; border: none; background: none"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M7.5 2.5 4 6l3.5 3.5" fill="none" stroke="#5b5850" stroke-width="1.5" stroke-linecap="round"></path></svg></button>
+<button onClick="{{w.right}}" aria-label="Move window later" title="Move later" style="width: 24px; height: 24px; padding: 0; border: none; background: none"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 8 6 4.5 9.5" fill="none" stroke="#5b5850" stroke-width="1.5" stroke-linecap="round"></path></svg></button>
+<button onClick="{{w.widen}}" aria-label="Toggle wide" title="{{w.wideTip}}" style="width: 24px; height: 24px; padding: 0; border: none; background: none"><svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true"><path d="M1 6h12M4 3 1 6l3 3M10 3l3 3-3 3" fill="none" stroke="#5b5850" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+<button onClick="{{w.max}}" aria-label="Maximize or restore" title="{{w.maxTip}}" style="width: 24px; height: 24px; padding: 0; border: none; background: none"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" rx="1" fill="none" stroke="#5b5850" stroke-width="1.4"></rect></svg></button>
+<button onClick="{{w.close}}" aria-label="Close window" style="width: 24px; height: 24px; padding: 0; border: none; background: none"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2l-6 6" stroke="#5b5850" stroke-width="1.5" stroke-linecap="round"></path></svg></button>
+</div>
+<div style="flex-grow: 1; min-height: 0; overflow: auto; padding: 10px 12px">
+<sc-if value="{{w.hasMsg}}" hint-placeholder-val="{{false}}"><div style="color: #5b5850; line-height: 1.5">{{w.msg}}</div></sc-if>
+<sc-if value="{{w.isMatrix}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<div style="display: flex; gap: 2px; padding-left: 96px"><sc-for list="{{w.mHead}}" as="mh" hint-placeholder-count="4"><span style="{{mh.style}}" title="{{mh.name}}">{{mh.short}}</span></sc-for></div>
+<sc-for list="{{w.mRows}}" as="mr" hint-placeholder-count="4">
+<div style="display: flex; gap: 2px; align-items: center">
+<span style="width: 94px; flex-shrink: 0; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" title="{{mr.name}}">{{mr.name}}</span>
+<sc-for list="{{mr.cells}}" as="mc" hint-placeholder-count="4"><span style="{{mc.style}}" title="{{mc.tip}}">{{mc.text}}</span></sc-for>
+</div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{w.hasMultiples}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap">
+<sc-for list="{{w.multiples}}" as="mu" hint-placeholder-count="2">
+<div style="width: 150px"><div style="font-size: 11px; font-family: 'IBM Plex Mono', monospace; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{mu.name}}</div><div style="display: flex; align-items: flex-end; gap: 1px; height: 40px; border-bottom: 1px solid #d6d3ca"><sc-for list="{{mu.bars}}" as="mb" hint-placeholder-count="10"><span style="{{mb.style}}" title="{{mb.tip}}"></span></sc-for></div></div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{w.isBars}}" hint-placeholder-val="{{false}}">
+<div style="font-size: 11px; color: #5b5850; margin-bottom: 6px">{{w.stats}}</div>
+<div style="display: flex; align-items: flex-end; gap: 3px; height: 110px; border-bottom: 1px solid #d6d3ca"><sc-for list="{{w.bars}}" as="wb" hint-placeholder-count="8"><span style="{{wb.style}}" title="{{wb.tip}}"></span></sc-for></div>
+<div style="display: flex; gap: 3px; margin-top: 4px"><sc-for list="{{w.bars}}" as="wl" hint-placeholder-count="8"><span style="flex: 1 1 0; min-width: 0; font-size: 10px; color: #5b5850; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{wl.label}}</span></sc-for></div>
+</sc-if>
+<sc-if value="{{w.isList}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 5px">
+<sc-for list="{{w.list}}" as="li" hint-placeholder-count="5">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 12px">
+<span style="width: 120px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{li.name}}</span>
+<span style="flex-grow: 1; height: 8px; background: #f0efea; border-radius: 4px; overflow: hidden"><span style="{{li.barStyle}}"></span></span>
+<span style="width: 120px; flex-shrink: 0; text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 11px">{{li.value}}</span>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</div>
+</section>
+</sc-for>
+</div>
+</div>
+</sc-if>
+</div>
+</main>
+
+<aside aria-label="Inspector" style="width: 318px; flex-shrink: 0; display: flex; flex-direction: column; border-left: 1px solid #e3e1da; background: #faf9f6; min-height: 0">
+<div style="flex-grow: 1; overflow-y: auto; padding: 16px">
+
+<sc-if value="{{edPicker}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; align-items: center; justify-content: space-between"><span style="font-family: 'Instrument Serif', Georgia, serif; font-size: 24px">Add a step</span><button onClick="{{edClose}}" style="border: none; background: none; color: #5b5850; font-size: 12px">Cancel</button></div>
+<div style="font-size: 12px; color: #5b5850; margin: 4px 0 12px">Pick a transform. You set every parameter before anything is applied.</div>
+<sc-for list="{{pickerGroups}}" as="pg" hint-placeholder-count="4">
+<div style="margin-bottom: 12px">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #5b5850; margin-bottom: 6px"><span style="{{pg.dot}}"></span>{{pg.label}}</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px">
+<sc-for list="{{pg.ops}}" as="po" hint-placeholder-count="4"><button onClick="{{po.pick}}" style="{{po.style}}" title="{{po.what}}" data-h="1">{{po.title}}</button></sc-for>
+</div>
+</div>
+</sc-for>
+</sc-if>
+
+<sc-if value="{{edOpen}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; align-items: center; justify-content: space-between"><span style="{{edKickerStyle}}">{{edKicker}}</span><button onClick="{{edBack}}" style="border: none; background: none; color: #5b5850; font-size: 12px">← All transforms</button></div>
+<div style="font-family: 'Instrument Serif', Georgia, serif; font-size: 28px; line-height: 1.1; margin: 4px 0 6px">{{edTitle}}</div>
+<div style="font-size: 12px; line-height: 1.5; margin-bottom: 4px">{{edWhat}}</div>
+<div style="font-size: 11px; color: #5b5850; margin-bottom: 12px">{{edCourse}}</div>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<sc-for list="{{edFields}}" as="ef" hint-placeholder-count="2">
+<div style="display: flex; flex-direction: column; gap: 5px">
+<span style="font-size: 11px; font-weight: 600; color: #5b5850">{{ef.label}}</span>
+<sc-if value="{{ef.isChips}}" hint-placeholder-val="{{true}}"><div style="display: flex; gap: 3px; flex-wrap: wrap"><sc-for list="{{ef.chips}}" as="ch" hint-placeholder-count="5"><button onClick="{{ch.pick}}" style="{{ch.style}}">{{ch.text}}</button></sc-for></div></sc-if>
+<sc-if value="{{ef.isInput}}" hint-placeholder-val="{{false}}"><input value="{{ef.value}}" onChange="{{ef.onInput}}" aria-label="{{ef.label}}" placeholder="{{ef.placeholder}}" style="height: 32px; padding: 0 8px; border: 1px solid #d6d3ca; border-radius: 5px; font-family: 'IBM Plex Mono', monospace; font-size: 12px"></sc-if>
+<sc-if value="{{ef.isOrder}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 3px">
+<sc-for list="{{ef.order}}" as="oi" hint-placeholder-count="3">
+<div style="display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; background: #ffffff; border: 1px solid #e3e1da; border-radius: 5px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5b5850; width: 16px">{{oi.rank}}</span><span style="flex-grow: 1; font-family: 'IBM Plex Mono', monospace; font-size: 12px">{{oi.text}}</span>
+<button onClick="{{oi.up}}" aria-label="Move up" style="width: 24px; height: 24px; padding: 0; border: 1px solid #e3e1da; border-radius: 4px; background: #faf9f6">↑</button>
+<button onClick="{{oi.down}}" aria-label="Move down" style="width: 24px; height: 24px; padding: 0; border: 1px solid #e3e1da; border-radius: 4px; background: #faf9f6">↓</button>
+</div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ef.isFormula}}" hint-placeholder-val="{{false}}">
+<input value="{{ef.value}}" onChange="{{ef.onInput}}" aria-label="Expression" placeholder="(monthly_spend - @spend_mean) / @spend_std" style="height: 34px; padding: 0 8px; border: 1px solid #8a5a9e; border-radius: 5px; font-family: 'IBM Plex Mono', monospace; font-size: 12px">
+<span style="font-size: 10px; color: #5b5850">Insert a column</span>
+<div style="display: flex; gap: 3px; flex-wrap: wrap"><sc-for list="{{ef.insCols}}" as="ic" hint-placeholder-count="5"><button onClick="{{ic.pick}}" style="height: 22px; padding: 0 6px; border: 1px solid #dcd9d0; border-radius: 4px; background: #ffffff; font-family: 'IBM Plex Mono', monospace; font-size: 10px">{{ic.text}}</button></sc-for></div>
+<span style="font-size: 10px; color: #5b5850">Variables, functions, operators</span>
+<div style="display: flex; gap: 3px; flex-wrap: wrap"><sc-for list="{{ef.insVars}}" as="iv" hint-placeholder-count="4"><button onClick="{{iv.pick}}" style="{{iv.style}}">{{iv.text}}</button></sc-for></div>
+<div style="{{ef.statusStyle}}">{{ef.status}}</div>
+</sc-if>
+<sc-if value="{{ef.hasHelp}}" hint-placeholder-val="{{false}}"><span style="font-size: 11px; color: #5b5850; line-height: 1.4">{{ef.help}}</span></sc-if>
+</div>
+</sc-for>
+<div style="display: flex; flex-direction: column; gap: 5px">
+<span style="font-size: 11px; font-weight: 600; color: #5b5850">Apply to</span>
+<div style="display: flex; gap: 3px"><sc-for list="{{edTargets}}" as="et" hint-placeholder-count="3"><button onClick="{{et.pick}}" style="{{et.style}}" title="{{et.tip}}">{{et.text}}</button></sc-for></div>
+</div>
+</div>
+<div style="margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: #ffffff; border: 1px solid #e3e1da">
+<div style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5b5850; margin-bottom: 4px">Learned on train</div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap">{{edLearned}}</div>
+<div style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5b5850; margin: 10px 0 4px">Effect on this view</div>
+<div style="font-size: 12px">{{edEffect}}</div>
+</div>
+<sc-if value="{{edHasError}}" hint-placeholder-val="{{false}}"><div style="margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: #f7e1e2; color: #7d1c22; font-size: 12px; line-height: 1.4">{{edError}}</div></sc-if>
+<div style="display: flex; gap: 6px; margin-top: 12px">
+<button onClick="{{edClose}}" style="flex-grow: 1; height: 36px; border: 1px solid #d6d3ca; border-radius: 6px; background: #ffffff">Discard</button>
+<button onClick="{{applyPending}}" disabled="{{edCantApply}}" style="{{edApplyStyle}}">Apply step</button>
+</div>
+</sc-if>
+
+<sc-if value="{{pNone}}" hint-placeholder-val="{{false}}">
+<div style="font-family: 'Instrument Serif', Georgia, serif; font-size: 22px; margin-bottom: 8px">Inspector</div>
+<div style="color: #5b5850; line-height: 1.6">Click a <strong>column header</strong> (right-click for its menu), a <strong>row number</strong> or a <strong>cell</strong>. Or start a step from <strong>+ Step</strong> in the pipeline.</div>
+</sc-if>
+<sc-if value="{{pHasHead}}" hint-placeholder-val="{{true}}">
+<div style="font-size: 11px; color: #5b5850; text-transform: uppercase; letter-spacing: 0.08em">{{pKicker}}</div>
+<div style="font-family: 'Instrument Serif', Georgia, serif; font-size: 26px; line-height: 1.1; margin: 2px 0 8px; word-break: break-all">{{pTitle}}</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px"><sc-for list="{{pChips}}" as="pc" hint-placeholder-count="2"><span style="{{pc.style}}">{{pc.text}}</span></sc-for></div>
+<sc-if value="{{pHasCellEdit}}" hint-placeholder-val="{{false}}">
+<div style="padding: 10px; background: #ffffff; border: 1px solid #e3e1da; border-radius: 6px; margin-bottom: 12px">
+<div style="font-size: 11px; color: #5b5850">Current value</div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 16px; margin: 2px 0 8px; white-space: pre">{{pCellValue}}</div>
+<div style="font-size: 11px; color: #5b5850; line-height: 1.4">An edit is saved as a rule over every matching cell, not as a patch: it replays on test and on any new file.</div>
+</div>
+</sc-if>
+<sc-if value="{{pHasStats}}" hint-placeholder-val="{{true}}">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; margin-bottom: 12px">
+<sc-for list="{{pStats}}" as="ps" hint-placeholder-count="6"><div style="display: flex; justify-content: space-between; gap: 6px; font-size: 12px; border-bottom: 1px dotted #d6d3ca; padding-bottom: 3px"><span style="color: #5b5850">{{ps.k}}</span><span style="{{ps.vStyle}}">{{ps.v}}</span></div></sc-for>
+</div>
+</sc-if>
+<sc-if value="{{pHasBars}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; align-items: flex-end; gap: 2px; height: 64px; border-bottom: 1px solid #d6d3ca"><sc-for list="{{pBars}}" as="pb" hint-placeholder-count="10"><span style="{{pb.style}}" title="{{pb.tip}}"></span></sc-for></div>
+<div style="display: flex; justify-content: space-between; font-size: 10px; color: #5b5850; font-family: 'IBM Plex Mono', monospace; margin: 3px 0 12px"><span>{{pLo}}</span><span>{{pHi}}</span></div>
+</sc-if>
+<sc-if value="{{pHasGroups}}" hint-placeholder-val="{{false}}">
+<div style="font-size: 12px; font-weight: 600; margin-bottom: 6px">Value groups <span style="font-weight: 400; color: #5b5850">· identical once stripped + lowercased</span></div>
+<div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px"><sc-for list="{{pGroupsVals}}" as="vg" hint-placeholder-count="3"><div style="display: flex; gap: 8px; align-items: baseline; font-size: 12px; padding: 5px 8px; background: #ffffff; border: 1px solid #e3e1da; border-radius: 5px"><span style="font-family: 'IBM Plex Mono', monospace; font-weight: 500; width: 80px; flex-shrink: 0">{{vg.to}}</span><span style="color: #5b5850; font-family: 'IBM Plex Mono', monospace; font-size: 11px; white-space: pre-wrap">← {{vg.from}}</span></div></sc-for></div>
+</sc-if>
+<sc-if value="{{pHasFields}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 3px; margin-bottom: 12px"><sc-for list="{{pFields}}" as="pf" hint-placeholder-count="6"><div style="display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 3px 0; border-bottom: 1px dotted #d6d3ca"><span style="color: #5b5850">{{pf.k}}</span><span style="{{pf.vStyle}}">{{pf.v}}</span></div></sc-for></div>
+</sc-if>
+<sc-if value="{{pOld}}" hint-placeholder-val="{{false}}"><div style="padding: 10px; border-radius: 6px; background: #fdf3d8; color: #6b4f05; font-size: 12px; line-height: 1.5; margin-bottom: 12px">You are viewing an older version. Go back to the latest one to add a step.</div></sc-if>
+<sc-for list="{{pGroups}}" as="g" hint-placeholder-count="2">
+<div style="margin-bottom: 12px">
+<div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #5b5850; margin-bottom: 6px">{{g.label}}</div>
+<div style="display: flex; gap: 4px; flex-wrap: wrap"><sc-for list="{{g.actions}}" as="ac" hint-placeholder-count="4"><button onClick="{{ac.pick}}" style="{{ac.style}}" title="{{ac.tip}}" disabled="{{ac.disabled}}" data-h="1">{{ac.title}}</button></sc-for></div>
+</div>
+</sc-for>
+</sc-if>
+</div>
+</aside>
+
+<nav aria-label="Analysis tools" style="width: 56px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 12px; background: #ffffff; border-left: 1px solid #e3e1da">
+<span style="font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #5b5850; margin-bottom: 2px">Tools</span>
+<button onClick="{{tools.compare.toggle}}" style="{{tools.compare.style}}" aria-label="Compare columns" title="Compare selected columns"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2.5" y="3" width="6" height="14" rx="1"></rect><rect x="11.5" y="3" width="6" height="14" rx="1"></rect><path d="M4.5 13v2M6.5 9v6M13.5 11v4M15.5 7v8"></path></svg></button>
+<button onClick="{{tools.corr.toggle}}" style="{{tools.corr.style}}" aria-label="Correlation matrix" title="Correlation matrix · correlations"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="2.5" width="6" height="6" rx="1"></rect><rect x="11.5" y="2.5" width="6" height="6" rx="1" fill="currentColor" fill-opacity="0.35"></rect><rect x="2.5" y="11.5" width="6" height="6" rx="1" fill="currentColor" fill-opacity="0.35"></rect><rect x="11.5" y="11.5" width="6" height="6" rx="1"></rect></svg></button>
+<button onClick="{{tools.dist.toggle}}" style="{{tools.dist.style}}" aria-label="Distribution" title="Distribution · column_distribution"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 17V11M7 17V6M11 17V3M15 17V9M2 17.5h16"></path></svg></button>
+<button onClick="{{tools.missing.toggle}}" style="{{tools.missing.style}}" aria-label="Missing values" title="Missing values · missing_values"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="3" width="15" height="14" rx="1.5"></rect><path d="M2.5 7.7h15M2.5 12.3h15M7.5 3v14M12.5 3v14"></path><rect x="7.5" y="7.7" width="5" height="4.6" fill="currentColor" fill-opacity="0.45" stroke="none"></rect></svg></button>
+<button onClick="{{tools.outliers.toggle}}" style="{{tools.outliers.style}}" aria-label="Outliers" title="Outliers · outliers"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 10h3M11 10h3"></path><rect x="6" y="6.5" width="5" height="7" rx="1"></rect><circle cx="17" cy="10" r="1.4" fill="currentColor"></circle></svg></button>
+<button onClick="{{tools.target.toggle}}" style="{{tools.target.style}}" aria-label="Target analysis" title="Target analysis · target_analysis"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="7"></circle><circle cx="10" cy="10" r="3.5"></circle><circle cx="10" cy="10" r="0.8" fill="currentColor"></circle></svg></button>
+<button onClick="{{tools.drift.toggle}}" style="{{tools.drift.style}}" aria-label="Train versus test" title="Train vs test · train_test_check"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h12l-3-3M17 13H5l3 3"></path></svg></button>
+</nav>
+</div>
+</sc-if>
+
+<sc-if value="{{ctxOpen}}" hint-placeholder-val="{{false}}">
+<button onClick="{{closeCtx}}" onContextMenu="{{closeCtx}}" aria-label="Close menu" style="position: absolute; left: 0; top: 0; width: 1440px; height: 900px; z-index: 40; border: none; padding: 0; background: transparent; cursor: default"></button>
+<div role="menu" aria-label="Column menu" style="{{ctxStyle}}">
+<div style="padding: 6px 10px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5b5850">{{ctxTitle}}</div>
+<sc-for list="{{ctxItems}}" as="ci" hint-placeholder-count="8">
+<sc-if value="{{ci.sep}}" hint-placeholder-val="{{false}}"><div style="height: 1px; margin: 4px 0; background: #eeede8"></div></sc-if>
+<sc-if value="{{ci.item}}" hint-placeholder-val="{{true}}"><button role="menuitem" onClick="{{ci.pick}}" style="display: flex; width: 100%; align-items: center; gap: 8px; height: 28px; padding: 0 10px; border: none; background: none; text-align: left; font-size: 12px" data-h="1"><span style="flex-grow: 1">{{ci.text}}</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #5b5850">{{ci.hint}}</span></button></sc-if>
+</sc-for>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"start":{"editor":"enum","options":["workspace-menu","workbench"],"default":"workspace-menu","section":"Demo"},"$preview":{"width":1440,"height":900}}'>
+/* ---------- sample files (fictional, deliberately dirty) ---------- */
+var TRAIN_FILE = {name:'churn_train.csv', cols:['customer_id','signup_date','age','city','plan','monthly_spend','sessions','support_calls'], rows:[
+ ['C001','2024-01-05',34,'Paris','pro',42.5,18,0],['C002','2024-01-09',51,'Lyon','basic',12.0,4,2],['C003','12/01/2024',-999,'paris','premium',88.0,25,0],
+ ['C004','2024-01-15',27,'Marseille','basic',9.9,3,3],['C005','2024-02-02',45,'PARIS ','pro',39.0,15,1],['C006','03/02/2024',null,'Lyon','basic',14.5,6,4],
+ ['C007','2024-02-11',38,'Lille','premium',95.0,30,0],['C008','2024-02-20',62,'lyon','pro',47.0,12,1],['C009','2024-03-01',29,'Paris','basic',11.0,2,5],
+ ['C010','2024-03-04',-999,'Marseille','pro',44.0,16,0],['C011','2024-03-09',41,'Paris','premium',980.0,41,0],['C012','15/03/2024',33,'Lille','basic',10.5,5,2],
+ ['C013','2024-03-22',57,'Lyon','pro',40.0,14,1],['C014','2024-04-02',24,'paris','basic',8.0,1,6],['C015','2024-04-06',48,'Marseille','premium',102.0,28,0],
+ ['C016','2024-04-10',36,'Lille ','pro',38.5,11,2],['C017','2024-04-18',44,'Paris','basic',13.0,7,3],['C018','2024-04-25',30,'Lyon','pro',45.5,17,0],
+ ['C004','2024-01-15',27,'Marseille','basic',9.9,3,3],['C009','2024-03-01',29,'Paris','basic',11.0,2,5]]};
+var LABEL_FILE = {name:'churn_labels.csv', cols:['churn'], rows:[[0],[1],[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[0],[1],[0],[0],[1],[0],[1],[1]]};
+var TEST_FILE = {name:'churn_test.csv', cols:['customer_id','signup_date','age','city','plan','monthly_spend','sessions','nb_support_calls','promo_code'], rows:[
+ ['T101','2024-05-02',39,'Paris','pro','41,0',14,1,'SPRING'],['T102','06/05/2024',-999,'nice','basic','9,5',3,4,null],['T103','2024-05-11',52,'Lyon ','premium','99,0',27,0,'SPRING'],
+ ['T104','2024-05-15',null,'Marseille','basic','12,5',5,3,null],['T105','2024-05-19',31,'Nice','pro','43,0',15,1,'WELCOME'],['T106','2024-05-23',46,'lille','basic','11,5',4,2,null]]};
+var REGION = {paris:'IDF',lyon:'ARA',marseille:'PACA',lille:'HDF',nice:'PACA'};
+var EXTRA_FILE = (function(){ var seen={}, rows=[]; TRAIN_FILE.rows.concat(TEST_FILE.rows).forEach(function(r){ if(seen[r[0]]) return; seen[r[0]]=1; rows.push([r[0],REGION[String(r[3]).trim().toLowerCase()]]); }); return {name:'customers_extra.csv', cols:['customer_id','region'], rows:rows}; })();
+var FILES = {train:TRAIN_FILE, labels:LABEL_FILE, test:TEST_FILE, extra:EXTRA_FILE};
+var FILE_IDS = ['train','labels','test','extra'];
+var ROLES = [['trainX','Train X'],['trainY','Train y'],['testX','Test X'],['merge','Merge'],['ignore','Ignore']];
+var ORDERS = {plan:['basic','pro','premium']};
+var STAGES = [
+ {id:'import',label:'Import & align',course:'Courses 1–3 · shapes, files, databases',color:'#6b5ea8'},
+ {id:'clean',label:'Clean',course:'Courses 5–7 · duplicates, missing values, outliers',color:'#b4460f'},
+ {id:'transform',label:'Encode & transform',course:'Courses 8–10 · encoding, features, scaling',color:'#1d5b86'},
+ {id:'select',label:'Select',course:'Course 11 · feature selection',color:'#2f6b3a'},
+ {id:'custom',label:'Custom formula',course:'Your own expressions',color:'#8a5a9e'}
+];
+var STAGE_IX = {import:0,clean:1,transform:2,select:3,custom:4};
+var STAGE_COLOR = {import:'#6b5ea8',clean:'#b4460f',transform:'#1d5b86',select:'#2f6b3a',custom:'#8a5a9e'};
+var STAGE_NAME = {import:'Import & align',clean:'Clean',transform:'Encode & transform',select:'Select',custom:'Custom formula'};
+var KIND_LABEL = {num:'number',bin:'0 / 1',cat:'text',date:'date',id:'identifier'};
+var KIND_BAR = {num:'#8fb0c9',bin:'#a9c3a0',cat:'#cdb48a',date:'#b3a6d6',id:'#c9c5ba'};
+var TOOLS = [
+ {id:'compare',label:'Compare columns',key:'column_distribution'},
+ {id:'corr',label:'Correlation matrix',key:'correlations'},
+ {id:'dist',label:'Distribution',key:'column_distribution'},
+ {id:'missing',label:'Missing values',key:'missing_values'},
+ {id:'outliers',label:'Outliers',key:'outliers'},
+ {id:'target',label:'Target analysis',key:'target_analysis'},
+ {id:'drift',label:'Train vs test',key:'train_test_check'}
+];
+var STATS = ['mean','median','std','min','max','q25','q75','count'];
+var FUNCS = {log:Math.log,log1p:Math.log1p,exp:Math.exp,sqrt:Math.sqrt,abs:Math.abs,round:function(x){return Math.round(x);},min:Math.min,max:Math.max};
+
+/* ---------- helpers ---------- */
+function isNull(v){return v===null||v===undefined;}
+function inferKind(name,values){ if(name==='customer_id'||/_id$/.test(name)) return 'id'; var nn=values.filter(function(v){return !isNull(v);}); if(nn.length&&nn.every(function(v){return typeof v==='number';})) return nn.every(function(v){return v===0||v===1;})?'bin':'num'; return 'cat'; }
+function mkFrame(file,prefix,decimal){ var rows=file.rows.map(function(a,i){ var r={_rid:prefix+i}; file.cols.forEach(function(n,j){ var v=a[j]; if(decimal===','&&typeof v==='string'&&/^-?\d+,\d+$/.test(v)) v=parseFloat(v.replace(',','.')); r[n]=v; }); return r; });
+ return {cols:file.cols.map(function(n){return {name:n,kind:inferKind(n,rows.map(function(r){return r[n];}))};}),rows:rows}; }
+function emptyF(){return {cols:[],rows:[]};}
+function hasCol(f,c){return f.cols.some(function(x){return x.name===c;});}
+function kindOf(f,c){var x=f.cols.find(function(x){return x.name===c;}); return x?x.kind:null;}
+function copyF(f){return {cols:f.cols.map(function(c){return Object.assign({},c);}),rows:f.rows.map(function(r){return Object.assign({},r);})};}
+function vals(f,c){return f.rows.map(function(r){return r[c];}).filter(function(v){return !isNull(v);});}
+function nums(f,c){return vals(f,c).filter(function(v){return typeof v==='number';});}
+function clean(a){return a.filter(function(v){return v!==-999;});}
+function sortN(a){return a.slice().sort(function(x,y){return x-y;});}
+function quant(a,q){var s=sortN(a); if(!s.length) return null; var p=(s.length-1)*q, lo=Math.floor(p), hi=Math.ceil(p); return s[lo]+(s[hi]-s[lo])*(p-lo);}
+function meanA(a){return a.length?a.reduce(function(x,y){return x+y;},0)/a.length:null;}
+function stdA(a){var m=meanA(a); return a.length?Math.sqrt(meanA(a.map(function(x){return (x-m)*(x-m);}))):null;}
+function r3(v){return v===null||v===undefined||isNaN(v)?null:Math.round(v*1000)/1000;}
+function fmt(v){if(isNull(v)) return '∅'; if(typeof v==='number') return String(Number.isInteger(v)?v:r3(v)); return String(v);}
+function same(a,b){return (isNull(a)&&isNull(b))||a===b;}
+function mapCol(f,c,fn,kind){ if(!hasCol(f,c)) return f; var g=copyF(f); g.rows.forEach(function(r){r[c]=fn(r[c]);}); if(kind) g.cols.find(function(x){return x.name===c;}).kind=kind; return g;}
+function toIso(v){ if(isNull(v)) return v; var s=String(v).trim(); if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; var m=s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if(m) return m[3]+'-'+m[2]+'-'+m[1]; throw new Error('parse_dates: "'+s+'" matches no date format'); }
+function rowKey(f,r){return JSON.stringify(f.cols.map(function(c){return r[c.name];}));}
+function dupCount(f){var seen={},n=0; f.rows.forEach(function(r){var k=rowKey(f,r); if(seen[k]) n++; else seen[k]=1;}); return n;}
+function dupOf(f,rid){var seen={},hit=null; f.rows.forEach(function(r,i){var k=rowKey(f,r); if(seen[k]!==undefined){ if(r._rid===rid) hit=seen[k]; } else seen[k]=i;}); return hit;}
+function sentCount(f,c){return f.rows.filter(function(r){return r[c]===-999;}).length;}
+function missCount(f,c){return f.rows.filter(function(r){return isNull(r[c]);}).length;}
+function variants(f,c){var nn=vals(f,c).map(String); var raw=new Set(nn).size, norm=new Set(nn.map(function(s){return s.trim().toLowerCase();})).size; return raw>norm?{raw:raw,norm:norm}:null;}
+function valueGroups(f,c){var g={}; vals(f,c).map(String).forEach(function(s){var k=s.trim().toLowerCase(); g[k]=g[k]||{}; g[k][s]=1;}); return Object.keys(g).filter(function(k){return Object.keys(g[k]).length>1||Object.keys(g[k])[0]!==k;}).map(function(k){return {to:k,from:Object.keys(g[k]).map(function(s){return '"'+s+'"';}).join('  ')};});}
+function looksDate(f,c){var v=vals(f,c); if(!v.length||typeof v[0]!=='string') return false; return v.filter(function(s){return /^\d{4}-\d{2}-\d{2}$|^\d{2}\/\d{2}\/\d{4}$/.test(s);}).length>=v.length*0.6;}
+function looksNumText(f,c){var v=vals(f,c); return v.length>0&&v.every(function(s){return typeof s==='string'&&/^-?\d+[.,]\d+$/.test(s);});}
+function outBounds(f,c){var a=clean(nums(f,c)); if(a.length<5) return null; var q1=quant(a,0.25),q3=quant(a,0.75),i=q3-q1; if(i===0) return null; return {lo:q1-1.5*i,hi:q3+1.5*i};}
+function isOut(b,v){return b&&typeof v==='number'&&v!==-999&&(v<b.lo||v>b.hi);}
+function outCount(f,c){var b=outBounds(f,c); return b?nums(f,c).filter(function(v){return isOut(b,v);}).length:0;}
+function skewed(f,c){var a=clean(nums(f,c)); if(a.length<5) return false; var md=quant(a,0.5); return Math.min.apply(null,a)>=0&&md>0&&meanA(a)>1.3*md;}
+function pearson(f,a,b){var xs=[],ys=[]; f.rows.forEach(function(r){var x=r[a],y=r[b]; if(typeof x==='number'&&typeof y==='number'&&x!==-999&&y!==-999){xs.push(x);ys.push(y);}}); if(xs.length<3) return null; var mx=meanA(xs),my=meanA(ys),sx=0,sy=0,sxy=0; xs.forEach(function(x,i){sx+=(x-mx)*(x-mx);sy+=(ys[i]-my)*(ys[i]-my);sxy+=(x-mx)*(ys[i]-my);}); return sx&&sy?sxy/Math.sqrt(sx*sy):null;}
+function hasStep(steps,op,col){return steps.some(function(s){return s.op===op&&(s.params.column===col||(s.params.columns||[]).indexOf(col)>=0);});}
+function isNumKind(k){return k==='num'||k==='bin';}
+function statOf(f,stat,c){ var a=clean(nums(f,c)); if(stat==='count') return vals(f,c).length; if(!a.length) return null;
+ return r3({mean:meanA(a),median:quant(a,0.5),std:stdA(a),min:Math.min.apply(null,a),max:Math.max.apply(null,a),q25:quant(a,0.25),q75:quant(a,0.75)}[stat]); }
+
+/* ---------- formula: tokenizer, parser, evaluator (no eval) ---------- */
+function parseFormula(src){
+ var toks=[], re=/\s*(?:(\d+(?:\.\d+)?)|(@?[A-Za-z_][A-Za-z0-9_]*)|([-+*\/^(),]))/y, i=0;
+ src=String(src||''); if(!src.trim()) throw new Error('Type an expression.');
+ while(i<src.length){ if(/^\s*$/.test(src.slice(i))) break; re.lastIndex=i; var m=re.exec(src); if(!m) throw new Error('Unexpected “'+src.slice(i).trim()[0]+'” at position '+(i+1)+'.'); toks.push(m[1]!==undefined?{t:'n',v:parseFloat(m[1])}:m[2]!==undefined?{t:'id',v:m[2]}:{t:'op',v:m[3]}); i=re.lastIndex; }
+ var p=0; function peek(){return toks[p];} function eat(v){ var t=toks[p]; if(!t||t.v!==v) throw new Error('Expected “'+v+'”.'); p++; }
+ function expr(){ var a=term(); while(peek()&&(peek().v==='+'||peek().v==='-')){ var o=toks[p++].v; a={t:'b',op:o,a:a,b:term()}; } return a; }
+ function term(){ var a=unary(); while(peek()&&(peek().v==='*'||peek().v==='/')){ var o=toks[p++].v; a={t:'b',op:o,a:a,b:unary()}; } return a; }
+ function unary(){ if(peek()&&peek().v==='-'){ p++; return {t:'u',a:unary()}; } return power(); }
+ function power(){ var a=primary(); if(peek()&&peek().v==='^'){ p++; return {t:'b',op:'^',a:a,b:unary()}; } return a; }
+ function primary(){ var t=toks[p++]; if(!t) throw new Error('Expression ends too early.');
+  if(t.t==='n') return {t:'n',v:t.v};
+  if(t.t==='op'&&t.v==='('){ var e=expr(); eat(')'); return e; }
+  if(t.t==='id'){ if(t.v[0]==='@') return {t:'v',name:t.v.slice(1)}; if(peek()&&peek().v==='('){ p++; var args=[]; if(peek()&&peek().v!==')'){ args.push(expr()); while(peek()&&peek().v===','){ p++; args.push(expr()); } } eat(')'); if(!FUNCS[t.v]) throw new Error('Unknown function '+t.v+'(). Available: '+Object.keys(FUNCS).join(', ')+'.'); return {t:'f',name:t.v,args:args}; } return {t:'c',name:t.v}; }
+  throw new Error('Unexpected “'+t.v+'”.'); }
+ var ast=expr(); if(p<toks.length) throw new Error('Unexpected “'+toks[p].v+'” after the end of the expression.'); return ast;
+}
+function astRefs(ast,out){ out=out||{cols:{},vars:{}}; if(ast.t==='c') out.cols[ast.name]=1; if(ast.t==='v') out.vars[ast.name]=1; if(ast.a) astRefs(ast.a,out); if(ast.b) astRefs(ast.b,out); (ast.args||[]).forEach(function(x){astRefs(x,out);}); return out; }
+function evalAst(ast,row,vars){
+ if(ast.t==='n') return ast.v; if(ast.t==='c'){ var v=row[ast.name]; return typeof v==='number'&&v!==-999?v:null; } if(ast.t==='v') return isNull(vars[ast.name])?null:vars[ast.name];
+ if(ast.t==='u'){ var u=evalAst(ast.a,row,vars); return u===null?null:-u; }
+ if(ast.t==='f'){ var args=ast.args.map(function(x){return evalAst(x,row,vars);}); if(args.some(function(x){return x===null;})) return null; var r=FUNCS[ast.name].apply(null,args); return isFinite(r)?r:null; }
+ var a=evalAst(ast.a,row,vars), b=evalAst(ast.b,row,vars); if(a===null||b===null) return null;
+ if(ast.op==='+') return a+b; if(ast.op==='-') return a-b; if(ast.op==='*') return a*b; if(ast.op==='/') return Math.abs(b)<1e-12?null:a/b; var pw=Math.pow(a,b); return isFinite(pw)?pw:null;
+}
+
+/* ---------- transform ops: fit on train, apply to train / test (mirrors dtk_engine) ---------- */
+var OPS = {
+ parse_dates:{title:'Parse dates',stage:'import',what:'Parses text into dates. A value matching no known format raises instead of silently becoming empty.',course:'Course 2 · files and formats',apply:function(f,p){return mapCol(f,p.column,toIso,'date');},sub:function(p){return p.column+' → ISO date';},eng:function(p){return {columns:[p.column]};}},
+ rename:{title:'Rename',stage:'import',what:'Renames one column. Typical use: align a test column name on train.',course:'Course 2 · files and formats',apply:function(f,p){ if(!hasCol(f,p.column)) return f; if(hasCol(f,p.to)) throw new Error('rename: "'+p.to+'" already exists'); var g=copyF(f); g.cols.forEach(function(c){ if(c.name===p.column) c.name=p.to; }); g.rows.forEach(function(r){ r[p.to]=r[p.column]; delete r[p.column]; }); return g;},sub:function(p){return p.column+' → '+p.to;},eng:function(p){var m={}; m[p.column]=p.to; return {mapping:m};}},
+ cast:{title:'Cast type',stage:'import',what:'Converts a column to another type. A value that does not convert raises: nothing is silently lost.',course:'Course 2 · dtype',apply:function(f,p){ return mapCol(f,p.column,function(v){ if(isNull(v)) return v; if(p.dtype==='str') return String(v); var n=typeof v==='number'?v:Number(String(v).trim()); if(String(v).trim()===''||isNaN(n)) throw new Error('cast: "'+v+'" in '+p.column+' is not a '+p.dtype); if(p.dtype==='int'&&!Number.isInteger(n)) throw new Error('cast: '+v+' in '+p.column+' is not an integer'); return n; },p.dtype==='str'?'cat':'num'); },sub:function(p){return p.column+' → '+p.dtype;},eng:function(p){var d={}; d[p.column]=p.dtype; return {dtypes:d};}},
+ drop_duplicates:{title:'Drop duplicates',stage:'clean',what:'Removes rows identical on every column. Train only by default: dropping test rows would change what you are evaluated on.',course:'Course 5 · duplicates',apply:function(f,p){ var g=copyF(f), seen={}; if(p.keep==='last') g.rows.reverse(); g.rows=g.rows.filter(function(r){var k=rowKey(g,r); if(seen[k]) return false; seen[k]=1; return true;}); if(p.keep==='last') g.rows.reverse(); return g;},sub:function(p){return 'exact rows · keep '+p.keep;},eng:function(p){return {keep:p.keep};}},
+ replace_sentinels:{title:'Replace sentinels',stage:'clean',what:'Turns placeholder values such as -999 or "N/A" into real missing values, so statistics and imputers see them as missing.',course:'Course 6 · missing values',apply:function(f,p){return mapCol(f,p.column,function(v){return p.values.some(function(s){return s===v||String(s)===String(v);})?null:v;});},sub:function(p){return p.column+' · '+p.values.map(fmt).join(', ')+' → NaN';},eng:function(p){var o={}; o[p.column]=p.values; return {sentinels:o};}},
+ standardize_text:{title:'Standardize text',stage:'clean',what:'Strips spaces and/or lowercases, so "Paris ", "PARIS" and "paris" become one category.',course:'Course 5 · inconsistencies',apply:function(f,p){return mapCol(f,p.column,function(v){ if(isNull(v)) return v; var s=String(v); if(p.strip) s=s.trim(); if(p.lower) s=s.toLowerCase(); return s; });},sub:function(p){return p.column+' · '+([p.strip?'strip':'',p.lower?'lower':''].filter(Boolean).join(' + ')||'no change');},eng:function(p){return {columns:[p.column],strip:p.strip,lower:p.lower};}},
+ map_value:{title:'Map a value',stage:'clean',what:'Replaces one exact value by another everywhere in the column. Saved as a rule (standardize_text mapping).',course:'Course 5 · inconsistencies',engOp:'standardize_text',apply:function(f,p){return mapCol(f,p.column,function(v){return !isNull(v)&&String(v)===p.from?p.to:v;});},sub:function(p){return p.column+' · "'+p.from+'" → "'+p.to+'"';},eng:function(p){var m={}; m[p.from]=p.to; return {columns:[p.column],strip:false,mapping:m};}},
+ impute:{title:'Impute',stage:'clean',what:'Fills missing values with a statistic learned on train. The same value fills test: test never contributes to it.',course:'Course 6 · missing values',fit:function(f,p){ var v; if(p.strategy==='median') v=r3(quant(clean(nums(f,p.column)),0.5)); else if(p.strategy==='mean') v=r3(meanA(clean(nums(f,p.column)))); else if(p.strategy==='constant'){ v=isNumKind(kindOf(f,p.column))&&p.fill_value!==''&&!isNaN(Number(p.fill_value))?Number(p.fill_value):p.fill_value; } else { var m={}; vals(f,p.column).forEach(function(x){m[x]=(m[x]||0)+1;}); v=Object.keys(m).sort(function(a,b){return m[b]-m[a];})[0]; if(kindOf(f,p.column)!=='cat') v=Number(v); } return {value:v};},apply:function(f,p,st){return mapCol(f,p.column,function(v){return isNull(v)?st.value:v;});},sub:function(p){return p.column+' · '+p.strategy;},eng:function(p){var o={columns:[p.column],strategy:p.strategy}; if(p.strategy==='constant') o.fill_value=p.fill_value; return o;},learned:function(st){return 'fill value = '+fmt(st.value);}},
+ clip:{title:'Clip',stage:'clean',what:'Caps values at percentiles learned on train. Rows are kept; extremes lose their leverage.',course:'Course 7 · outliers',fit:function(f,p){var a=clean(nums(f,p.column)); return {lo:r3(quant(a,p.lower/100)),hi:r3(quant(a,p.upper/100))};},apply:function(f,p,st){return mapCol(f,p.column,function(v){return typeof v==='number'?Math.min(st.hi,Math.max(st.lo,v)):v;});},sub:function(p){return p.column+' · p'+p.lower+'–p'+p.upper;},eng:function(p){return {columns:[p.column],lower:p.lower,upper:p.upper};},learned:function(st){return 'lower bound = '+fmt(st.lo)+'\nupper bound = '+fmt(st.hi);}},
+ onehot:{title:'One-hot',stage:'transform',what:'One 0/1 column per train category, in place of the column. A test category never seen in train becomes all zeros.',course:'Course 8 · categorical encoding',fit:function(f,p){return {cats:Array.from(new Set(vals(f,p.column).map(String))).sort()};},apply:function(f,p,st){if(!hasCol(f,p.column)) return f; var g=copyF(f), i=g.cols.findIndex(function(c){return c.name===p.column;}); var nc=st.cats.map(function(k){return {name:p.column+'_'+k,kind:'bin'};}); g.cols.splice.apply(g.cols,[i,1].concat(nc)); g.rows.forEach(function(r){var v=r[p.column]; st.cats.forEach(function(k){r[p.column+'_'+k]=(!isNull(v)&&String(v)===k)?1:0;}); delete r[p.column];}); return g;},sub:function(p){return p.column;},eng:function(p){return {columns:[p.column],handle_unknown:'ignore'};},learned:function(st){return 'categories = '+st.cats.join(', ');}},
+ ordinal:{title:'Ordinal',stage:'transform',what:'Replaces each category by its rank in the order you set (unknown → -1). Only when the order means something.',course:'Course 8 · categorical encoding',apply:function(f,p){return mapCol(f,p.column,function(v){return isNull(v)?null:p.order.indexOf(String(v));},'num');},sub:function(p){return p.column+' · '+p.order.join(' < ');},eng:function(p){var o={}; o[p.column]=p.order; return {categories:o};}},
+ log1p:{title:'log1p',stage:'transform',what:'Replaces x by log(1 + x) to compress a long right tail. Refuses negative values.',course:'Course 10 · scaling',apply:function(f,p){return mapCol(f,p.column,function(v){ if(typeof v!=='number') return v; if(v<0) throw new Error('log1p: '+p.column+' has a negative value ('+v+')'); return r3(Math.log1p(v)); });},sub:function(p){return p.column;},eng:function(p){return {columns:[p.column]};}},
+ scale:{title:'Scale',stage:'transform',what:'Standard: (x − mean) / std. Robust: (x − median) / IQR. Min-max: to [0, 1]. Statistics come from train.',course:'Course 10 · scaling',fit:function(f,p){var st={}; p.columns.forEach(function(c){var a=clean(nums(f,c)); if(p.method==='robust'){var q1=quant(a,0.25),q3=quant(a,0.75); st[c]={c:r3(quant(a,0.5)),s:r3(q3-q1)||1};} else if(p.method==='minmax'){var mn=Math.min.apply(null,a),mx=Math.max.apply(null,a); st[c]={c:r3(mn),s:r3(mx-mn)||1};} else {st[c]={c:r3(meanA(a)),s:r3(stdA(a))||1};}}); return st;},apply:function(f,p,st){var g=f; p.columns.forEach(function(c){g=mapCol(g,c,function(v){return typeof v==='number'?r3((v-st[c].c)/st[c].s):v;});}); return g;},sub:function(p){return p.columns.length+' col · '+p.method;},eng:function(p){return {columns:p.columns,method:p.method};},learned:function(st){return Object.keys(st).map(function(c){return c+': center '+fmt(st[c].c)+', scale '+fmt(st[c].s);}).join('\n');}},
+ datetime_parts:{title:'Date parts',stage:'transform',what:'Adds month and day-of-week columns next to a date column.',course:'Course 9 · feature engineering',apply:function(f,p){if(!hasCol(f,p.column)) return f; var g=copyF(f), i=g.cols.findIndex(function(c){return c.name===p.column;}); g.cols.splice(i+1,0,{name:p.column+'_month',kind:'num'},{name:p.column+'_dayofweek',kind:'num'}); g.rows.forEach(function(r){var v=r[p.column]; if(v&&/^\d{4}-\d{2}-\d{2}$/.test(v)){var d=new Date(v+'T00:00:00Z'); r[p.column+'_month']=d.getUTCMonth()+1; r[p.column+'_dayofweek']=(d.getUTCDay()+6)%7;} else {r[p.column+'_month']=null; r[p.column+'_dayofweek']=null;}}); return g;},sub:function(p){return p.column+' · month, dayofweek';},eng:function(p){return {column:p.column,parts:['month','dayofweek']};}},
+ derive:{title:'Derive',stage:'transform',what:'New column from two columns: ratio (denominator guarded), difference or product.',course:'Course 9 · feature engineering',apply:function(f,p){var g=copyF(f), name=p.a+(p.kind==='ratio'?'_per_':p.kind==='difference'?'_minus_':'_times_')+p.b; g.cols.push({name:name,kind:'num'}); g.rows.forEach(function(r){var a=r[p.a],b=r[p.b]; var ok=typeof a==='number'&&typeof b==='number'; r[name]=!ok?null:p.kind==='ratio'?(Math.abs(b)>=1?r3(a/b):null):p.kind==='difference'?r3(a-b):r3(a*b);}); return g;},sub:function(p){return p.a+' '+(p.kind==='ratio'?'/':p.kind==='difference'?'−':'×')+' '+p.b;},eng:function(p){return {a:p.a,b:p.b,op:p.kind};}},
+ drop_columns:{title:'Drop columns',stage:'select',what:'Removes columns from the frames the step applies to.',course:'Course 11 · feature selection',apply:function(f,p){var g=copyF(f); g.cols=g.cols.filter(function(c){return p.columns.indexOf(c.name)<0;}); g.rows.forEach(function(r){p.columns.forEach(function(c){delete r[c];});}); return g;},sub:function(p){return p.columns.join(', ');},eng:function(p){return {columns:p.columns,missing_ok:true};}},
+ formula:{title:'Formula',stage:'custom',what:'Your own column from an expression over columns, numbers, functions and @variables. Variables are computed on train when the step is fitted, then frozen for test.',course:'New engine op (proposal): safe expression parser, no eval',fit:function(f,p){ var o={}; p.vars.forEach(function(v){ o[v.name]=statOf(f,v.stat,v.column); }); return o; },apply:function(f,p,st){ var ast=parseFormula(p.expr); var g=copyF(f); if(!hasCol(g,p.name)) g.cols.push({name:p.name,kind:'num'}); else g.cols.find(function(c){return c.name===p.name;}).kind='num'; g.rows.forEach(function(r){ r[p.name]=r3(evalAst(ast,r,st)); }); return g; },sub:function(p){return p.name+' = '+p.expr;},eng:function(p){return {name:p.name,expr:p.expr,variables:p.vars};},learned:function(st){ var k=Object.keys(st); return k.length?k.map(function(n){return '@'+n+' = '+fmt(st[n]);}).join('\n'):'No variable used: nothing learned.'; }}
+};
+var OPDEF = {
+ parse_dates:{fields:[['column','Column','col','cat']],def:{column:null},target:'both'},
+ rename:{fields:[['column','Column','col','any'],['to','New name','text']],def:{column:null,to:''},target:'test'},
+ cast:{fields:[['column','Column','col','any'],['dtype','Type','enum',['float','int','str']]],def:{column:null,dtype:'float'},target:'both'},
+ drop_duplicates:{fields:[['keep','Keep','enum',['first','last']]],def:{keep:'first'},target:'train'},
+ replace_sentinels:{fields:[['column','Column','col','any'],['values','Sentinel values (comma separated)','list']],def:{column:null,values:[-999]},target:'both'},
+ standardize_text:{fields:[['column','Column','col','cat'],['strip','Strip spaces','bool'],['lower','Lowercase','bool']],def:{column:null,strip:true,lower:true},target:'both'},
+ map_value:{fields:[['column','Column','col','cat'],['from','Value','text'],['to','Becomes','text']],def:{column:null,from:'',to:''},target:'both'},
+ impute:{fields:[['column','Column','col','any'],['strategy','Strategy','enum',['median','mean','mode','constant']],['fill_value','Constant value','text','constant']],def:{column:null,strategy:'median',fill_value:''},target:'both'},
+ clip:{fields:[['column','Column','col','num'],['lower','Lower percentile','number'],['upper','Upper percentile','number']],def:{column:null,lower:5,upper:95},target:'both'},
+ onehot:{fields:[['column','Column','col','cat']],def:{column:null},target:'both'},
+ ordinal:{fields:[['column','Column','col','cat'],['order','Order, low → high','order']],def:{column:null,order:[]},target:'both'},
+ log1p:{fields:[['column','Column','col','num']],def:{column:null},target:'both'},
+ scale:{fields:[['columns','Columns','cols','num'],['method','Method','enum',['standard','robust','minmax']]],def:{columns:[],method:'standard'},target:'both'},
+ datetime_parts:{fields:[['column','Column','col','date']],def:{column:null},target:'both'},
+ derive:{fields:[['a','A','col','num'],['b','B','col','num'],['kind','Operation','enum',['ratio','difference','product']]],def:{a:null,b:null,kind:'ratio'},target:'both'},
+ drop_columns:{fields:[['columns','Columns','cols','any']],def:{columns:[]},target:'both'},
+ formula:{fields:[['name','New column','text'],['expr','Expression','formula']],def:{name:'',expr:''},target:'both'}
+};
+function runStep(step,train,test){
+ var op=OPS[step.op], p=step.params, fitOn=step.target==='test'?test:train, st=op.fit?op.fit(fitOn,p):{};
+ return {train:step.target==='test'?train:op.apply(train,p,st), test:step.target==='train'?test:op.apply(test,p,st), fitted:!!op.fit, state:st};
+}
+function stepStage(s){return s.align?'import':OPS[s.op].stage;}
+function stepJson(s){return JSON.stringify({op:OPS[s.op].engOp||s.op,target:s.target,params:OPS[s.op].eng(s.params)});}
+
+/* ---------- sources: roles, label join, merge ---------- */
+function buildSources(s){
+ var errors=[], info={}, byRole=function(r){return FILE_IDS.filter(function(id){return s.roles[id]===r;});};
+ var xs=byRole('trainX'), ts=byRole('testX'), ys=byRole('trainY'), ms=byRole('merge');
+ if(xs.length!==1) errors.push(xs.length?'Only one file can be Train X.':'Pick a Train X file.');
+ if(ts.length>1) errors.push('Only one file can be Test X.');
+ if(errors.length) return {train:emptyF(),test:emptyF(),errors:errors,info:info,target:null,origin:{}};
+ var train=mkFrame(FILES[xs[0]],'r','.'), test=ts.length?mkFrame(FILES[ts[0]],'t',s.testDecimal):emptyF(), origin={}, target=null;
+ train.cols.forEach(function(c){origin[c.name]='x';});
+ if(s.labelMode==='yfile'){
+  if(!ys.length) errors.push('Give a file the role “Train y”, or pick a column of train X as the target.');
+  else { var y=FILES[ys[0]]; if(y.rows.length!==train.rows.length) errors.push('Label join by order refuses: '+y.name+' has '+y.rows.length+' rows, train X has '+train.rows.length+'.');
+   else { y.cols.forEach(function(c,j){ train.cols.push({name:c,kind:inferKind(c,y.rows.map(function(r){return r[j];}))}); origin[c]='y'; train.rows.forEach(function(r,i){ r[c]=y.rows[i][j]; }); }); target=y.cols[0]; info.y=y.rows.length+' labels joined row by row · 0 rows lost'; } }
+ } else { target=hasCol(train,s.targetCol)?s.targetCol:null; info.y=target?'target = column “'+target+'” of train X':'Pick the target column.'; }
+ if(ms.length){ var m=FILES[ms[0]], key=s.mergeKey; if(m.cols.indexOf(key)<0||!hasCol(train,key)) errors.push('Merge key “'+key+'” must exist in train X and '+m.name+'.');
+  else { var ki=m.cols.indexOf(key), map={}, dup=false; m.rows.forEach(function(r){ if(map[r[ki]]) dup=true; map[r[ki]]=r; }); if(dup) errors.push(m.name+' has several rows per key: the merge would duplicate rows.');
+   var join=function(f){ var hit=0; var extra=m.cols.filter(function(c){return c!==key;}); extra.forEach(function(c){ f.cols.push({name:c,kind:inferKind(c,m.rows.map(function(r){return r[m.cols.indexOf(c)];}))}); origin[c]='m'; }); f.rows.forEach(function(r){ var mr=map[r[key]]; if(mr) hit++; extra.forEach(function(c){ r[c]=mr?mr[m.cols.indexOf(c)]:null; }); }); return hit; };
+   var ht=join(train); info.merge='train: '+ht+' / '+train.rows.length+' rows matched'; if(s.mergeInTest&&hasCol(test,key)){ var he=join(test); info.merge+=' · test: '+he+' / '+test.rows.length; } info.merge+=' · 0 rows lost (left join)'; } }
+ return {train:train,test:test,errors:errors,info:info,target:target,origin:origin};
+}
+
+/* ---------- analysis-key style checks (shown only in the Suggestions tab) ---------- */
+function checks(f,target,steps){
+ var out=[];
+ f.cols.forEach(function(c){ if(c.kind==='cat'&&looksDate(f,c.name)) out.push({stage:'import',sev:3,col:c.name,title:c.name+': dates stored as text',detail:'Two formats mixed (YYYY-MM-DD and DD/MM/YYYY).',step:{op:'parse_dates',params:{column:c.name},target:'both'}}); });
+ var d=dupCount(f); if(d>0) out.push({stage:'clean',sev:3,col:null,title:d+' exact duplicate row'+(d>1?'s':''),detail:'Identical on every column.',step:{op:'drop_duplicates',params:{keep:'first'},target:'train'}});
+ f.cols.forEach(function(c){ if(c.kind!=='num') return; var n=sentCount(f,c.name); if(n>0) out.push({stage:'clean',sev:3,col:c.name,title:c.name+': -999 appears '+n+'×',detail:'Looks like a missing-value code.',step:{op:'replace_sentinels',params:{column:c.name,values:[-999]},target:'both'}}); });
+ f.cols.forEach(function(c){ if(c.kind!=='cat'||looksDate(f,c.name)) return; var v=variants(f,c.name); if(v) out.push({stage:'clean',sev:2,col:c.name,title:c.name+': '+v.raw+' spellings for '+v.norm+' values',detail:'Casing and trailing spaces.',step:{op:'standardize_text',params:{column:c.name,strip:true,lower:true},target:'both'}}); });
+ f.cols.forEach(function(c){ if(c.name===target||c.kind==='id') return; var m=missCount(f,c.name); if(!m||sentCount(f,c.name)) return; out.push({stage:'clean',sev:2,col:c.name,title:c.name+': '+m+' missing',detail:'Imputation candidate.',step:{op:'impute',params:{column:c.name,strategy:isNumKind(c.kind)?'median':'mode',fill_value:''},target:'both'}}); });
+ f.cols.forEach(function(c){ if(c.kind!=='num'||c.name===target||sentCount(f,c.name)||hasStep(steps,'clip',c.name)) return; var n=outCount(f,c.name); if(n>0) out.push({stage:'clean',sev:1,col:c.name,title:c.name+': '+n+' IQR outlier'+(n>1?'s':''),detail:'Real or error? Look before clipping.',step:{op:'clip',params:{column:c.name,lower:5,upper:95},target:'both'}}); });
+ f.cols.forEach(function(c){ if(c.kind!=='num'||c.name===target||sentCount(f,c.name)||hasStep(steps,'log1p',c.name)||hasStep(steps,'scale',c.name)) return; if(skewed(f,c.name)) out.push({stage:'transform',sev:1,col:c.name,title:c.name+' is right-skewed',detail:'Mean well above the median.',step:{op:'log1p',params:{column:c.name},target:'both'}}); });
+ f.cols.forEach(function(c){ if(c.kind!=='cat'||c.name===target||looksDate(f,c.name)||variants(f,c.name)) return; var k=new Set(vals(f,c.name).map(String)).size; if(k>12) return; out.push({stage:'transform',sev:2,col:c.name,title:c.name+': '+k+' categories to encode',detail:ORDERS[c.name]?'Looks ordinal: '+ORDERS[c.name].join(' < ')+'.':'Nominal: one-hot is the usual choice.',step:ORDERS[c.name]?{op:'ordinal',params:{column:c.name,order:ORDERS[c.name]},target:'both'}:{op:'onehot',params:{column:c.name},target:'both'}}); });
+ f.cols.forEach(function(c){ if(c.kind==='id') out.push({stage:'select',sev:2,col:c.name,title:c.name+' is an identifier',detail:'Unique per row: no signal.',step:{op:'drop_columns',params:{columns:[c.name]},target:'both'}}); });
+ return out.sort(function(a,b){return STAGE_IX[a.stage]-STAGE_IX[b.stage]||b.sev-a.sev;});
+}
+
+/* ---------- display merge (preview diff) ---------- */
+function buildDisplay(base,next){
+ if(!next) return {cols:base.cols.map(function(c){return {name:c.name,kind:c.kind,status:'',src:base};}),rows:base.rows.map(function(r){return {rid:r._rid,vals:r,prev:r,status:'',changed:{}};}),diff:null};
+ var bN=base.cols.map(function(c){return c.name;}), nN=next.cols.map(function(c){return c.name;});
+ var cols=next.cols.map(function(c){return {name:c.name,kind:c.kind,status:bN.indexOf(c.name)<0?'added':'',src:next};});
+ base.cols.forEach(function(c,i){ if(nN.indexOf(c.name)>=0) return; var at=0; for(var j=i-1;j>=0;j--){var k=cols.findIndex(function(x){return x.name===bN[j];}); if(k>=0){at=k+1;break;}} cols.splice(at,0,{name:c.name,kind:c.kind,status:'removed',src:base}); });
+ var nm={}; next.rows.forEach(function(r){nm[r._rid]=r;}); var changed=0;
+ var rows=base.rows.map(function(r){ var n=nm[r._rid]; var row=n?{rid:r._rid,vals:Object.assign({},r,n),prev:r,status:'',changed:{}}:{rid:r._rid,vals:r,prev:r,status:'removed',changed:{}};
+  if(n) cols.forEach(function(c){ if(c.status) return; if(!same(r[c.name],n[c.name])){row.changed[c.name]=1; changed++;} }); return row; });
+ return {cols:cols,rows:rows,diff:{added:cols.filter(function(c){return c.status==='added';}).length,removed:cols.filter(function(c){return c.status==='removed';}).length,rowsRemoved:rows.filter(function(r){return r.status==='removed';}).length,changed:changed}};
+}
+function diffText(d){ var p=[]; if(d.added) p.push('+'+d.added+' col'+(d.added>1?'s':'')); if(d.removed) p.push('−'+d.removed+' col'+(d.removed>1?'s':'')); if(d.rowsRemoved) p.push('−'+d.rowsRemoved+' row'+(d.rowsRemoved>1?'s':'')); if(d.changed) p.push(d.changed+' cell'+(d.changed>1?'s':'')+' changed'); return p.length?p.join(' · '):'no change on this view'; }
+function profile(f,c,kind){
+ var all=f.rows.map(function(r){return r[c];}), miss=all.filter(isNull).length, nn=all.filter(function(v){return !isNull(v);}), bars=[], lo=null, hi=null;
+ if(kind==='num'){ var a=nn.filter(function(v){return typeof v==='number';}); if(a.length){ lo=Math.min.apply(null,a); hi=Math.max.apply(null,a); var B=12, cnt=[]; for(var i=0;i<B;i++) cnt.push(0); a.forEach(function(v){var k=hi===lo?0:Math.floor((v-lo)/(hi-lo)*B); if(k>=B) k=B-1; cnt[k]++;}); bars=cnt.map(function(n,i){var w=(hi-lo)/B; return {n:n,label:'',tip:fmt(r3(lo+i*w))+' – '+fmt(r3(lo+(i+1)*w))+': '+n};}); } }
+ else { var m={}; nn.forEach(function(v){var k=String(v); m[k]=(m[k]||0)+1;}); bars=Object.keys(m).sort(function(x,y){return m[y]-m[x];}).slice(0,kind==='date'||kind==='id'?12:8).map(function(k){return {n:m[k],label:k,tip:'"'+k+'": '+m[k]};}); }
+ return {miss:miss,n:all.length,bars:bars,lo:lo,hi:hi,distinct:new Set(nn.map(String)).size};
+}
+function barsRender(bars,maxH,color,minW){ var mx=Math.max.apply(null,bars.map(function(b){return b.n;}).concat([1])); return bars.map(function(b){return {style:'flex: 1 1 0; min-width: '+(minW||2)+'px; height: '+Math.max(b.n?2:0,Math.round(b.n/mx*maxH))+'px; background: '+color+'; border-radius: 1px 1px 0 0',tip:b.tip,label:b.label};}); }
+function colAlerts(f,c,kind){
+ var A=[], m=missCount(f,c), s=sentCount(f,c);
+ if(kind==='id') A.push(['identifier','#5b5850','#eeede8']);
+ if(s) A.push(['-999 ×'+s,'#8f3809','#fbe9dc']);
+ if(m) A.push([m+' missing','#8f3809','#fbe9dc']);
+ if(kind==='cat'&&looksDate(f,c)) A.push(['text dates','#4f4390','#ece8f7']);
+ else if(kind==='cat'&&looksNumText(f,c)) A.push(['numbers as text','#4f4390','#ece8f7']);
+ else if(kind==='cat'){ var v=variants(f,c); if(v) A.push([v.raw+' spellings','#8f3809','#fbe9dc']); }
+ if(kind==='num'){ var o=outCount(f,c); if(o) A.push([o+' outlier'+(o>1?'s':''),'#4e3a8a','#efe9f8']); }
+ return A.slice(0,2).map(function(a){return {text:a[0],style:'font-size: 10px; padding: 1px 5px; border-radius: 3px; white-space: nowrap; color: '+a[1]+'; background: '+a[2]};});
+}
+function chip(on,extra){return 'height: 26px; padding: 0 9px; border-radius: 13px; font-size: 12px; border: 1px solid '+(on?'#1d5b86':'#d6d3ca')+'; background: '+(on?'#1d5b86':'#ffffff')+'; color: '+(on?'#ffffff':'#1c1b18')+(extra||'');}
+function smallChip(on){return 'height: 24px; padding: 0 8px; border-radius: 4px; font-size: 11px; font-family: \'IBM Plex Mono\', monospace; border: 1px solid '+(on?'#1d5b86':'#dcd9d0')+'; background: '+(on?'#e3eef6':'#ffffff')+'; color: '+(on?'#123d5b':'#1c1b18');}
+function segBtn(on){return 'height: 24px; padding: 0 9px; border: none; font-size: 11px; background: '+(on?'#1c1b18':'#ffffff')+'; color: '+(on?'#ffffff':'#1c1b18');}
+
+class Component extends DCLogic {
+ constructor(props){
+  super(props);
+  var bench=props&&props.start==='workbench';
+  this.state={screen:bench?'bench':'ws',roles:{train:'trainX',labels:'trainY',test:'testX',extra:'merge'},labelMode:'yfile',targetCol:null,yJoin:'order',mergeKey:'customer_id',mergeInTest:true,testDecimal:bench?',':'.',
+   steps:bench?[{op:'rename',params:{column:'nb_support_calls',to:'support_calls'},target:'test',align:true},{op:'drop_columns',params:{columns:['promo_code']},target:'test',align:true},{op:'parse_dates',params:{column:'signup_date'},target:'both'},{op:'drop_duplicates',params:{keep:'first'},target:'train'}]:[],
+   vars:bench?[{name:'spend_mean',stat:'mean',column:'monthly_spend'},{name:'spend_std',stat:'std',column:'monthly_spend'}]:[],
+   editor:null,view:null,role:'train',selCols:bench?['monthly_spend','sessions']:[],selRow:null,selCell:null,multi:false,
+   tools:bench?['compare','corr']:[],wide:{},dockPos:'bottom',dockSize:'M',maxWin:null,ctx:null,leftTab:'vars',sugStage:'all',showExport:false,exported:false,
+   nv:{name:'',stat:'mean',column:null}};
+  this._vk=null; this._vv=null;
+ }
+ versions(){
+  var s=this.state, k=JSON.stringify([s.roles,s.labelMode,s.targetCol,s.mergeKey,s.mergeInTest,s.testDecimal,s.steps]); if(this._vk===k) return this._vv;
+  var src=buildSources(s), tr=src.train, te=src.test, V=[{train:tr,test:te,step:null,fitted:false}], err=null;
+  for(var i=0;i<s.steps.length;i++){ var st=s.steps[i]; try{ var r=runStep(st,tr,te); tr=r.train; te=r.test; V.push({train:tr,test:te,step:st,fitted:r.fitted}); } catch(e){ err={index:i,msg:e.message}; break; } }
+  this._vk=k; this._vv={V:V,src:src,err:err}; return this._vv;
+ }
+ addAlign(step){ var s=this.state, n=s.steps.filter(function(x){return x.align;}).length, steps=s.steps.slice(); step.align=true; steps.splice(n,0,step); this.setState({steps:steps}); }
+ openEditor(op,params,target){ if(!op){ this.setState({editor:{op:null},ctx:null,view:null}); return; } var d=OPDEF[op]; this.setState({editor:{op:op,params:Object.assign({},JSON.parse(JSON.stringify(d.def)),params||{}),target:target||d.target},ctx:null,view:null,selCell:null}); }
+ setEd(key,val){ var e=this.state.editor; if(!e) return; var p=Object.assign({},e.params); p[key]=val; if(e.op==='ordinal'&&key==='column'){ var V=this.versions().V, f=V[V.length-1].train; p.order=ORDERS[val]||(hasCol(f,val)?Array.from(new Set(vals(f,val).map(String))):[]); } this.setState({editor:Object.assign({},e,{params:p})}); }
+ edStep(){
+  var e=this.state.editor, s=this.state; if(!e||!e.op) return {step:null};
+  var p=e.params, miss=[];
+  OPDEF[e.op].fields.forEach(function(fd){ var v=p[fd[0]], t=fd[2];
+   if(t==='col'&&!v) miss.push(fd[1].toLowerCase());
+   if(t==='cols'&&!(v&&v.length)) miss.push('at least one column');
+   if(t==='list'&&!(v&&v.length)) miss.push('a value');
+   if(t==='text'&&fd[3]!=='constant'&&!(e.op==='map_value'&&fd[0]==='to')&&!String(v||'').trim()) miss.push(fd[1].toLowerCase()); });
+  if(e.op==='impute'&&p.strategy==='constant'&&!String(p.fill_value).trim()) miss.push('a constant');
+  var params=JSON.parse(JSON.stringify(p));
+  if(e.op==='formula'&&String(p.expr||'').trim()){ try{ var refs=astRefs(parseFormula(p.expr)); params.vars=s.vars.filter(function(v){return refs.vars[v.name];}); var unknownV=Object.keys(refs.vars).filter(function(n){return !s.vars.some(function(v){return v.name===n;});}); if(unknownV.length) return {step:null,error:'Unknown variable @'+unknownV[0]+'. Create it in the Variables tab first.'}; var V=this.versions().V, f=V[V.length-1][e.target==='test'?'test':'train']; var unknownC=Object.keys(refs.cols).filter(function(c){return !hasCol(f,c);}); if(unknownC.length) return {step:null,error:'Unknown column “'+unknownC[0]+'”.'}; } catch(err){ return {step:null,error:err.message}; } }
+  else if(e.op==='formula') params.vars=[];
+  if(miss.length) return {step:null,missing:'Set '+miss.join(', ')+'.'};
+  return {step:{op:e.op,params:params,target:e.target}};
+ }
+ applyPending(){
+  var r=this.edStep(); if(!r.step) return; var steps=this.state.steps.concat([r.step]);
+  this.setState({steps:steps,editor:null,view:null,selCell:null,selRow:null});
+  var self=this; setTimeout(function(){ var V=self.versions().V, f=V[V.length-1].train; self.setState({selCols:self.state.selCols.filter(function(c){return hasCol(f,c);})}); },0);
+ }
+ removeStep(i){ var steps=this.state.steps.slice(); steps.splice(i,1); this.setState({steps:steps,editor:null,view:null,selCell:null}); }
+ openTool(id){ var t=this.state.tools.slice(); if(t.indexOf(id)<0){ t.push(id); if(t.length>4) t.shift(); } this.setState({tools:t,ctx:null}); }
+ toggleTool(id){ var t=this.state.tools.slice(), i=t.indexOf(id); if(i>=0){ t.splice(i,1); this.setState({tools:t,maxWin:this.state.maxWin===id?null:this.state.maxWin}); } else this.openTool(id); }
+ moveTool(id,d){ var t=this.state.tools.slice(), i=t.indexOf(id), j=i+d; if(j<0||j>=t.length) return; t.splice(i,1); t.splice(j,0,id); this.setState({tools:t}); }
+ dropTool(id){ var from=this._drag; if(!from||from===id) return; var t=this.state.tools.slice(); t.splice(t.indexOf(from),1); t.splice(t.indexOf(id),0,from); this._drag=null; this.setState({tools:t}); }
+ pickCol(name,e){
+  var s=this.state, add=s.multi||(e&&(e.shiftKey||e.metaKey||e.ctrlKey)), sel;
+  if(add){ sel=s.selCols.slice(); var i=sel.indexOf(name); if(i>=0) sel.splice(i,1); else sel.push(name); } else sel=(s.selCols.length===1&&s.selCols[0]===name)?[]:[name];
+  this.setState({selCols:sel,selRow:null,selCell:null,ctx:null});
+ }
+ openCtx(name,e){
+  if(e&&e.preventDefault) e.preventDefault();
+  var x=400,y=260; try{ var root=e.currentTarget.closest('[data-root]'), rc=root.getBoundingClientRect(), sc=rc.width/1440||1; x=(e.clientX-rc.left)/sc; y=(e.clientY-rc.top)/sc; }catch(err){}
+  var sel=this.state.selCols.indexOf(name)>=0?this.state.selCols:[name];
+  this.setState({ctx:{col:name,x:x,y:y},selCols:sel,selRow:null,selCell:null});
+ }
+ renderVals(){
+  var self=this, s=this.state, VV=this.versions(), V=VV.V, src=VV.src, last=V.length-1;
+  var target=src.target, vi=(s.view===null||s.view>last)?last:s.view, isLatest=vi===last, cur=V[vi], latest=V[last], role=s.role;
+  var shapeOf=function(f){return f.rows.length+' × '+f.cols.length;};
+  var out={isWs:s.screen==='ws',isAlign:s.screen==='align',isBench:s.screen==='bench',wsName:'churn',trainShape:shapeOf(latest.train),testShape:shapeOf(latest.test),targetLabel:target||'not set'};
+  var nAlign=s.steps.filter(function(x){return x.align;}).length;
+
+  /* screens nav */
+  var scr=[['ws','Sources'],['align','Align train / test'],['bench','Workbench']];
+  out.screens=scr.map(function(x,i){ var on=s.screen===x[0]; return {n:i+1,label:x[1],pick:function(){self.setState({screen:x[0],ctx:null});},hasBadge:false,badge:'',badgeStyle:'',
+   style:'height: 34px; display: flex; align-items: center; gap: 7px; padding: 0 11px; border-radius: 6px; font-size: 13px; border: 1px solid '+(on?'#1c1b18':'transparent')+'; background: '+(on?'#1c1b18':'transparent')+'; color: '+(on?'#ffffff':'#1c1b18'),
+   numStyle:'width: 18px; height: 18px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; background: '+(on?'#ffffff':'#1c1b18')+'; color: '+(on?'#1c1b18':'#ffffff')}; });
+  out.pickTrain=function(){self.setState({role:'train'});}; out.pickTest=function(){self.setState({role:'test'});};
+  var mk=function(on){return 'height: 30px; padding: 0 12px; border: none; font-size: 12px; font-weight: 500; background: '+(on?'#1c1b18':'#ffffff')+'; color: '+(on?'#ffffff':'#1c1b18');};
+  out.trainBtnStyle=mk(role==='train'); out.testBtnStyle=mk(role==='test');
+  out.goAlign=function(){self.setState({screen:'align'});}; out.goBench=function(){self.setState({screen:'bench'});}; out.goWs=function(){self.setState({screen:'ws'});};
+
+  /* ---- sources screen ---- */
+  out.wsList=[{name:'churn',meta:'4 files · '+s.steps.length+' steps · open',active:true},{name:'parkinson',meta:'3 files · [n] steps',active:false},{name:'titanic-demo',meta:'2 files · [n] steps',active:false}].map(function(w){ return Object.assign(w,{pick:function(){},style:'display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; text-align: left; border-radius: 8px; border: '+(w.active?'2px solid #1c1b18':'1px solid #e3e1da')+'; background: #ffffff'}); });
+  out.files=FILE_IDS.map(function(id){ var F=FILES[id], curRole=s.roles[id];
+   return {name:F.name,cols:F.cols.join(', '),detected:'csv · sep "," · utf-8 · header 0 · '+F.rows.length+' × '+F.cols.length+(id==='test'?' · decimal "," seen':''),
+    roles:ROLES.map(function(r){ return {text:r[1],pick:function(){ var ro=Object.assign({},s.roles); ro[id]=r[0]; self.setState({roles:ro}); },style:chip(curRole===r[0])}; })}; });
+  var hasY=FILE_IDS.some(function(id){return s.roles[id]==='trainY';});
+  out.labelModes=[{k:'yfile',text:'Separate y file'},{k:'column',text:'Column in train X'}].map(function(m){ return {text:m.text,tip:'',pick:function(){self.setState({labelMode:m.k});},style:chip(s.labelMode===m.k)}; });
+  out.isYFile=s.labelMode==='yfile'; out.isColMode=s.labelMode==='column';
+  out.yJoins=[{k:'order',text:'By row order',dis:false,tip:'y has one value column and the same row count'},{k:'key',text:'By key column',dis:true,tip:'churn_labels.csv has no column in common with train X'}].map(function(m){ return {text:m.text,disabled:m.dis,tip:m.tip,pick:function(){ if(!m.dis) self.setState({yJoin:m.k}); },style:chip(s.yJoin===m.k,m.dis?'; opacity: 0.45':'')}; });
+  var trX=FILE_IDS.filter(function(id){return s.roles[id]==='trainX';})[0];
+  out.targetChips=(trX?FILES[trX].cols:[]).map(function(c){ return {text:c,pick:function(){self.setState({targetCol:c});},style:smallChip(s.targetCol===c)}; });
+  out.labelInfo=src.info.y||(s.labelMode==='yfile'&&!hasY?'No file has the role “Train y”.':'');
+  out.labelInfoStyle='font-size: 12px; color: '+(target?'#2f6b3a':'#8f3809');
+  var mId=FILE_IDS.filter(function(id){return s.roles[id]==='merge';})[0];
+  out.hasMerge=!!mId; out.noMerge=!mId; out.mergeFile=mId?FILES[mId].name:'';
+  var common=mId&&trX?FILES[mId].cols.filter(function(c){return FILES[trX].cols.indexOf(c)>=0;}):[];
+  out.mergeKeys=common.map(function(c){ return {text:c,pick:function(){self.setState({mergeKey:c});},style:smallChip(s.mergeKey===c)}; });
+  out.toggleMergeTest=function(){self.setState({mergeInTest:!s.mergeInTest});}; out.mergeTestLabel=s.mergeInTest?'yes':'no'; out.mergeTestStyle=chip(s.mergeInTest);
+  out.mergeInfo=src.info.merge||''; out.mergeInfoStyle='font-size: 12px; color: #2f6b3a';
+  var ORC={x:['#1c1b18','#ffffff','#dcd9d0'],y:['#123d5b','#e3eef6','#b9d0e2'],m:['#1f5a2b','#e6f2e7','#b5d9bb']};
+  out.resCols=src.train.cols.map(function(c){ var o=ORC[src.origin[c.name]||'x']; return {text:c.name+(c.name===target?' ◎':''),style:'padding: 3px 8px; border-radius: 4px; font-family: \'IBM Plex Mono\', monospace; font-size: 11px; color: '+o[0]+'; background: '+o[1]+'; border: 1px solid '+o[2]}; });
+  out.wsErrors=src.errors;
+
+  /* ---- alignment screen ---- */
+  var aV=V[Math.min(nAlign,last)], aTr=aV.train, aTe=aV.test, aRows=[], cnt={ok:0,fix:0,info:0};
+  var testOnly=aTe.cols.filter(function(c){return !hasCol(aTr,c.name);}).map(function(c){return c.name;});
+  var sample=function(f,c){return vals(f,c).slice(0,3).map(function(v){return typeof v==='string'?'"'+v+'"':fmt(v);}).join(', ');};
+  var stBadge=function(t,kind){ var m={ok:['#1f5a2b','#e2f0e3'],fix:['#8f3809','#fbe9dc'],info:['#4f4390','#ece8f7']}[kind]; cnt[kind]++; return {status:t,statusStyle:'font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; color: '+m[0]+'; background: '+m[1]}; };
+  var act=function(text,fn,dis,tip,primary){ return {text:text,pick:function(){ if(!dis) fn(); },disabled:!!dis,tip:tip||'',style:'height: 26px; padding: 0 10px; border-radius: 5px; font-size: 12px; border: 1px solid '+(primary?'#1d5b86':'#d6d3ca')+'; background: '+(primary?'#1d5b86':'#ffffff')+'; color: '+(primary?'#ffffff':'#1c1b18')+(dis?'; opacity: 0.45':'')}; };
+  var rowBase='display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-bottom: 1px solid #f0efea';
+  aTr.cols.forEach(function(c){
+   var r={tName:c.name,tInfo:KIND_LABEL[c.kind]+' · '+sample(aTr,c.name),eName:'—',eInfo:'',means:'',note:'',actions:[],style:rowBase};
+   if(hasCol(aTe,c.name)){ var ek=kindOf(aTe,c.name); r.eName=c.name; r.eInfo=KIND_LABEL[ek]+' · '+sample(aTe,c.name);
+    if(ek===c.kind||(isNumKind(ek)&&isNumKind(c.kind))){ Object.assign(r,stBadge('match','ok')); if(c.kind==='num') r.means=fmt(r3(meanA(clean(nums(aTr,c.name)))))+' / '+fmt(r3(meanA(clean(nums(aTe,c.name))))); }
+    else { Object.assign(r,stBadge('type mismatch','fix')); r.style+='; background: #fffaf6';
+     if(looksNumText(aTe,c.name)){ r.note='Test stores numbers as text with a comma decimal.'; r.actions.push(act('Re-read test with decimal ","',function(){self.setState({testDecimal:','});},false,'Source option: csv decimal=","',true)); var err=null; try{ OPS.cast.apply(aTe,{column:c.name,dtype:'float'}); }catch(e){ err=e.message; } r.actions.push(act('Cast test to float',function(){self.addAlign({op:'cast',params:{column:c.name,dtype:'float'},target:'test'});},!!err,err||'')); }
+     else { r.note='Types differ: '+KIND_LABEL[c.kind]+' vs '+KIND_LABEL[ek]+'.'; r.actions.push(act('Cast test to train type',function(){self.addAlign({op:'cast',params:{column:c.name,dtype:c.kind==='cat'?'str':'float'},target:'test'});})); } } }
+   else if(c.name===target){ Object.assign(r,stBadge('label · train only','info')); r.note='Expected: test has no label.'; }
+   else { Object.assign(r,stBadge('missing in test','fix')); r.style+='; background: #fffaf6'; r.note=testOnly.length?'Match it with a test-only column (renames it in test), or drop it from train.':'No test column left to match: drop it from train.';
+    testOnly.forEach(function(t){ var hint=t.indexOf(c.name)>=0||c.name.indexOf(t)>=0; r.actions.push(act('↔ '+t+(hint?' (similar name)':''),function(){self.addAlign({op:'rename',params:{column:t,to:c.name},target:'test'});},false,'rename '+t+' → '+c.name+' in test')); });
+    r.actions.push(act('Drop from train',function(){self.addAlign({op:'drop_columns',params:{columns:[c.name]},target:'train'});})); }
+   aRows.push(r); });
+  testOnly.forEach(function(t){ var r={tName:'—',tInfo:'',eName:t,eInfo:KIND_LABEL[kindOf(aTe,t)]+' · '+sample(aTe,t),means:'',note:'Only in test: a model fitted on train cannot use it.',actions:[act('Drop from test',function(){self.addAlign({op:'drop_columns',params:{columns:[t]},target:'test'});})],style:rowBase+'; background: #fffaf6'}; Object.assign(r,stBadge('extra in test','fix')); aRows.push(r); });
+  out.aRows=aRows;
+  out.aCounts=[['#1f5a2b','#e2f0e3',cnt.ok+' matched'],['#8f3809','#fbe9dc',cnt.fix+' to decide'],['#4f4390','#ece8f7',cnt.info+' expected']].map(function(x){return {text:x[2],style:'font-size: 12px; padding: 4px 10px; border-radius: 12px; font-weight: 500; color: '+x[0]+'; background: '+x[1]};});
+  out.aSrc=s.testDecimal===','?[{text:'churn_test.csv · decimal ","',remove:function(){self.setState({testDecimal:'.'});}}]:[]; out.aNoSrc=!out.aSrc.length;
+  out.aSteps=s.steps.map(function(st,i){return {st:st,i:i};}).filter(function(x){return x.st.align;}).map(function(x){ return {text:x.st.op+' · '+OPS[x.st.op].sub(x.st.params)+' · '+x.st.target,remove:function(){self.removeStep(x.i);}}; }); out.aNoSteps=!out.aSteps.length;
+  out.aReady=cnt.fix?cnt.fix+' column'+(cnt.fix>1?'s':'')+' still differ. You can continue, but test will not match train on them.':'Train and test have the same columns and types.';
+  out.aReadyStyle='font-size: 12px; line-height: 1.5; color: '+(cnt.fix?'#8f3809':'#2f6b3a');
+  out.screens[1].hasBadge=cnt.fix>0; out.screens[1].badge=String(cnt.fix); out.screens[1].badgeStyle='font-size: 11px; padding: 1px 6px; border-radius: 9px; background: #fbe9dc; color: #8f3809; font-weight: 600';
+
+  /* ---- workbench: preview of the step being edited ---- */
+  var baseF=cur[role]; var er=this.edStep(), pend=null, nextF=null, pendErr=er.error||null;
+  if(er.step&&isLatest){ try{ pend=runStep(er.step,latest.train,latest.test); nextF=pend[role]; }catch(e){ pendErr=e.message; } }
+  var disp=buildDisplay(baseF,nextF), liveF=nextF||baseF;
+  out.hasReplayError=!!VV.err; out.replayError=VV.err?('Step '+(VV.err.index+1)+' fails on the data: '+VV.err.msg+' — later steps are not replayed. Remove or fix it.'):'';
+
+  out.nodes=V.map(function(v,i){
+   var f=v[role], prev=i?V[i-1][role]:null, delta='', dStyle='color: #5b5850';
+   if(prev){ var dr=f.rows.length-prev.rows.length, dc=f.cols.length-prev.cols.length, parts=[]; if(dr) parts.push((dr>0?'+':'−')+Math.abs(dr)+'r'); if(dc) parts.push((dc>0?'+':'−')+Math.abs(dc)+'c'); if(!parts.length) parts.push(v.step.target!=='both'&&v.step.target!==role?'skipped':'values'); delta=parts.join(' '); dStyle='color: '+(dr<0||dc<0?'#a3242c':dc>0?'#2f6b3a':'#5b5850'); }
+   var st=v.step?stepStage(v.step):'import', on=i===vi;
+   return {arrow:i>0,ver:i?'v'+i:'raw',title:i?OPS[v.step.op].title:'sources',sub:i?OPS[v.step.op].sub(v.step.params):(role==='train'?'train X + y + extra':'test X + extra')+(role==='test'&&s.testDecimal===','?' · dec ","':''),
+    shape:shapeOf(f),delta:delta,deltaStyle:dStyle,badge:i?(v.step.target+(v.fitted?' · fit':'')):'',canDelete:i>0&&isLatest&&!er.step,
+    tip:i?(v.step.op+' '+JSON.stringify(v.step.params)+' · applies to '+v.step.target+(v.step.align?' · alignment':'')):'Sources, as set on the Sources screen',
+    pick:function(){self.setState({view:i===last?null:i,editor:null});},remove:function(){self.removeStep(i-1);},
+    style:'width: 164px; height: 66px; box-sizing: border-box; position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 3px; padding: 9px 10px 7px; text-align: left; border-radius: 8px; background: #ffffff; border: '+(on?'2px solid #1c1b18':'1px solid #dcd9d0')+'; opacity: '+(i>vi?'0.5':'1'),
+    barStyle:'position: absolute; left: 0; top: 0; right: 0; height: 3px; background: '+STAGE_COLOR[st]};
+  });
+  if(VV.err){ var es=s.steps[VV.err.index]; out.nodes.push({arrow:true,ver:'v'+(VV.err.index+1),title:OPS[es.op].title,sub:'fails: '+VV.err.msg,shape:'—',delta:'error',deltaStyle:'color: #a3242c',badge:es.target,canDelete:true,tip:VV.err.msg,pick:function(){},remove:function(){self.removeStep(VV.err.index);},style:'width: 164px; height: 66px; box-sizing: border-box; position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 3px; padding: 9px 10px 7px; text-align: left; border-radius: 8px; background: #fbeced; border: 1px solid #e7b3b6',barStyle:'position: absolute; left: 0; top: 0; right: 0; height: 3px; background: #a3242c'}); }
+  out.showPendingNode=!!pend; out.pendingTitle=er.step?OPS[er.step.op].title+' · '+OPS[er.step.op].sub(er.step.params):''; out.pendingDelta=disp.diff?diffText(disp.diff):'';
+  out.addStep=function(){self.openEditor(null);};
+  out.stageLegend=STAGES.map(function(st){return {label:st.label,course:st.course,dot:'width: 8px; height: 8px; border-radius: 2px; background: '+st.color};});
+
+  /* left tabs */
+  var allCards=checks(latest.train,target,s.steps);
+  out.leftTabs=[['vars','Variables'],['sug','Suggestions · '+allCards.length],['steps','Recipe · '+s.steps.length]].map(function(t){ var on=s.leftTab===t[0]; return {text:t[1],pick:function(){self.setState({leftTab:t[0]});},style:'height: 32px; padding: 0 10px; border: none; border-bottom: 2px solid '+(on?'#1c1b18':'transparent')+'; background: none; font-size: 12px; font-weight: '+(on?'600':'400')+'; color: '+(on?'#1c1b18':'#5b5850')}; });
+  out.tabVars=s.leftTab==='vars'; out.tabSug=s.leftTab==='sug'; out.tabSteps=s.leftTab==='steps';
+  var edFormula=s.editor&&s.editor.op==='formula';
+  var insertExpr=function(txt){ var e=self.state.editor; if(e&&e.op==='formula'){ self.setEd('expr',(String(e.params.expr||'').replace(/\s+$/,'')+' '+txt).trim()); } else self.openEditor('formula',{expr:txt}); };
+  out.varList=s.vars.map(function(v,i){ return {name:v.name,def:v.stat+'('+v.column+')',value:fmt(statOf(latest.train,v.stat,v.column)),insertLabel:edFormula?'Insert':'Use in formula',insert:function(){insertExpr('@'+v.name);},remove:function(){ var vs=self.state.vars.slice(); vs.splice(i,1); self.setState({vars:vs}); }}; });
+  var nv=s.nv, numTrain=latest.train.cols.filter(function(c){return c.kind==='num';}).map(function(c){return c.name;});
+  out.nvName=nv.name; out.nvOnName=function(e){ self.setState({nv:Object.assign({},self.state.nv,{name:(e&&e.target?e.target.value:'').replace(/[^A-Za-z0-9_]/g,'_')})}); };
+  out.nvStats=STATS.map(function(t){return {text:t,pick:function(){self.setState({nv:Object.assign({},self.state.nv,{stat:t})});},style:smallChip(nv.stat===t)};});
+  out.nvCols=numTrain.map(function(c){return {text:c,pick:function(){self.setState({nv:Object.assign({},self.state.nv,{column:c,name:self.state.nv.name||(self.state.nv.stat+'_'+c)})});},style:smallChip(nv.column===c)};});
+  var nvOk=!!(nv.name&&nv.column&&hasCol(latest.train,nv.column)&&!s.vars.some(function(v){return v.name===nv.name;}));
+  out.nvPreview=nv.column?('@'+(nv.name||'?')+' = '+nv.stat+'('+nv.column+') = '+fmt(statOf(latest.train,nv.stat,nv.column))+' on train'):'Pick a statistic and a column.';
+  out.nvDisabled=!nvOk; out.nvAddStyle='height: 32px; border: none; border-radius: 6px; font-weight: 500; background: '+(nvOk?'#1c1b18':'#d6d3ca')+'; color: #ffffff';
+  out.nvAdd=function(){ if(!nvOk) return; self.setState({vars:s.vars.concat([{name:nv.name,stat:nv.stat,column:nv.column}]),nv:{name:'',stat:nv.stat,column:null}}); };
+  out.openFormula=function(){self.openEditor('formula');};
+  out.sugStages=[['all','All']].concat(STAGES.slice(0,4).map(function(x){return [x.id,x.label];})).map(function(x){return {text:x[1],pick:function(){self.setState({sugStage:x[0]});},style:smallChip(s.sugStage===x[0])};});
+  var shown=s.sugStage==='all'?allCards:allCards.filter(function(c){return c.stage===s.sugStage;});
+  out.cards=shown.map(function(c){ return {title:c.title,detail:c.detail,stageLabel:STAGE_NAME[c.stage],fixLabel:'Open in editor →',fix:function(){ self.openEditor(c.step.op,c.step.params,c.step.target); if(c.col) self.setState({selCols:[c.col]}); },dotStyle:'width: 8px; height: 8px; border-radius: 4px; background: '+STAGE_COLOR[c.stage]}; });
+  out.noCards=!shown.length;
+  var nFit=s.steps.filter(function(st){return OPS[st.op].fit&&st.target!=='test';}).length;
+  out.recipe=s.steps.map(function(st,i){ var on=vi===i+1; return {ver:'v'+(i+1),title:OPS[st.op].title,sub:OPS[st.op].sub(st.params),badge:st.target+(OPS[st.op].fit?' · fit':'')+(st.align?' · align':''),pick:function(){self.setState({view:i+1===last?null:i+1,editor:null});},style:'display: flex; flex-direction: column; gap: 2px; align-items: flex-start; padding: 7px 10px; text-align: left; border-radius: 6px; border: 1px solid '+(on?'#1c1b18':'#e3e1da')+'; border-left: 3px solid '+STAGE_COLOR[stepStage(st)]+'; background: #ffffff'}; });
+  out.leakText=s.steps.length?(nFit+' fitted step'+(nFit!==1?'s':'')+' learned on train and replayed on test. Nothing is refitted on test.'):'No step yet.';
+
+  /* export */
+  out.showExport=s.showExport; out.openExport=function(){self.setState({showExport:true});}; out.closeExport=function(){self.setState({showExport:false});}; out.exported=s.exported; out.doExport=function(){self.setState({exported:true});};
+  out.codeText=['{"name": "churn",',' "datasets": {"train": {"X": "churn_train.csv", "y": "churn_labels.csv"}, "test": {"X": "churn_test.csv", "decimal": "'+s.testDecimal+'"}},',' "steps": ['].concat(s.steps.map(function(st,i){return '  '+stepJson(st)+(i<s.steps.length-1?',':'');})).concat([' ]}']).join('\n');
+
+  /* grid */
+  var rowIdx={}; baseF.rows.forEach(function(r,i){rowIdx[r._rid]=i+1;});
+  var bounds={}; disp.cols.forEach(function(c){ if(c.kind==='num') bounds[c.name]=outBounds(c.src,c.name); });
+  var W=function(c){return c.kind==='id'?96:c.kind==='bin'?112:c.kind==='date'?118:130;};
+  var totalW=44; disp.cols.forEach(function(c){totalW+=W(c);});
+  out.headers=disp.cols.map(function(c){
+   var sel=s.selCols.indexOf(c.name)>=0, isT=c.name===target, pr=profile(c.src,c.name,c.kind), col=sel?'#1d5b86':KIND_BAR[c.kind];
+   var bg=c.status==='added'?'#e6f2e7':c.status==='removed'?'#f7e1e2':sel?'#e3eef6':'#faf9f6';
+   return {name:c.name,isTarget:isT,kind:KIND_LABEL[c.kind],missLabel:pr.miss?(Math.round(pr.miss/pr.n*100)+'% ∅'):'',
+    tip:c.name+' · '+KIND_LABEL[c.kind]+' · '+pr.distinct+' distinct · '+pr.miss+' missing · right-click for actions',bars:barsRender(pr.bars,22,col,2),
+    alerts:c.status==='added'?[{text:'new',style:'font-size: 10px; padding: 1px 5px; border-radius: 3px; color: #1f5a2b; background: #d3ead6'}]:c.status==='removed'?[{text:'removed',style:'font-size: 10px; padding: 1px 5px; border-radius: 3px; color: #a3242c; background: #f2cfd1'}]:colAlerts(c.src,c.name,c.kind),
+    missBarStyle:'display: block; width: 100%; height: 3px; background: #e9e7e0; border-radius: 2px; overflow: hidden',missFillStyle:'display: block; height: 3px; width: '+(pr.n?Math.round(pr.miss/pr.n*100):0)+'%; background: #c2410c',
+    nameStyle:'font-family: \'IBM Plex Mono\', monospace; font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; '+(c.status==='removed'?'text-decoration: line-through; color: #a3242c':'color: #1c1b18'),
+    kindStyle:'padding: 0 4px; border-radius: 3px; border: 1px solid #dcd9d0; background: #ffffff',
+    pick:function(e){self.pickCol(c.name,e);},ctx:function(e){ if(c.status!=='removed') self.openCtx(c.name,e); else if(e&&e.preventDefault) e.preventDefault(); },
+    style:'width: '+W(c)+'px; flex-shrink: 0; box-sizing: border-box; height: 100px; padding: 7px 8px 5px; display: flex; flex-direction: column; gap: 3px; align-items: stretch; text-align: left; border: none; border-right: 1px solid #e3e1da; border-top: 3px solid '+(isT||sel?'#1d5b86':'transparent')+'; background: '+bg};
+  });
+  out.rows=disp.rows.map(function(row){
+   var rsel=s.selRow===row.rid, num=rowIdx[row.rid];
+   return {num:num,pick:function(){self.setState({selRow:rsel?null:row.rid,selCell:null,selCols:[],ctx:null});},
+    numStyle:'width: 44px; flex-shrink: 0; height: 30px; position: sticky; left: 0; z-index: 1; border: none; border-right: 1px solid #e3e1da; font-family: \'IBM Plex Mono\', monospace; font-size: 11px; text-align: right; padding: 0 8px; color: '+(rsel?'#ffffff':'#5b5850')+'; background: '+(rsel?'#1d5b86':row.status==='removed'?'#f7e1e2':'#faf9f6')+(row.status==='removed'?'; text-decoration: line-through':''),
+    cells:disp.cols.map(function(c){
+     var v=row.vals[c.name], csel=s.selCell&&s.selCell.rid===row.rid&&s.selCell.col===c.name, colSel=s.selCols.indexOf(c.name)>=0;
+     var bg='#ffffff', fg='#1c1b18', extra='', tip=c.name+' = '+fmt(v), text=fmt(v);
+     if(row.status==='removed'||c.status==='removed'){ bg='#fbeced'; fg='#a3242c'; extra='text-decoration: line-through; '; tip+=' (removed by this step)'; }
+     else if(c.status==='added'){ bg='#eef7ef'; fg='#1f5a2b'; }
+     else if(row.changed[c.name]){ bg='#dff0e2'; fg='#1f5a2b'; extra='font-weight: 500; '; tip+=' (was '+fmt(row.prev[c.name])+')'; }
+     else if(isNull(v)){ bg='#fbe9dc'; fg='#8f3809'; extra='font-style: italic; '; text='missing'; }
+     else if(v===-999&&c.kind==='num'){ bg='#fbe9dc'; fg='#8f3809'; extra='font-weight: 600; '; }
+     else if(c.kind==='num'&&isOut(bounds[c.name],v)){ bg='#efe9f8'; fg='#4e3a8a'; tip+=' (IQR outlier)'; }
+     else if(rsel||colSel){ bg='#f1f6fa'; }
+     if(typeof v==='string'&&v!==v.trim()) text='“'+v+'”';
+     return {text:text,tip:tip,pick:function(){self.setState({selCell:csel?null:{rid:row.rid,col:c.name},selRow:null,selCols:[c.name],ctx:null,editor:null});},
+      style:'width: '+W(c)+'px; flex-shrink: 0; box-sizing: border-box; height: 30px; padding: 0 8px; border: none; border-right: 1px solid #f0efea; font-family: \'IBM Plex Mono\', monospace; font-size: 12px; white-space: pre; overflow: hidden; text-overflow: ellipsis; text-align: '+(isNumKind(c.kind)?'right':'left')+'; '+extra+'color: '+fg+'; background: '+bg+(csel?'; box-shadow: inset 0 0 0 2px #1d5b86':'')};
+    })};
+  });
+  out.gridStyle='width: '+totalW+'px; min-width: 100%';
+  var selCols=s.selCols.filter(function(c){return hasCol(liveF,c)||hasCol(baseF,c);});
+  out.selText=selCols.length?(selCols.length===1?'1 column selected':selCols.length+' columns selected'):(s.selRow?'1 row selected':'Nothing selected');
+  out.toggleMulti=function(){self.setState({multi:!s.multi});}; out.multiOn=s.multi?'true':'false'; out.multiLabel=s.multi?'on':'off';
+  out.multiStyle='height: 26px; padding: 0 10px; border-radius: 13px; font-size: 12px; border: 1px solid '+(s.multi?'#1d5b86':'#d6d3ca')+'; background: '+(s.multi?'#e3eef6':'#ffffff')+'; color: '+(s.multi?'#1d5b86':'#1c1b18');
+  var sw=function(bg,bd){return 'width: 12px; height: 12px; border-radius: 2px; background: '+bg+'; border: 1px solid '+bd;};
+  out.legend=[{label:'missing / -999',style:sw('#fbe9dc','#e9c3a6')},{label:'outlier',style:sw('#efe9f8','#cfc3ea')},{label:'changed',style:sw('#dff0e2','#b5d9bb')},{label:'new',style:sw('#eef7ef','#b5d9bb')},{label:'removed',style:sw('#fbeced','#e7b3b6')}];
+  out.showPendingBanner=!!pend; out.pendingCode=er.step?stepJson(er.step):''; out.cancelPending=function(){self.setState({editor:null});}; out.applyPending=function(){self.applyPending();};
+  out.showViewBanner=!isLatest; out.viewLabel=vi?('v'+vi+' · '+OPS[cur.step.op].title+' · '+OPS[cur.step.op].sub(cur.step.params)):'sources'; out.backToLatest=function(){self.setState({view:null});};
+
+  /* ---- step editor ---- */
+  var E=s.editor;
+  out.edPicker=!!E&&!E.op; out.edOpen=!!E&&!!E.op;
+  out.edClose=function(){self.setState({editor:null});}; out.edBack=function(){self.setState({editor:{op:null}});};
+  out.pickerGroups=STAGES.map(function(st){ var ops=Object.keys(OPS).filter(function(k){return OPS[k].stage===st.id;}); return {label:st.label,dot:'width: 8px; height: 8px; border-radius: 4px; background: '+st.color,ops:ops.map(function(k){ var sel1=selCols[0], preset={}, fd=OPDEF[k].fields[0]; if(sel1){ if(fd[2]==='col') preset[fd[0]]=sel1; if(fd[2]==='cols') preset[fd[0]]=selCols.slice(); } return {title:OPS[k].title,what:OPS[k].what,pick:function(){ self.openEditor(k,preset); if(k==='ordinal'&&sel1) setTimeout(function(){self.setEd('column',sel1);},0); },style:'height: 34px; padding: 0 8px; border-radius: 6px; border: 1px solid '+(k==='formula'?'#8a5a9e':'#e3e1da')+'; background: #ffffff; text-align: left; font-size: 12px; font-weight: 500'+(k==='formula'?'; grid-column: span 2; color: #6a3f7d':'')}; })}; }).filter(function(g){return g.ops.length;});
+  out.edFields=[]; out.edTargets=[]; out.edLearned=''; out.edEffect=''; out.edHasError=false; out.edError=''; out.edCantApply=true; out.edApplyStyle=''; out.edTitle=''; out.edWhat=''; out.edCourse=''; out.edKicker=''; out.edKickerStyle='';
+  if(E&&E.op){
+   var def=OPDEF[E.op], ef=E.target==='test'?latest.test:latest.train, P=E.params;
+   out.edTitle=OPS[E.op].title; out.edWhat=OPS[E.op].what; out.edCourse=OPS[E.op].course; out.edKicker='New step · '+STAGE_NAME[OPS[E.op].stage];
+   out.edKickerStyle='font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: '+STAGE_COLOR[OPS[E.op].stage];
+   var eligible=function(kind){ return ef.cols.filter(function(c){ return kind==='any'||(kind==='num'?c.kind==='num':kind==='cat'?c.kind==='cat':kind==='date'?c.kind==='date':true); }).map(function(c){return c.name;}); };
+   out.edFields=def.fields.filter(function(fd){ return !(fd[3]==='constant'&&P.strategy!=='constant'); }).map(function(fd){
+    var key=fd[0], type=fd[2], F={label:fd[1],isChips:false,isInput:false,isOrder:false,isFormula:false,chips:[],order:[],value:'',placeholder:'',onInput:function(){},insCols:[],insVars:[],status:'',statusStyle:'',hasHelp:false,help:''};
+    if(type==='col'){ F.isChips=true; var el=eligible(fd[3]); F.chips=el.map(function(n){return {text:n,pick:function(){self.setEd(key,n);},style:smallChip(P[key]===n)};}); if(!el.length){ F.hasHelp=true; F.help='No '+(fd[3]==='cat'?'text':fd[3]==='num'?'numeric':fd[3])+' column in '+(E.target==='test'?'test':'train')+'.'; } }
+    else if(type==='cols'){ F.isChips=true; F.chips=eligible(fd[3]).map(function(n){ var on=(P[key]||[]).indexOf(n)>=0; return {text:n,pick:function(){ var a=(self.state.editor.params[key]||[]).slice(), i=a.indexOf(n); if(i>=0) a.splice(i,1); else a.push(n); self.setEd(key,a); },style:smallChip(on)}; }); }
+    else if(type==='enum'){ F.isChips=true; F.chips=fd[3].map(function(o){return {text:o,pick:function(){self.setEd(key,o);},style:chip(P[key]===o)};}); }
+    else if(type==='bool'){ F.isChips=true; F.chips=[true,false].map(function(b){return {text:b?'yes':'no',pick:function(){self.setEd(key,b);},style:chip(P[key]===b)};}); }
+    else if(type==='number'){ F.isInput=true; F.value=String(P[key]); F.onInput=function(e){ var v=Number(e&&e.target?e.target.value:0); self.setEd(key,isNaN(v)?0:Math.max(0,Math.min(100,v))); }; }
+    else if(type==='text'){ F.isInput=true; F.value=String(P[key]||''); F.placeholder=key==='name'?'new_column':''; F.onInput=function(e){ var v=e&&e.target?e.target.value:''; self.setEd(key,key==='name'||key==='to'&&E.op==='rename'?v.replace(/[^A-Za-z0-9_]/g,'_'):v); }; }
+    else if(type==='list'){ F.isInput=true; F.value=(P[key]||[]).map(String).join(', '); F.onInput=function(e){ var raw=(e&&e.target?e.target.value:'').split(',').map(function(x){return x.trim();}).filter(function(x){return x!=='';}); self.setEd(key,raw.map(function(x){return isNaN(Number(x))?x:Number(x);})); }; if(P.column){ var n=ef.rows.filter(function(r){return (P[key]||[]).some(function(sv){return String(sv)===String(r[P.column]);});}).length; F.hasHelp=true; F.help=n+' cell'+(n!==1?'s':'')+' match in '+(E.target==='test'?'test':'train')+'.'; } }
+    else if(type==='order'){ F.isOrder=true; var ord=P.order||[]; F.order=ord.map(function(o,i){ return {rank:String(i),text:o,up:function(){ if(!i) return; var a=ord.slice(); a.splice(i,1); a.splice(i-1,0,o); self.setEd('order',a); },down:function(){ if(i===ord.length-1) return; var a=ord.slice(); a.splice(i,1); a.splice(i+1,0,o); self.setEd('order',a); }}; }); if(!ord.length){ F.hasHelp=true; F.help='Pick a column first.'; } }
+    else if(type==='formula'){ F.isFormula=true; F.value=String(P.expr||''); F.onInput=function(e){ self.setEd('expr',e&&e.target?e.target.value:''); };
+     F.insCols=ef.cols.filter(function(c){return isNumKind(c.kind);}).map(function(c){return {text:c.name,pick:function(){insertExpr(c.name);}};});
+     F.insVars=s.vars.map(function(v){return {text:'@'+v.name,pick:function(){insertExpr('@'+v.name);},style:'height: 22px; padding: 0 6px; border: 1px solid #b9d0e2; border-radius: 4px; background: #e3eef6; color: #123d5b; font-family: \'IBM Plex Mono\', monospace; font-size: 10px'};}).concat(['log1p(','sqrt(','abs(','min(','max(','+','−','×','÷','(',')'].map(function(t){ var ins={'−':'-','×':'*','÷':'/'}[t]||t; return {text:t,pick:function(){insertExpr(ins);},style:'height: 22px; padding: 0 6px; border: 1px solid #dcd9d0; border-radius: 4px; background: #faf9f6; font-family: \'IBM Plex Mono\', monospace; font-size: 10px'};}));
+     if(pendErr){ F.status=pendErr; F.statusStyle='font-size: 12px; color: #a3242c'; } else if(pend){ var nm=P.name, ex=pend.train.rows.slice(0,3).map(function(r){return fmt(r[nm]);}); F.status='OK · first train values: '+ex.join(', '); F.statusStyle='font-size: 12px; color: #2f6b3a; font-family: \'IBM Plex Mono\', monospace'; } else { F.status='Columns, numbers, @variables, + − × ÷ ^ ( ), log log1p exp sqrt abs round min max. Missing in → missing out.'; F.statusStyle='font-size: 11px; color: #5b5850; line-height: 1.4'; } }
+    return F; });
+   out.edTargets=[['train','Train only','Fit and apply on train only'],['both','Train + test','Fit on train, apply to both'],['test','Test only','Fit and apply on test only (alignment)']].map(function(t){return {text:t[1],tip:t[2],pick:function(){self.setState({editor:Object.assign({},self.state.editor,{target:t[0]})});},style:chip(E.target===t[0])};});
+   if(er.step){ try{ var stt=OPS[E.op].fit?OPS[E.op].fit(E.target==='test'?latest.test:latest.train,er.step.params):null; out.edLearned=stt?(OPS[E.op].learned?OPS[E.op].learned(stt):JSON.stringify(stt)):'Nothing: stateless op.'; }catch(e){ out.edLearned='—'; } }
+   else out.edLearned='Complete the parameters to see what is learned.';
+   out.edEffect=pend&&disp.diff?diffText(disp.diff)+' on '+role+(E.target!=='both'&&E.target!==role?' (this step skips '+role+')':''):(isLatest?'—':'Go back to the latest version first.');
+   out.edHasError=!!(pendErr||er.missing); out.edError=pendErr||er.missing||'';
+   out.edCantApply=!pend; out.edApplyStyle='flex-grow: 2; height: 36px; border: none; border-radius: 6px; font-weight: 500; background: '+(pend?'#1d5b86':'#c9d6e0')+'; color: #ffffff';
+  }
+
+  /* ---- inspector (when no editor is open) ---- */
+  var I={pNone:false,pHasHead:false,pHasStats:false,pHasBars:false,pHasGroups:false,pHasFields:false,pHasCellEdit:false,pOld:!isLatest,pKicker:'',pTitle:'',pChips:[],pStats:[],pBars:[],pLo:'',pHi:'',pGroupsVals:[],pFields:[],pGroups:[],pCellValue:''};
+  var btn=function(title,fn,tip,kind){ return {title:title,tip:tip||'',disabled:false,tool:kind==='tool',pick:fn,style:'height: 30px; padding: 0 10px; border-radius: 6px; font-size: 12px; border: 1px solid '+(kind==='tool'?'#b9d0e2':'#dcd9d0')+'; background: '+(kind==='tool'?'#f1f6fa':'#ffffff')+'; color: '+(kind==='tool'?'#123d5b':'#1c1b18')}; };
+  var ed=function(op,params,target){ return function(){ if(!isLatest) return; self.openEditor(op,params,target); }; };
+  var chipS=function(t){return {text:t,style:'font-size: 11px; padding: 2px 7px; border-radius: 4px; border: 1px solid #dcd9d0; background: #ffffff'};};
+  if(E){ I.pNone=false; }
+  else if(s.selCell&&hasCol(baseF,s.selCell.col)){
+   var cr=baseF.rows.find(function(r){return r._rid===s.selCell.rid;});
+   if(cr){ var cc=s.selCell.col, ck=kindOf(baseF,cc), cv=cr[cc], A=[];
+    I.pHasHead=true; I.pHasCellEdit=true; I.pKicker='Cell · row '+rowIdx[cr._rid]; I.pTitle=cc; I.pCellValue=isNull(cv)?'missing':(typeof cv==='string'?'“'+cv+'”':fmt(cv)); I.pChips=[chipS(KIND_LABEL[ck])];
+    if(isNull(cv)) A.push(btn('Impute '+cc+'…',ed('impute',{column:cc,strategy:isNumKind(ck)?'median':'mode'})));
+    else { A.push(btn('Treat '+(typeof cv==='string'?'“'+cv+'”':fmt(cv))+' as missing…',ed('replace_sentinels',{column:cc,values:[cv]})));
+     if(ck==='cat') A.push(btn('Map this value to…',ed('map_value',{column:cc,from:String(cv),to:String(cv).trim().toLowerCase()}))); }
+    I.pGroups=[{label:'Turn into a rule',actions:A}];
+   } else I.pNone=true;
+  } else if(s.selRow){
+   var rr=baseF.rows.find(function(r){return r._rid===s.selRow;});
+   if(rr){ I.pHasHead=true; I.pHasFields=true; I.pKicker='Row'; I.pTitle='#'+rowIdx[rr._rid]+' · '+(rr.customer_id||'');
+    var issues=[], dup=dupOf(baseF,rr._rid); if(dup!==null) issues.push({text:'duplicate of #'+(dup+1),style:'font-size: 11px; padding: 2px 7px; border-radius: 4px; color: #8f3809; background: #fbe9dc'});
+    I.pFields=baseF.cols.map(function(c){ var v=rr[c.name], bad=isNull(v)||(v===-999&&c.kind==='num'); if(bad) issues.push({text:c.name+(isNull(v)?' missing':' = -999'),style:'font-size: 11px; padding: 2px 7px; border-radius: 4px; color: #8f3809; background: #fbe9dc'}); return {k:c.name,v:typeof v==='string'&&v!==v.trim()?'“'+v+'”':fmt(v),vStyle:'font-family: \'IBM Plex Mono\', monospace; color: '+(bad?'#8f3809':'#1c1b18')}; });
+    I.pChips=issues.length?issues:[{text:'nothing unusual',style:'font-size: 11px; padding: 2px 7px; border-radius: 4px; color: #2f6b3a; background: #e2f0e3'}];
+    I.pGroups=dup!==null?[{label:'Actions',actions:[btn('Drop duplicates…',ed('drop_duplicates',{keep:'first'},'train'))]}]:[];
+   } else I.pNone=true;
+  } else if(selCols.length>1){
+   var numSel=selCols.filter(function(c){return isNumKind(kindOf(liveF,c));});
+   I.pHasHead=true; I.pKicker=selCols.length+' columns'; I.pTitle=selCols.join(', '); I.pChips=[chipS(numSel.length+' numeric')];
+   var MA=[btn('Compare',function(){self.openTool('compare');},'','tool'),btn('Correlation',function(){self.openTool('corr');},'','tool')];
+   var TA=[]; if(numSel.length===2) TA.push(btn('Derive '+numSel[0]+' ÷ '+numSel[1]+'…',ed('derive',{a:numSel[0],b:numSel[1],kind:'ratio'})));
+   TA.push(btn('Formula with these…',ed('formula',{expr:numSel.join(' + ')}))); if(numSel.length) TA.push(btn('Scale '+numSel.length+'…',ed('scale',{columns:numSel.filter(function(c){return kindOf(liveF,c)==='num';})})));
+   TA.push(btn('Drop '+selCols.length+'…',ed('drop_columns',{columns:selCols.filter(function(c){return c!==target;})})));
+   I.pGroups=[{label:'Analyse',actions:MA},{label:'Transform',actions:TA}];
+  } else if(selCols.length===1){
+   var c1=selCols[0], f1=hasCol(baseF,c1)?baseF:liveF, k1=kindOf(f1,c1), pr1=profile(f1,c1,k1), isT1=c1===target;
+   I.pHasHead=true; I.pHasStats=true; I.pHasBars=pr1.bars.length>0; I.pKicker='Column'; I.pTitle=c1;
+   I.pChips=[chipS(KIND_LABEL[k1])].concat(isT1?[{text:'target',style:'font-size: 11px; padding: 2px 7px; border-radius: 4px; color: #ffffff; background: #1d5b86'}]:[]).concat(colAlerts(f1,c1,k1));
+   var st1=[['non-null',String(pr1.n-pr1.miss)],['missing',String(pr1.miss)],['distinct',String(pr1.distinct)]];
+   if(k1==='num'){ var a1=clean(nums(f1,c1)); st1=st1.concat([['mean',fmt(r3(meanA(a1)))],['median',fmt(r3(quant(a1,0.5)))],['std',fmt(r3(stdA(a1)))],['min',fmt(pr1.lo)],['max',fmt(pr1.hi)]]); if(sentCount(f1,c1)) st1.push(['-999',String(sentCount(f1,c1))]); }
+   else if(pr1.bars.length) st1.push(['top',pr1.bars[0].label+' ('+pr1.bars[0].n+')']);
+   I.pStats=st1.map(function(x){return {k:x[0],v:x[1],vStyle:'font-family: \'IBM Plex Mono\', monospace; white-space: pre; overflow: hidden; text-overflow: ellipsis'+((x[0]==='missing'||x[0]==='-999')&&x[1]!=='0'?'; color: #8f3809':'')};});
+   I.pBars=barsRender(pr1.bars,64,k1==='num'?'#1d5b86':'#a8844a',6);
+   I.pLo=k1==='num'?fmt(pr1.lo):(pr1.bars[0]?pr1.bars[0].label:''); I.pHi=k1==='num'?fmt(pr1.hi):(pr1.bars.length>1?pr1.bars[pr1.bars.length-1].label:'');
+   if(k1==='cat'){ I.pGroupsVals=valueGroups(f1,c1); I.pHasGroups=I.pGroupsVals.length>0; }
+   var AN=[btn('Distribution',function(){self.openTool('dist');},'','tool'),btn('Outliers',function(){self.openTool('outliers');},'','tool'),btn('vs target',function(){self.openTool('target');},'','tool'),btn('Train vs test',function(){self.openTool('drift');},'','tool')];
+   if(k1==='num') AN.push(btn('+ Variable',function(){ self.setState({leftTab:'vars',nv:{name:'',stat:'mean',column:c1}}); },'Create a named statistic of this column'));
+   var TR=[];
+   if(k1==='cat'&&looksDate(f1,c1)) TR.push(btn('Parse dates…',ed('parse_dates',{column:c1})));
+   if(k1==='cat'&&looksNumText(f1,c1)) TR.push(btn('Cast to float…',ed('cast',{column:c1,dtype:'float'})));
+   if(k1==='num'){ TR.push(btn('Replace sentinels…',ed('replace_sentinels',{column:c1,values:[-999]}))); TR.push(btn('Impute…',ed('impute',{column:c1}))); TR.push(btn('Clip…',ed('clip',{column:c1}))); TR.push(btn('log1p…',ed('log1p',{column:c1}))); TR.push(btn('Scale…',ed('scale',{columns:[c1]}))); }
+   if(k1==='cat'&&!looksDate(f1,c1)){ TR.push(btn('Standardize text…',ed('standardize_text',{column:c1}))); TR.push(btn('Map a value…',ed('map_value',{column:c1}))); TR.push(btn('Impute…',ed('impute',{column:c1,strategy:'mode'}))); if(!isT1){ TR.push(btn('One-hot…',ed('onehot',{column:c1}))); TR.push(btn('Ordinal…',function(){ if(!isLatest) return; self.openEditor('ordinal',{}); setTimeout(function(){self.setEd('column',c1);},0); })); } }
+   if(k1==='bin'&&pr1.miss) TR.push(btn('Impute…',ed('impute',{column:c1,strategy:'mode'})));
+   if(k1==='date') TR.push(btn('Date parts…',ed('datetime_parts',{column:c1})));
+   TR.push(btn('Formula…',ed('formula',{expr:c1}))); TR.push(btn('Rename…',ed('rename',{column:c1},'both'))); TR.push(btn('Cast…',ed('cast',{column:c1}))); if(!isT1) TR.push(btn('Drop…',ed('drop_columns',{columns:[c1]})));
+   I.pGroups=[{label:'Analyse',actions:AN},{label:'Transform',actions:TR}];
+  } else I.pNone=true;
+  if(!isLatest) I.pGroups.forEach(function(g){ g.actions.forEach(function(a){ if(!a.tool){ a.disabled=true; a.style+='; opacity: 0.45'; } }); });
+  Object.assign(out,I);
+
+  /* ---- right-click column menu ---- */
+  out.ctxOpen=!!s.ctx&&s.screen==='bench'; out.closeCtx=function(e){ if(e&&e.preventDefault) e.preventDefault(); self.setState({ctx:null}); };
+  out.ctxItems=[]; out.ctxTitle=''; out.ctxStyle='';
+  if(out.ctxOpen){ var cc2=s.ctx.col, ck2=kindOf(liveF,cc2)||kindOf(baseF,cc2), isT2=cc2===target, others=s.selCols.filter(function(x){return x!==cc2;});
+   var it=function(text,fn,hint){return {item:true,sep:false,text:text,hint:hint||'',pick:function(){ self.setState({ctx:null}); fn(); }};}, SEP={item:false,sep:true,text:'',hint:'',pick:function(){}};
+   var items=[it('Inspect',function(){self.setState({selCols:[cc2]});}),it(s.selCols.indexOf(cc2)>=0&&s.selCols.length>1?'Remove from selection':'Add to selection',function(){ var a=self.state.selCols.slice(), i=a.indexOf(cc2); if(i>=0&&a.length>1) a.splice(i,1); else if(i<0) a.push(cc2); self.setState({selCols:a}); },'shift-click')];
+   if(others.length) items.push(it('Compare with '+others.length+' selected',function(){ self.setState({selCols:others.concat([cc2])}); self.openTool('compare'); }));
+   items.push(it('Distribution',function(){ self.setState({selCols:[cc2]}); self.openTool('dist'); }));
+   items.push(SEP);
+   if(ck2==='num'){ items.push(it('Replace sentinels…',ed('replace_sentinels',{column:cc2,values:[-999]}))); items.push(it('Impute…',ed('impute',{column:cc2}))); items.push(it('Clip…',ed('clip',{column:cc2}))); items.push(it('Scale…',ed('scale',{columns:[cc2]}))); }
+   if(ck2==='cat'&&looksDate(liveF,cc2)) items.push(it('Parse dates…',ed('parse_dates',{column:cc2})));
+   if(ck2==='cat'&&!looksDate(liveF,cc2)){ items.push(it('Standardize text…',ed('standardize_text',{column:cc2}))); if(!isT2) items.push(it('One-hot…',ed('onehot',{column:cc2}))); }
+   items.push(it('Rename…',ed('rename',{column:cc2},'both'))); items.push(it('Cast type…',ed('cast',{column:cc2})));
+   items.push(SEP);
+   if(ck2==='num') items.push(it('New variable: mean('+cc2+')',function(){ var nm='mean_'+cc2; if(!self.state.vars.some(function(v){return v.name===nm;})) self.setState({vars:self.state.vars.concat([{name:nm,stat:'mean',column:cc2}]),leftTab:'vars'}); else self.setState({leftTab:'vars'}); },'@var'));
+   if(isNumKind(ck2)) items.push(it('Use in formula',function(){insertExpr(cc2);},'ƒ'));
+   items.push(it(isT2?'Unset target':'Set as target',function(){ if(isT2) self.setState({labelMode:'column',targetCol:null}); else self.setState({labelMode:'column',targetCol:cc2}); },'label'));
+   if(!isT2) items.push(it('Drop column…',ed('drop_columns',{columns:[cc2]})));
+   out.ctxItems=items; out.ctxTitle=cc2+' · '+KIND_LABEL[ck2];
+   var hh=items.reduce(function(a,x){return a+(x.sep?9:28);},30), x0=Math.min(s.ctx.x,1440-250), y0=Math.max(8,Math.min(s.ctx.y,900-hh-8));
+   out.ctxStyle='position: absolute; left: '+Math.round(x0)+'px; top: '+Math.round(y0)+'px; z-index: 41; width: 240px; padding: 4px 0; background: #ffffff; border: 1px solid #d6d3ca; border-radius: 8px; box-shadow: 0 8px 24px rgba(28, 27, 24, 0.14)';
+  }
+
+  /* ---- dock windows ---- */
+  var focus=selCols[0]||(s.selCell&&s.selCell.col)||null;
+  var numCols=liveF.cols.filter(function(c){return c.kind==='num'||(c.kind==='bin'&&c.name===target);}).map(function(c){return c.name;});
+  var cellS=function(bg,fg){return 'width: 46px; height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: \'IBM Plex Mono\', monospace; font-size: 10px; border-radius: 3px; background: '+bg+'; color: '+fg;};
+  var headS='width: 46px; flex-shrink: 0; font-size: 10px; color: #5b5850; overflow: hidden; text-overflow: ellipsis; white-space: nowrap';
+  var visible=s.maxWin&&s.tools.indexOf(s.maxWin)>=0?[s.maxWin]:s.tools;
+  var wins=visible.map(function(id){
+   var T=TOOLS.find(function(t){return t.id===id;}), wide=!!s.wide[id]&&s.dockPos==='bottom'&&!s.maxWin;
+   var w={title:T.label,key:T.key,bound:'',msg:'',hasMsg:false,isMatrix:false,isBars:false,isList:false,hasMultiples:false,multiples:[],mHead:[],mRows:[],bars:[],stats:'',list:[],span:wide?2:1,
+    close:function(){self.toggleTool(id);},left:function(){self.moveTool(id,-1);},right:function(){self.moveTool(id,1);},
+    widen:function(){ var wd=Object.assign({},self.state.wide); wd[id]=!wd[id]; self.setState({wide:wd}); },wideTip:wide?'Normal width':'Span two columns',
+    max:function(){self.setState({maxWin:self.state.maxWin===id?null:id});},maxTip:s.maxWin===id?'Restore':'Maximize',
+    dragStart:function(e){ self._drag=id; try{ e.dataTransfer.setData('text/plain',id); e.dataTransfer.effectAllowed='move'; }catch(err){} },
+    dragOver:function(e){ if(e&&e.preventDefault) e.preventDefault(); },drop:function(e){ if(e&&e.preventDefault) e.preventDefault(); self.dropTool(id); },
+    style:'min-width: 0; min-height: 0; display: flex; flex-direction: column; background: #ffffff; border: 1px solid #e3e1da; border-radius: 8px; overflow: hidden'+(wide?'; grid-column: span 2':'')};
+   if(id==='compare'){ var cs=selCols.filter(function(c){return hasCol(liveF,c);}).slice(0,6);
+    if(cs.length<2){ w.hasMsg=true; w.msg='Select two or more columns (shift-click headers, or right-click → Add to selection).'; }
+    else { w.bound=cs.length+' columns · '+role; w.isMatrix=true; w.mHead=cs.map(function(n){return {name:n,short:n.length>9?n.slice(0,8)+'…':n,style:headS+'; width: 70px'};});
+     var rowsDef=[['type',function(c){return KIND_LABEL[kindOf(liveF,c)];}],['missing',function(c){return String(missCount(liveF,c));}],['distinct',function(c){return String(new Set(vals(liveF,c).map(String)).size);}],['mean',function(c){return fmt(statOf(liveF,'mean',c));}],['median',function(c){return fmt(statOf(liveF,'median',c));}],['std',function(c){return fmt(statOf(liveF,'std',c));}],['min',function(c){return fmt(statOf(liveF,'min',c));}],['max',function(c){return fmt(statOf(liveF,'max',c));}]];
+     if(target&&hasCol(liveF,target)) rowsDef.push(['r with '+target,function(c){ var r=c===target?1:pearson(liveF,c,target); return r===null?'–':r.toFixed(2); }]);
+     w.mRows=rowsDef.map(function(d){ return {name:d[0],cells:cs.map(function(c){ var v=isNumKind(kindOf(liveF,c))||['type','missing','distinct'].indexOf(d[0])>=0?d[1](c):'–'; return {text:v,tip:c+' · '+d[0]+' = '+v,style:cellS('#faf9f6','#1c1b18')+'; width: 70px'}; })}; });
+     w.hasMultiples=true; w.multiples=cs.map(function(c){ var k=kindOf(liveF,c), pr=profile(liveF,c,k); return {name:c,bars:barsRender(pr.bars,40,k==='num'?'#1d5b86':'#a8844a',2)}; }); } }
+   else if(id==='corr'){ var cs2=selCols.filter(function(c){return isNumKind(kindOf(liveF,c));}); var use=(cs2.length>=2?cs2:numCols).slice(0,7);
+    w.bound=cs2.length>=2?'bound to selection · '+cs2.length+' columns':'all numeric columns · select 2+ to narrow';
+    if(use.length<2){ w.hasMsg=true; w.msg='Need at least two numeric columns.'; }
+    else { w.isMatrix=true; w.mHead=use.map(function(n){return {name:n,short:n.length>7?n.slice(0,6)+'…':n,style:headS};});
+     w.mRows=use.map(function(a){return {name:a,cells:use.map(function(b){ var r=a===b?1:pearson(liveF,a,b), t=r===null?'–':r.toFixed(2), m=r===null?0:Math.abs(r), col=r===null?'#f0efea':(r>=0?'rgba(29, 91, 134, '+(0.08+0.85*m).toFixed(2)+')':'rgba(180, 70, 15, '+(0.08+0.85*m).toFixed(2)+')'); return {text:t,tip:a+' × '+b+' : r = '+t,style:cellS(col,m>0.55?'#ffffff':'#1c1b18')}; })};}); } }
+   else if(id==='dist'){ if(!focus||!hasCol(liveF,focus)){ w.hasMsg=true; w.msg='Select a column to see its distribution.'; } else { var k=kindOf(liveF,focus), pr=profile(liveF,focus,k); w.bound='bound to '+focus; w.isBars=true; w.bars=barsRender(pr.bars,106,k==='num'?'#1d5b86':'#a8844a',4).map(function(b,i){return Object.assign(b,{label:k==='num'?(i===0?fmt(pr.lo):i===pr.bars.length-1?fmt(pr.hi):''):b.label});}); var aa=clean(nums(liveF,focus)); w.stats=k==='num'?('n '+aa.length+' · mean '+fmt(r3(meanA(aa)))+' · median '+fmt(r3(quant(aa,0.5)))+' · std '+fmt(r3(stdA(aa)))):(pr.distinct+' categories · '+pr.miss+' missing'); } }
+   else if(id==='missing'){ w.isList=true; w.bound=role+' · all columns'; w.list=liveF.cols.map(function(c){ var m=missCount(liveF,c.name)+(c.kind==='num'?sentCount(liveF,c.name):0), p=liveF.rows.length?m/liveF.rows.length:0; return {name:c.name,value:m?(m+' · '+Math.round(p*100)+'%'+(c.kind==='num'&&sentCount(liveF,c.name)?' incl. -999':'')):'—',barStyle:'display: block; height: 8px; width: '+Math.round(p*100)+'%; background: #c2410c'}; }); }
+   else if(id==='outliers'){ var oc=focus&&kindOf(liveF,focus)==='num'?focus:null; if(!oc){ w.hasMsg=true; w.msg='Select a numeric column. Fences: Q1 − 1.5·IQR and Q3 + 1.5·IQR, sentinels excluded.'; } else { var b=outBounds(liveF,oc); w.bound='bound to '+oc+(b?' · fences '+fmt(r3(b.lo))+' / '+fmt(r3(b.hi)):''); var fl=liveF.rows.map(function(r,i){return {i:i,v:r[oc]};}).filter(function(x){return isOut(b,x.v);}); if(!fl.length){ w.hasMsg=true; w.msg='No IQR outlier in '+oc+'.'; } else { w.isList=true; var mxv=Math.max.apply(null,clean(nums(liveF,oc)).map(Math.abs)); w.list=fl.map(function(x){return {name:'row #'+(x.i+1),value:fmt(x.v),barStyle:'display: block; height: 8px; width: '+Math.round(Math.abs(x.v)/mxv*100)+'%; background: #6b52b0'};}); } } }
+   else if(id==='target'){ if(!target||!hasCol(latest.train,target)){ w.hasMsg=true; w.msg='No target yet: set it on the Sources screen, or right-click a column → Set as target.'; } else if(role==='test'){ w.hasMsg=true; w.msg='The test set has no label. Switch to Train.'; } else { var tc=focus&&focus!==target&&hasCol(liveF,focus)?focus:null; if(!tc){ w.hasMsg=true; w.msg='Select a feature column to see '+target+' against it.'; } else { var tk=kindOf(liveF,tc); w.bound=target+' by '+tc; w.isList=true;
+     if(tk==='num'){ var allv=clean(nums(liveF,tc)).map(Math.abs), mx=Math.max.apply(null,allv.concat([1e-9])); w.list=[0,1].map(function(k){ var a=liveF.rows.filter(function(r){return r[target]===k&&typeof r[tc]==='number'&&r[tc]!==-999;}).map(function(r){return r[tc];}); var mm=meanA(a); return {name:target+' = '+k,value:'mean '+fmt(r3(mm))+' · n '+a.length,barStyle:'display: block; height: 8px; width: '+Math.round(Math.abs(mm||0)/mx*100)+'%; background: #1d5b86'}; }); }
+     else { var g={}; liveF.rows.forEach(function(r){ var k=isNull(r[tc])?'∅':String(r[tc]); g[k]=g[k]||[0,0]; g[k][0]++; if(r[target]===1) g[k][1]++; }); w.list=Object.keys(g).sort().map(function(k){ var p=g[k][1]/g[k][0]; return {name:k,value:Math.round(p*100)+'% '+target+' · n '+g[k][0],barStyle:'display: block; height: 8px; width: '+Math.round(p*100)+'%; background: #1d5b86'}; }); } } } }
+   else if(id==='drift'){ var tt=pend||cur, dc=focus&&hasCol(tt.train,focus)&&hasCol(tt.test,focus)?focus:null; if(!dc){ w.hasMsg=true; w.msg='Select a column present in train and test.'; } else { var dk=kindOf(tt.train,dc); w.bound=dc+' · train vs test'; w.isList=true;
+     if(isNumKind(dk)&&isNumKind(kindOf(tt.test,dc))){ var at=clean(nums(tt.train,dc)), ae=clean(nums(tt.test,dc)), mx2=Math.max.apply(null,at.concat(ae).map(Math.abs).concat([1e-9])); w.list=[['train mean',meanA(at)],['test mean',meanA(ae)],['train median',quant(at,0.5)],['test median',quant(ae,0.5)]].map(function(x){return {name:x[0],value:fmt(r3(x[1])),barStyle:'display: block; height: 8px; width: '+Math.round(Math.abs(x[1]||0)/mx2*100)+'%; background: '+(x[0].indexOf('test')===0?'#b4460f':'#1d5b86')};}); }
+     else { var trc={}; vals(tt.train,dc).forEach(function(v){trc[String(v)]=1;}); var tec={}; vals(tt.test,dc).forEach(function(v){tec[String(v)]=(tec[String(v)]||0)+1;}); w.list=Object.keys(tec).sort().map(function(k){ var unseen=!trc[k]; return {name:'“'+k+'”',value:tec[k]+' in test'+(unseen?' · unseen in train':''),barStyle:'display: block; height: 8px; width: '+Math.round(tec[k]/Math.max(1,tt.test.rows.length)*100)+'%; background: '+(unseen?'#a3242c':'#1d5b86')}; }); } } }
+   return w;
+  });
+  var right=s.dockPos==='right', sizes={S:[190,340],M:[270,440],L:[400,600]}[s.dockSize];
+  out.dockOpen=wins.length>0; out.wins=wins; out.showGrid=!(s.maxWin&&out.dockOpen);
+  out.workStyle='flex-grow: 1; min-height: 0; display: flex; flex-direction: '+(right?'row':'column');
+  out.dockStyle=s.maxWin&&out.dockOpen?'flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 4px 10px 10px; background: #f4f3ef':(right?'width: '+sizes[1]+'px; flex-shrink: 0; display: flex; flex-direction: column; padding: 4px 10px 10px; border-left: 1px solid #e3e1da; background: #f4f3ef; min-height: 0':'height: '+sizes[0]+'px; flex-shrink: 0; display: flex; flex-direction: column; padding: 4px 10px 10px; border-top: 1px solid #e3e1da; background: #f4f3ef');
+  var span=wins.reduce(function(a,w){return a+w.span;},0);
+  out.winsStyle='flex-grow: 1; min-height: 0; display: grid; gap: 10px; '+(right||s.maxWin?'grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(0, 1fr)':'grid-template-columns: repeat('+Math.max(1,span)+', minmax(0, 1fr))');
+  out.dockPosChips=[['bottom','Bottom'],['right','Right']].map(function(x){return {text:x[1],pick:function(){self.setState({dockPos:x[0]});},style:segBtn(s.dockPos===x[0])};});
+  out.dockSizeChips=['S','M','L'].map(function(x){return {text:x,pick:function(){self.setState({dockSize:x});},style:segBtn(s.dockSize===x)};});
+  var toolsV={}; TOOLS.forEach(function(t){ var on=s.tools.indexOf(t.id)>=0; toolsV[t.id]={toggle:function(){self.toggleTool(t.id);},style:'width: 40px; height: 40px; padding: 0; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px solid '+(on?'#1d5b86':'transparent')+'; background: '+(on?'#e3eef6':'transparent')+'; color: '+(on?'#1d5b86':'#5b5850')}; });
+  out.tools=toolsV;
+  return out;
+ }
+}
+</script>
+</body>
+</html>
