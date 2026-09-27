@@ -63,7 +63,13 @@ export function guessFileRole(
   const lower = fileName.toLowerCase();
   const assignedRoles = Object.values(existingRoles);
 
-  if (lower.includes("label") || lower.includes("target") || lower.includes("_y.")) {
+  if (
+    lower.includes("label") ||
+    lower.includes("target") ||
+    lower.includes("_y.") ||
+    lower.startsWith("y_") ||
+    lower.includes("y_train")
+  ) {
     return "trainY";
   }
   if (lower.includes("test") || lower.includes("val")) {

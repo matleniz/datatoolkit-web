@@ -273,13 +273,23 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     if (!editor?.op || !isLatest) return null;
     const uiOp = editor.op;
     const engineOp = resolveOp(uiOp);
-    const params = stripNullParams(toEngineParams(uiOp, editor.params));
+    let editorParams = editor.params;
+    if (
+      engineOp === "formula" &&
+      (!editorParams.variables ||
+        (editorParams.variables as unknown[]).length === 0) &&
+      workspace?.variables &&
+      workspace.variables.length > 0
+    ) {
+      editorParams = { ...editorParams, variables: workspace.variables };
+    }
+    const params = stripNullParams(toEngineParams(uiOp, editorParams));
     const check = stepParamsValid(engineOp, params, schemaFields);
     if (!check.ok) return null;
     // Wait for schema→fields so the editor never previews with an empty form.
     if (schemaLoading || schemaFields.length === 0) return null;
     return { op: engineOp, target: editor.target, params };
-  }, [editor, isLatest, schemaFields, schemaLoading]);
+  }, [editor, isLatest, schemaFields, schemaLoading, workspace?.variables]);
 
   const pendingStepKey = stepKey(pendingStep);
 
