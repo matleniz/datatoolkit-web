@@ -7,3 +7,15 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+declare module "plotly.js-dist-min" {
+  const Plotly: {
+    newPlot: (
+      el: HTMLElement,
+      data: object[],
+      layout?: object,
+      config?: object,
+    ) => Promise<unknown>;
+  };
+  export default Plotly;
+}

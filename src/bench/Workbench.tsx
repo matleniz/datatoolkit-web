@@ -16,7 +16,11 @@ import "./Workbench.css";
  * W3 = left/dock/export/toolrail.
  */
 export function Workbench() {
-  const { editor } = useAppState();
+  const { editor, dock } = useAppState();
+  const dockOpen = dock.tools.length > 0;
+  const maximized = !!(dock.maximized && dock.tools.includes(dock.maximized));
+  const right = dock.pos === "right" && dockOpen;
+  const showGrid = !(maximized && dockOpen);
 
   return (
     <div className="workbench" aria-label="Workbench">
@@ -25,8 +29,12 @@ export function Workbench() {
         <LeftPanel />
         <main className="workbench-main">
           <ExportPanel />
-          <div className="workbench-grid-area">
-            <Grid />
+          <div
+            className={
+              right ? "workbench-grid-area row" : "workbench-grid-area"
+            }
+          >
+            {showGrid ? <Grid /> : null}
             <Dock />
           </div>
         </main>

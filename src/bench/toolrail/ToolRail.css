@@ -1,0 +1,42 @@
+.tool-rail {
+  width: var(--dtk-toolrail-w);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-top: 12px;
+  background: var(--dtk-surface);
+  border-left: 1px solid var(--dtk-border);
+}
+
+.tool-rail-label {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dtk-muted);
+  margin-bottom: 2px;
+}
+
+.tool-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--dtk-muted);
+}
+
+.tool-btn.on {
+  border-color: var(--dtk-accent);
+  background: var(--dtk-accent-soft);
+  color: var(--dtk-accent);
+}
+
+.tool-btn:hover {
+  background: var(--dtk-hairline);
+}

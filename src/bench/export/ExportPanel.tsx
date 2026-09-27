@@ -1,4 +1,135 @@
-/** W3 — export panel. */
+import { useMemo, useState } from "react";
+
+import { apiClient } from "../../api/client";
+import type { ExportManifest } from "../../api/types";
+import { EngineError } from "../../api/types";
+import { useAppDispatch, useAppState } from "../../state/AppStore";
+import "./ExportPanel.css";
+
+const FIT_OPS = new Set([
+  "impute",
+  "scale",
+  "onehot",
+  "ordinal",
+  "clip",
+  "formula",
+  "log1p",
+]);
+
+/** W3 — export panel (workspace JSON + export_workspace). */
 export function ExportPanel() {
-  return null;
+  const { workspace, showExport } = useAppState();
+  const dispatch = useAppDispatch();
+  const [outDir, setOutDir] = useState("./export");
+  const [manifest, setManifest] = useState<ExportManifest | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const steps = workspace?.steps ?? [];
+  const nFit = steps.filter(
+    (st) => FIT_OPS.has(st.op) && st.target !== "test",
+  ).length;
+  const leakText = steps.length
+    ? `${nFit} fitted step${nFit !== 1 ? "s" : ""} learned on train and replayed on test. Nothing is refitted on test.`
+    : "No step yet.";
+
+  const codeText = useMemo(() => {
+    if (!workspace) return "// no workspace";
+    return JSON.stringify(workspace, null, 2);
+  }, [workspace]);
+
+  if (!showExport) {
+    return (
+      <div className="export-bar" data-owner="W3">
+        <span className="export-bar-spacer" />
+        <button
+          type="button"
+          className="export-open-btn"
+          onClick={() => dispatch({ type: "SET_SHOW_EXPORT", show: true })}
+        >
+          Export
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="export-panel" data-owner="W3" aria-label="Export">
+      <div className="export-code-col">
+        <div className="export-heading">
+          <span className="export-title">Export</span>
+          <span className="muted">
+            workspace JSON, what save_workspace stores
+          </span>
+        </div>
+        <pre className="export-code">{codeText}</pre>
+      </div>
+      <div className="export-side">
+        <div className="export-side-title">Outputs</div>
+        <div className="export-outputs mono muted">
+          train.parquet
+          <br />
+          test.parquet
+          <br />
+          manifest.json · steps, states, hashes
+        </div>
+        <div className="leak-line">{leakText}</div>
+        <label htmlFor="export-outdir">Output directory</label>
+        <input
+          id="export-outdir"
+          className="mono"
+          value={outDir}
+          onChange={(e) => setOutDir(e.target.value)}
+          aria-label="Output directory"
+        />
+        <button
+          type="button"
+          className="export-run-btn"
+          disabled={!workspace || busy || !outDir.trim()}
+          onClick={async () => {
+            if (!workspace) return;
+            setBusy(true);
+            setError(null);
+            try {
+              await apiClient.saveWorkspace(workspace);
+              const m = await apiClient.exportWorkspace(workspace.name, {
+                out_dir: outDir.trim(),
+                overwrite: true,
+              });
+              setManifest(m);
+            } catch (e) {
+              setError(e instanceof EngineError ? e.message : String(e));
+              setManifest(null);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Export parquet + manifest
+        </button>
+        {error ? (
+          <div className="engine-error" role="alert">
+            {error}
+          </div>
+        ) : null}
+        {manifest ? (
+          <div className="export-manifest" aria-label="Export manifest">
+            <div className="leak-line">
+              Written to {outDir.trim()}/{workspace?.name ?? ""}/
+            </div>
+            <pre className="export-manifest-json">
+              {JSON.stringify(manifest, null, 2)}
+            </pre>
+          </div>
+        ) : null}
+        <button
+          type="button"
+          className="export-close-btn"
+          onClick={() => dispatch({ type: "SET_SHOW_EXPORT", show: false })}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
 }

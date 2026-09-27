@@ -47,6 +47,10 @@
   flex-direction: column;
 }
 
+.workbench-grid-area.row {
+  flex-direction: row;
+}
+
 .grid {
   flex: 1;
   min-height: 0;
@@ -55,11 +59,7 @@
 }
 
 .dock {
-  flex-shrink: 0;
-  min-height: 48px;
-  border-top: 1px solid var(--dtk-border);
-  padding: 8px 12px;
-  background: var(--dtk-bg-subtle);
+  /* Base styles live in dock/Dock.css (W3). */
 }
 
 .inspector,

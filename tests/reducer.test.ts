@@ -104,6 +104,64 @@ describe("dock tools (open / toggle / move / drop)", () => {
     expect(s.dock.tools).toEqual(["dist", "compare", "corr"]);
     expect(s.dockDragFrom).toBeNull();
   });
+
+  it("SET_DOCK_POS / SIZE / TOGGLE_WIDE / SET_MAXIMIZED", () => {
+    let s = withDock(["compare", "corr"]);
+    s = appReducer(s, { type: "SET_DOCK_POS", pos: "right" });
+    expect(s.dock.pos).toBe("right");
+    s = appReducer(s, { type: "SET_DOCK_SIZE", size: "L" });
+    expect(s.dock.size).toBe("L");
+    s = appReducer(s, { type: "TOGGLE_WIDE", id: "compare" });
+    expect(s.dock.wide.compare).toBe(true);
+    s = appReducer(s, { type: "SET_MAXIMIZED", id: "corr" });
+    expect(s.dock.maximized).toBe("corr");
+  });
+});
+
+describe("W3 variables / formula insert / export", () => {
+  it("ADD_VARIABLE and REMOVE_VARIABLE update workspace.variables", () => {
+    let s: AppState = {
+      ...initialState,
+      workspace: {
+        name: "churn",
+        datasets: { train: { x: { kind: "csv", path: "/tmp/t.csv" } } },
+        label: { mode: "order" },
+        merges: [],
+        variables: [],
+        steps: [],
+      },
+    };
+    s = appReducer(s, {
+      type: "ADD_VARIABLE",
+      variable: { name: "spend_med", stat: "median", column: "monthly_spend" },
+    });
+    expect(s.workspace?.variables).toEqual([
+      { name: "spend_med", stat: "median", column: "monthly_spend" },
+    ]);
+    s = appReducer(s, { type: "REMOVE_VARIABLE", name: "spend_med" });
+    expect(s.workspace?.variables).toEqual([]);
+  });
+
+  it("INSERT_FORMULA_TOKEN opens formula editor or appends", () => {
+    let s = appReducer(initialState, {
+      type: "INSERT_FORMULA_TOKEN",
+      token: "@spend_med",
+    });
+    expect(s.editor?.op).toBe("formula");
+    expect(s.editor?.params.expr).toBe("@spend_med");
+    s = appReducer(s, {
+      type: "INSERT_FORMULA_TOKEN",
+      token: "+ age",
+    });
+    expect(s.editor?.params.expr).toBe("@spend_med + age");
+  });
+
+  it("SET_SHOW_EXPORT toggles the panel", () => {
+    let s = appReducer(initialState, { type: "SET_SHOW_EXPORT", show: true });
+    expect(s.showExport).toBe(true);
+    s = appReducer(s, { type: "SET_SHOW_EXPORT", show: false });
+    expect(s.showExport).toBe(false);
+  });
 });
 
 describe("orderSteps", () => {
