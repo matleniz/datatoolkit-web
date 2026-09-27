@@ -26,6 +26,62 @@ async function openBench(page: import("@playwright/test").Page) {
   });
 }
 
+/** Fail loudly if Workbench.css stops applying (e.g. unclosed rule nests grid/inspector). */
+async function assertWorkbenchLayout(
+  page: import("@playwright/test").Page,
+  mode: "inspector" | "editor",
+) {
+  const header = page.locator(".grid-th").first();
+  const headerBox = await header.boundingBox();
+  expect(headerBox, "header cell box").not.toBeNull();
+  expect(headerBox!.width, "header cell width").toBeGreaterThanOrEqual(96);
+  expect(headerBox!.height, "header cell height").toBe(100);
+
+  const cell = page.locator(".grid-td").first();
+  const cellBox = await cell.boundingBox();
+  expect(cellBox, "grid cell box").not.toBeNull();
+  expect(cellBox!.height, "grid cell height").toBe(30);
+
+  const grid = page.getByLabel("Data grid");
+  const gridBox = await grid.boundingBox();
+  expect(gridBox, "grid box").not.toBeNull();
+  const gridRight = gridBox!.x + gridBox!.width;
+
+  if (mode === "inspector") {
+    const inspector = page.getByLabel("Inspector");
+    await expect(inspector).toBeVisible();
+    const inspBox = await inspector.boundingBox();
+    expect(inspBox, "inspector box").not.toBeNull();
+    // Flush adjacency is fine; overlap would mean insp.x < gridRight.
+    expect(inspBox!.x, "inspector to the right of grid").toBeGreaterThanOrEqual(
+      gridRight,
+    );
+  } else {
+    const editor = page.getByLabel("Step editor");
+    await expect(editor).toBeVisible();
+    const edBox = await editor.boundingBox();
+    expect(edBox, "step editor box").not.toBeNull();
+    expect(edBox!.x, "step editor to the right of grid").toBeGreaterThanOrEqual(
+      gridRight,
+    );
+
+    const title = editor.locator(".ed-title").first();
+    await expect(title).toBeVisible();
+    const titleBox = await title.boundingBox();
+    expect(titleBox, "step editor title box").not.toBeNull();
+    expect(titleBox!.x, "title inside editor (left)").toBeGreaterThanOrEqual(edBox!.x);
+    expect(
+      titleBox!.x + titleBox!.width,
+      "title inside editor (right)",
+    ).toBeLessThanOrEqual(edBox!.x + edBox!.width + 1);
+    expect(titleBox!.y, "title inside editor (top)").toBeGreaterThanOrEqual(edBox!.y);
+    expect(
+      titleBox!.y + titleBox!.height,
+      "title inside editor (bottom)",
+    ).toBeLessThanOrEqual(edBox!.y + edBox!.height + 1);
+  }
+}
+
 test.beforeAll(() => {
   mkdirSync(shotDir, { recursive: true });
   mkdirSync(docsDir, { recursive: true });
@@ -37,6 +93,7 @@ test("workbench: replace sentinels → impute → one-hot → time travel → de
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await openBench(page);
+  await assertWorkbenchLayout(page, "inspector");
 
   await page.screenshot({
     path: join(shotDir, "01-grid.png"),
@@ -54,6 +111,7 @@ test("workbench: replace sentinels → impute → one-hot → time travel → de
   await expect(page.getByRole("button", { name: "Apply step" }).first()).toBeEnabled({
     timeout: 15_000,
   });
+  await assertWorkbenchLayout(page, "editor");
   await page.screenshot({
     path: join(shotDir, "02-replace-sentinels-editor.png"),
     fullPage: true,
@@ -125,6 +183,7 @@ test("workbench: replace sentinels → impute → one-hot → time travel → de
     .first();
   await expect(firstAddedCell).toBeVisible();
   await expect(firstAddedCell).toHaveText(/^[01]$/);
+  await assertWorkbenchLayout(page, "editor");
   await page.screenshot({
     path: join(shotDir, "04-onehot-diff.png"),
     fullPage: true,
@@ -149,6 +208,7 @@ test("workbench: replace sentinels → impute → one-hot → time travel → de
   // Time travel to v1
   await page.locator(".pipeline-node", { hasText: "v1" }).first().click();
   await expect(page.getByText("Time travel")).toBeVisible();
+  await assertWorkbenchLayout(page, "inspector");
   await page.screenshot({
     path: join(shotDir, "05-time-travel.png"),
     fullPage: true,
