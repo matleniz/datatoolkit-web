@@ -72,8 +72,11 @@ test("workbench: replace sentinels → impute → one-hot → time travel → de
   await expect(page.getByText("Strategy", { exact: true })).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByRole("button", { name: "median" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "most_frequent" })).toBeVisible();
+  const editor = page.getByLabel("Step editor");
+  await expect(editor.getByRole("button", { name: "median" })).toBeVisible();
+  await expect(
+    editor.getByRole("button", { name: "most_frequent" }),
+  ).toBeVisible();
   await expect(page.getByText("Add Indicator", { exact: true })).toBeVisible();
   await expect(page.getByText("Learned on train", { exact: true })).toBeVisible();
   await expect(page.locator(".ed-learned")).toContainText(/fill|age/i, {
@@ -102,7 +105,18 @@ test("workbench: replace sentinels → impute → one-hot → time travel → de
   const addedCol = page.locator(".grid-th.added").first();
   await expect(addedCol).toBeVisible({ timeout: 15_000 });
   const addedName = ((await addedCol.locator(".th-name").textContent()) ?? "").trim();
-  expect(addedName).toMatch(/^city_/);
+  // Strip curly quotes used when the category has leading/trailing spaces
+  const addedBare = addedName.replace(/^[“”"]|[“”"]$/g, "");
+  expect(addedBare).toMatch(/^city_/);
+  // city has both "Lille" and "Lille " → one header must show quoted trailing space
+  const quotedLille = page.locator(".grid-th.added .th-name", {
+    hasText: "city_Lille",
+  });
+  const quotedTexts = await quotedLille.allTextContents();
+  expect(
+    quotedTexts.some((t) => /[“"]city_Lille\s+[”"]/.test(t)),
+    `expected a quoted city_Lille-with-trailing-space header, got: ${JSON.stringify(quotedTexts)}`,
+  ).toBe(true);
   // First data cell of the first added column should be 0 or 1, not "missing"
   const firstAddedCell = page
     .locator(".grid-row")

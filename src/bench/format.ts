@@ -29,6 +29,12 @@ export function cellDisplay(v: JsonValue | undefined): string {
   return fmt(v as JsonValue);
 }
 
+/** Column header / name display — quote leading/trailing spaces like cells. */
+export function nameDisplay(name: string): string {
+  if (name !== name.trim()) return `“${name}”`;
+  return name;
+}
+
 /** Render fitted state from preview_step.state as readable lines. */
 export function formatLearnedState(state: Record<string, JsonValue>): string {
   if (!state || Object.keys(state).length === 0) {

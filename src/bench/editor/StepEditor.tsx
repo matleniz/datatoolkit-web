@@ -677,7 +677,7 @@ function CategoriesField({
     const seeded =
       order.length > 0
         ? order
-        : (pr?.top_values.map((t) => t.value) ?? []);
+        : (pr?.top_values?.map((t) => t.value) ?? []);
     onChange({ [name]: seeded });
   };
 

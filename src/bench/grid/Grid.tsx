@@ -1,7 +1,7 @@
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { colAlerts, isOutlierValue, missPct, profileBars } from "../alerts";
 import { cellTone } from "../diff";
-import { cellDisplay, fmt } from "../format";
+import { cellDisplay, fmt, nameDisplay } from "../format";
 import { colWidth, isNumericKind, KIND_BAR, KIND_LABEL } from "../kinds";
 import { useWorkbenchData } from "../WorkbenchData";
 
@@ -203,7 +203,7 @@ export function Grid() {
                         c.status === "removed" ? "th-name struck" : "th-name"
                       }
                     >
-                      {c.name}
+                      {nameDisplay(c.name)}
                     </span>
                     {isT ? (
                       <svg

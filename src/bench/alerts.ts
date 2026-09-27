@@ -70,7 +70,7 @@ export function profileBars(
         label: "",
       });
     });
-  } else if (profile.top_values.length) {
+  } else if (profile.top_values && profile.top_values.length) {
     const limit =
       profile.kind === "date" || profile.kind === "identifier" ? 12 : 8;
     profile.top_values.slice(0, limit).forEach((tv) => {

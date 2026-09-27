@@ -270,7 +270,7 @@ export function Inspector() {
       const sent = pr.sentinel_candidates[0];
       if (sent) stats.push([String(sent.value), String(sent.count)]);
       if (pr.outliers) stats.push(["outliers", String(pr.outliers)]);
-    } else if (pr?.top_values[0]) {
+    } else if (pr?.top_values?.[0]) {
       stats.push([
         "top",
         `${String(pr.top_values[0].value)} (${pr.top_values[0].count})`,
