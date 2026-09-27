@@ -1,0 +1,22 @@
+{
+  "metrics": {
+    "size_bytes": 2911129,
+    "modified": "2026-09-27T21:18:03+00:00",
+    "first_bytes": "b'Index,patient_id,cohort,sexM,gene,age_at_diagnosis,age,ledd,time_since_intake_on,time_since_intake_off,on,off\\n0,IPLP5212'",
+    "bom": "none",
+    "encoding_guess": "utf-8",
+    "line_endings": "LF",
+    "delimiter": "','",
+    "decimal_guess": ".",
+    "header_guess": "present",
+    "header_line": 1,
+    "title_lines_above_header": 0,
+    "unnamed_columns": "",
+    "leading_zero_columns": "",
+    "bad_line": "none",
+    "load_spec": "{\"kind\": \"csv\", \"path\": \"/uploads/X_train_6ZIKlTY.csv\", \"sep\": \",\", \"encoding\": \"utf-8\", \"decimal\": \".\", \"header\": 0}"
+  },
+  "tables": [],
+  "figures": [],
+  "text": ""
+}

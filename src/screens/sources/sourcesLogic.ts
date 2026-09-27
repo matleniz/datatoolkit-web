@@ -4,6 +4,7 @@ import type {
   FileSourceSpec,
   LabelJoin,
   MergeSpec,
+  Result,
   Step,
   Workspace,
 } from "../../api/types";
@@ -21,6 +22,18 @@ export interface SourceFileItem {
   isGuessed?: boolean;
 }
 
+/** Front-only Sources UI state kept per workspace name. */
+export interface WorkspaceSourcesState {
+  files: SourceFileItem[];
+  roles: Record<string, FileRole>;
+  guessedMap: Record<string, boolean>;
+  labelMode: "yfile" | "column";
+  yJoin: "order" | "key";
+  targetCol: string | null;
+  mergeKey: string | null;
+  mergeInTest: boolean;
+}
+
 export const ROLE_LABELS: Record<FileRole, string> = {
   trainX: "Train X",
   trainY: "Train y",
@@ -36,6 +49,9 @@ export const ALL_ROLES: FileRole[] = [
   "merge",
   "ignore",
 ];
+
+/** Mirrors the engine join INDEX_NAMES set (case-insensitive). */
+const INDEX_NAMES = new Set(["index", "idx", "unnamed: 0", ""]);
 
 /**
  * Heuristics to guess a role from a filename, mirroring prototype behaviour.
@@ -72,6 +88,46 @@ export function guessFileRole(
 export function getCommonColumns(colsA: string[], colsB: string[]): string[] {
   const setB = new Set(colsB);
   return colsA.filter((c) => setB.has(c));
+}
+
+export function isIndexColumnName(name: string): boolean {
+  return INDEX_NAMES.has(name.trim().toLowerCase());
+}
+
+/**
+ * Value column of a y file, mirroring engine `label_columns` name rules
+ * (Index / idx / Unnamed: 0 are not the label).
+ */
+export function yLabelValueColumn(yCols: string[]): string | null {
+  if (yCols.length === 0) return null;
+  if (yCols.length === 1) return yCols[0] ?? null;
+  if (yCols.length === 2) {
+    const indexLike = yCols.filter((c) => isIndexColumnName(c));
+    if (indexLike.length === 1) {
+      return yCols.find((c) => c !== indexLike[0]) ?? null;
+    }
+  }
+  // Prefer the first non-index-like name when several columns.
+  const value = yCols.find((c) => !isIndexColumnName(c));
+  return value ?? yCols[0] ?? null;
+}
+
+/**
+ * Target column name from an engine preview/rows column list: the column
+ * present after join that is not from train X (and not a merge key).
+ */
+export function targetFromPreviewColumns(
+  previewColumns: string[],
+  trainXCols: string[],
+): string | null {
+  const xSet = new Set(trainXCols);
+  const added = previewColumns.filter((c) => !xSet.has(c));
+  if (added.length === 1) return added[0] ?? null;
+  if (added.length > 1) {
+    const value = added.find((c) => !isIndexColumnName(c));
+    return value ?? added[0] ?? null;
+  }
+  return null;
 }
 
 export interface WorkspaceBuildInput {
@@ -164,10 +220,11 @@ export function buildWorkspaceJson(
       );
     } else {
       trainYSpec = structuredClone(trainY.spec);
-      trainY.cols.forEach((c) => {
-        originMap[c] = "y";
-      });
-      targetLabel = trainY.cols[0] ?? null;
+      const valueCol = yLabelValueColumn(trainY.cols);
+      if (valueCol) {
+        originMap[valueCol] = "y";
+        targetLabel = valueCol;
+      }
 
       if (input.yJoin === "key") {
         labelJoin = { mode: "key", key: input.targetCol ?? undefined };
@@ -272,24 +329,95 @@ export function buildWorkspaceJson(
   };
 }
 
+export interface FileInspectMapped {
+  /** SourceSpec ready to pass to source_columns / workspace load. */
+  spec: FileSourceSpec;
+  /** 0-based pandas `header` from load_spec (not 1-based header_line). */
+  header: number | null;
+  /** Human-readable detected line for the Files table. */
+  detected: string;
+}
+
+/**
+ * Map a file_inspect Result to load_spec + detected summary.
+ * Prefer `load_spec.header` (and Excel `suggested_header`) over `header_line`
+ * which is a 1-based file line number. Shape must be supplied separately
+ * (engine does not put row counts in file_inspect metrics).
+ */
+export function mapFileInspect(
+  result: Result,
+  shape?: [number, number] | null,
+): FileInspectMapped {
+  const metrics = result.metrics ?? {};
+  let spec: FileSourceSpec = { kind: "csv", path: "" };
+
+  if (typeof metrics.load_spec === "string" && metrics.load_spec) {
+    try {
+      const parsed = JSON.parse(metrics.load_spec) as FileSourceSpec;
+      if (parsed && typeof parsed === "object" && "kind" in parsed) {
+        spec = parsed;
+      }
+    } catch {
+      // keep default
+    }
+  }
+
+  // Excel sheets table may carry suggested_header (0-based).
+  const sheets = result.tables?.find((t) => t.title === "sheets");
+  const firstSheet = sheets?.records?.[0];
+  if (
+    firstSheet &&
+    typeof firstSheet.suggested_header === "number" &&
+    (!("header" in spec) || (spec as CsvSource).header === undefined)
+  ) {
+    (spec as CsvSource).header = firstSheet.suggested_header as number;
+  }
+
+  let header: number | null = null;
+  if (spec.kind === "csv" || spec.kind === "excel") {
+    const h = (spec as CsvSource).header;
+    header = h === undefined ? null : h;
+  }
+
+  const detected = formatDetected(metrics, shape ?? null, header);
+  return { spec, header, detected };
+}
+
 /**
  * Format detected specs from file_inspect key output.
+ * `header` is the 0-based load_spec value when known; falls back to metrics
+ * only when load_spec was missing.
  */
 export function formatDetected(
   metrics: Record<string, unknown>,
-  shape?: [number, number],
+  shape?: [number, number] | null,
+  headerOverride?: number | null,
 ): string {
   const parts: string[] = ["csv"];
-  const delim = String(metrics.delimiter ?? ",");
-  parts.push(`sep ${delim.replace(/'/g, '"')}`);
+  const delimRaw = String(metrics.delimiter ?? ",");
+  // Engine may send repr("','") or "," — normalise for display.
+  const delim = delimRaw.replace(/^'|'$/g, "").replace(/'/g, '"') || ",";
+  parts.push(`sep ${delim.startsWith('"') ? delim : JSON.stringify(delim)}`);
 
   const enc = String(metrics.encoding_guess ?? "utf-8");
   parts.push(enc);
 
-  const header = metrics.header_line !== undefined ? metrics.header_line : 0;
+  let header: number | string;
+  if (headerOverride !== undefined && headerOverride !== null) {
+    header = headerOverride;
+  } else if (typeof metrics.load_spec === "string") {
+    try {
+      const parsed = JSON.parse(metrics.load_spec) as { header?: number | null };
+      header = parsed.header ?? 0;
+    } catch {
+      header = 0;
+    }
+  } else {
+    header = 0;
+  }
   parts.push(`header ${header}`);
 
-  if (shape) {
+  if (shape && shape[0] !== undefined && shape[1] !== undefined) {
     parts.push(`${shape[0]} × ${shape[1]}`);
   }
 
@@ -388,5 +516,102 @@ export function extractFilesFromWorkspace(ws: Workspace): {
     targetCol,
     mergeKey,
     mergeInTest,
+  };
+}
+
+export function emptyWorkspaceSources(): WorkspaceSourcesState {
+  return {
+    files: [],
+    roles: {},
+    guessedMap: {},
+    labelMode: "yfile",
+    yJoin: "order",
+    targetCol: null,
+    mergeKey: null,
+    mergeInTest: true,
+  };
+}
+
+export function defaultChurnSources(fixtureBase: string): WorkspaceSourcesState {
+  const files: SourceFileItem[] = [
+    {
+      id: "train",
+      name: "churn_train.csv",
+      path: `${fixtureBase}/churn_train.csv`,
+      cols: [
+        "customer_id",
+        "signup_date",
+        "age",
+        "city",
+        "plan",
+        "monthly_spend",
+        "sessions",
+        "support_calls",
+      ],
+      detected: 'csv · sep "," · utf-8 · header 0 · 20 × 8',
+      spec: { kind: "csv", path: `${fixtureBase}/churn_train.csv` },
+      rowCount: 20,
+      isGuessed: true,
+    },
+    {
+      id: "labels",
+      name: "churn_labels.csv",
+      path: `${fixtureBase}/churn_labels.csv`,
+      cols: ["churn"],
+      detected: 'csv · sep "," · utf-8 · header 0 · 20 × 1',
+      spec: { kind: "csv", path: `${fixtureBase}/churn_labels.csv` },
+      rowCount: 20,
+      isGuessed: true,
+    },
+    {
+      id: "test",
+      name: "churn_test.csv",
+      path: `${fixtureBase}/churn_test.csv`,
+      cols: [
+        "customer_id",
+        "signup_date",
+        "age",
+        "city",
+        "plan",
+        "monthly_spend",
+        "sessions",
+        "nb_support_calls",
+        "promo_code",
+      ],
+      detected: 'csv · sep "," · utf-8 · header 0 · 6 × 9 · decimal "," seen',
+      spec: {
+        kind: "csv",
+        path: `${fixtureBase}/churn_test.csv`,
+        decimal: ",",
+      },
+      rowCount: 6,
+      isGuessed: true,
+    },
+    {
+      id: "extra",
+      name: "customers_extra.csv",
+      path: `${fixtureBase}/customers_extra.csv`,
+      cols: ["customer_id", "region"],
+      detected: 'csv · sep "," · utf-8 · header 0 · 26 × 2',
+      spec: { kind: "csv", path: `${fixtureBase}/customers_extra.csv` },
+      rowCount: 26,
+      isGuessed: true,
+    },
+  ];
+  const roles: Record<string, FileRole> = {};
+  const guessedMap: Record<string, boolean> = {};
+  for (const f of files) {
+    roles[f.id] = guessFileRole(f.name, roles);
+    guessedMap[f.id] = true;
+  }
+  return {
+    files,
+    roles,
+    guessedMap,
+    labelMode: "yfile",
+    yJoin: "order",
+    targetCol: null,
+    mergeKey: "customer_id",
+    mergeInTest: true,
   };
 }
