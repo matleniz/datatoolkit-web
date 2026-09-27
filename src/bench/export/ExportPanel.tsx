@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { apiClient } from "../../api/client";
-import type { ExportManifest } from "../../api/types";
+import type { ExportManifest, ExportOutputEntry } from "../../api/types";
 import { EngineError } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import "./ExportPanel.css";
@@ -15,6 +15,29 @@ const FIT_OPS = new Set([
   "formula",
   "log1p",
 ]);
+
+function outputEntries(
+  outputs: ExportManifest["outputs"],
+): { role: string; entry: ExportOutputEntry }[] {
+  if (Array.isArray(outputs)) {
+    return outputs.map((entry, i) => ({
+      role: String((entry as ExportOutputEntry).path ?? i),
+      entry: entry as ExportOutputEntry,
+    }));
+  }
+  return Object.entries(outputs ?? {}).map(([role, entry]) => ({
+    role,
+    entry,
+  }));
+}
+
+function countFittedSteps(steps: Record<string, unknown>[]): number {
+  return steps.filter((st) => {
+    const op = String(st.op ?? "");
+    const target = String(st.target ?? "both");
+    return FIT_OPS.has(op) && target !== "test";
+  }).length;
+}
 
 /** W3 — export panel (workspace JSON + export_workspace). */
 export function ExportPanel() {
@@ -53,6 +76,11 @@ export function ExportPanel() {
     );
   }
 
+  const outs = manifest ? outputEntries(manifest.outputs) : [];
+  const fittedInManifest = manifest
+    ? countFittedSteps(manifest.steps ?? [])
+    : 0;
+
   return (
     <div className="export-panel" data-owner="W3" aria-label="Export">
       <div className="export-code-col">
@@ -90,6 +118,7 @@ export function ExportPanel() {
             if (!workspace) return;
             setBusy(true);
             setError(null);
+            setManifest(null);
             try {
               await apiClient.saveWorkspace(workspace);
               const m = await apiClient.exportWorkspace(workspace.name, {
@@ -114,8 +143,25 @@ export function ExportPanel() {
         ) : null}
         {manifest ? (
           <div className="export-manifest" aria-label="Export manifest">
-            <div className="leak-line">
-              Written to {outDir.trim()}/{workspace?.name ?? ""}/
+            <div className="export-manifest-summary">
+              <div>
+                <strong>{(manifest.steps ?? []).length}</strong> step
+                {(manifest.steps ?? []).length === 1 ? "" : "s"}
+                {" · "}
+                <strong>{fittedInManifest}</strong> fitted
+              </div>
+              {outs.length ? (
+                <ul className="export-manifest-paths">
+                  {outs.map(({ role, entry }) => (
+                    <li key={role} className="mono">
+                      {role}: {entry.path}
+                      {typeof entry.rows === "number"
+                        ? ` · ${entry.rows} rows`
+                        : ""}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
             <pre className="export-manifest-json">
               {JSON.stringify(manifest, null, 2)}

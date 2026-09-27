@@ -53,8 +53,17 @@ export function SuggestionsTab() {
         const errors: string[] = [];
         for (const keyId of SUGGESTION_KEYS) {
           const params: Record<string, unknown> = { source };
-          if (keyId === "preprocessing_advisor" && target) {
+  if (keyId === "preprocessing_advisor" && target) {
             params.target = target;
+          }
+          // y-file workspaces have no target_column; labeled dataset still
+          // exposes the joined label — pass a conventional name when present.
+          if (
+            keyId === "preprocessing_advisor" &&
+            !target &&
+            workspace.datasets.train.y
+          ) {
+            params.target = "target";
           }
           if (keyId === "missing_values" || keyId === "outliers") {
             if (workspace.datasets.test?.x) {

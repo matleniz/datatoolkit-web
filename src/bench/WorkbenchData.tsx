@@ -32,6 +32,11 @@ import {
   stripNullParams,
   type EditorField,
 } from "./schemaFields";
+import {
+  effectiveVersion,
+  latestVersion,
+  normalizeProfiles,
+} from "./version";
 
 const PAGE = 500;
 
@@ -57,21 +62,14 @@ export interface WorkbenchDataValue {
   transforms: { op: string; title: string; description: string }[];
   schemaFields: EditorField[];
   schemaLoading: boolean;
+  loading: boolean;
+  hasMore: boolean;
+  loadMore: () => void;
   reload: () => void;
   applyPending: () => void;
 }
 
 const WorkbenchDataContext = createContext<WorkbenchDataValue | null>(null);
-
-function latestVersion(ws: Workspace): number {
-  return ws.steps.length;
-}
-
-function effectiveVersion(ws: Workspace, viewVersion: number | null): number {
-  const last = latestVersion(ws);
-  if (viewVersion === null || viewVersion > last) return last;
-  return viewVersion;
-}
 
 function stepKey(step: Step | null): string | null {
   if (!step) return null;
@@ -107,9 +105,14 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
   const [schemaFields, setSchemaFields] = useState<EditorField[]>([]);
   const [schemaLoading, setSchemaLoading] = useState(false);
   const [tick, setTick] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const columnsRef = useRef(columns);
   columnsRef.current = columns;
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const fetchGen = useRef(0);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
 
@@ -143,7 +146,11 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Base grid + profiles + pipeline shapes.
+  // Clear immediately on version/workspace change so time travel never shows
+  // stale (latest) cells while the older version loads.
   useEffect(() => {
+    const gen = ++fetchGen.current;
+
     if (!workspace || !workspace.datasets.train.x.path) {
       setColumns([]);
       setRows([]);
@@ -151,31 +158,46 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       setProfiles(new Map());
       setShapes([{ rows: 0, cols: 0 }]);
       setStepErrors(new Map());
+      setLoading(false);
+      dispatch({ type: "SET_BENCH_ERROR", message: null });
       return;
     }
-    let cancelled = false;
+
+    setColumns([]);
+    setRows([]);
+    setTotal(0);
+    setProfiles(new Map());
+    setShapes([]);
+    setStepErrors(new Map());
+    setLoading(true);
+
     const ws = workspace;
     const n = ws.steps.length;
+    const ver = version;
 
     (async () => {
       try {
-        const [rowsRes, profRes] = await Promise.all([
-          apiClient.workspaceRows(ws, role, version, 0, PAGE),
-          apiClient.columnProfiles(ws, role, version),
+        const [rowsRes, profRaw] = await Promise.all([
+          apiClient.workspaceRows(ws, role, ver, 0, PAGE),
+          apiClient.columnProfiles(ws, role, ver),
         ]);
-        if (!cancelled) {
-          setColumns(rowsRes.columns);
-          setRows(rowsRes.rows);
-          setTotal(rowsRes.total);
-          setProfiles(new Map(profRes.columns.map((p) => [p.name, p])));
-          dispatch({ type: "SET_BENCH_ERROR", message: null });
-        }
+        if (gen !== fetchGen.current) return;
+        const profRes = normalizeProfiles(profRaw);
+        setColumns(rowsRes.columns);
+        setRows(rowsRes.rows);
+        setTotal(rowsRes.total);
+        setProfiles(new Map(profRes.columns.map((p) => [p.name, p])));
+        dispatch({ type: "SET_BENCH_ERROR", message: null });
       } catch (e) {
-        if (!cancelled) {
-          const msg =
-            e instanceof EngineError ? e.message : String(e);
-          dispatch({ type: "SET_BENCH_ERROR", message: msg });
-        }
+        if (gen !== fetchGen.current) return;
+        const msg = e instanceof EngineError ? e.message : String(e);
+        setColumns([]);
+        setRows([]);
+        setTotal(0);
+        setProfiles(new Map());
+        dispatch({ type: "SET_BENCH_ERROR", message: msg });
+      } finally {
+        if (gen === fetchGen.current) setLoading(false);
       }
 
       // Shapes per version (raw + each step). limit=1 — engine rejects 0.
@@ -183,7 +205,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       const nextShapes: PipelineShape[] = [];
       const errs = new Map<number, string>();
       for (let v = 0; v <= n; v++) {
-        if (cancelled) return;
+        if (gen !== fetchGen.current) return;
         try {
           const r = await apiClient.workspaceRows(ws, role, v, 0, 1);
           nextShapes.push({ rows: r.total, cols: r.columns.length });
@@ -191,22 +213,59 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
           const msg =
             e instanceof EngineError ? e.message : String(e);
           if (v > 0) errs.set(v - 1, msg);
+          // v=0 failure is the base frame — surface it if not already set.
+          if (v === 0 && gen === fetchGen.current) {
+            dispatch({ type: "SET_BENCH_ERROR", message: msg });
+          }
           nextShapes.push(
             nextShapes[nextShapes.length - 1] ?? { rows: 0, cols: 0 },
           );
           break;
         }
       }
-      if (!cancelled) {
+      if (gen === fetchGen.current) {
         setShapes(nextShapes);
         setStepErrors(errs);
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [workspace, role, version, tick, dispatch]);
+
+  const hasMore = rows.length < total;
+
+  const loadMore = useCallback(() => {
+    if (!workspace || !workspace.datasets.train.x.path) return;
+    if (loading || loadingMore) return;
+    if (rowsRef.current.length >= total) return;
+    const ws = workspace;
+    const offset = rowsRef.current.length;
+    const ver = version;
+    setLoadingMore(true);
+    const gen = fetchGen.current;
+    void (async () => {
+      try {
+        const more = await apiClient.workspaceRows(
+          ws,
+          role,
+          ver,
+          offset,
+          PAGE,
+        );
+        if (gen !== fetchGen.current) return;
+        setRows((prev) => {
+          // Avoid duplicating if a reload raced.
+          if (prev.length !== offset) return prev;
+          return [...prev, ...more.rows];
+        });
+        setTotal(more.total);
+      } catch (e) {
+        if (gen !== fetchGen.current) return;
+        const msg = e instanceof EngineError ? e.message : String(e);
+        dispatch({ type: "SET_BENCH_ERROR", message: msg });
+      } finally {
+        if (gen === fetchGen.current) setLoadingMore(false);
+      }
+    })();
+  }, [workspace, role, version, total, loading, loadingMore, dispatch]);
 
   // Schema for open editor op — depend only on op (not columns) to avoid
   // cancelling the fetch when the grid reloads after Apply.
@@ -378,6 +437,9 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     transforms,
     schemaFields,
     schemaLoading,
+    loading,
+    hasMore,
+    loadMore,
     reload,
     applyPending,
   };

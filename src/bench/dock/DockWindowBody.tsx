@@ -8,6 +8,7 @@ import type { ToolId } from "../../state/reducer";
 import { datasetSource, targetColumnOf } from "../left/datasetSource";
 import { computeStat, fmtStat, round3 } from "../left/stats";
 import { toolDef } from "../toolrail/tools";
+import { effectiveVersion } from "../version";
 import { ResultView } from "./ResultView";
 
 function isNumericKind(kind: string): boolean {
@@ -115,7 +116,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         if (window.__DTK_WORKSPACE_SAVED__) {
           await window.__DTK_WORKSPACE_SAVED__;
         }
-        const version = viewVersion;
+        const version = effectiveVersion(workspace, viewVersion);
         const prof = await apiClient.columnProfiles(workspace, role, version);
         const wr = await apiClient.workspaceRows(
           workspace,

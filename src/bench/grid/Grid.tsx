@@ -1,3 +1,5 @@
+import { useCallback, useRef } from "react";
+
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { colAlerts, isOutlierValue, missPct, profileBars } from "../alerts";
 import { cellTone } from "../diff";
@@ -19,6 +21,9 @@ export function Grid() {
     preview,
     applyPending,
     version,
+    loading,
+    hasMore,
+    loadMore,
   } = useWorkbenchData();
 
   const { workspace } = useAppState();
@@ -44,6 +49,14 @@ export function Grid() {
 
   const rowNum = new Map<number, number>();
   display.rows.forEach((r, i) => rowNum.set(r.rid, i + 1));
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const onScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || !hasMore) return;
+    const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (remaining < 240) loadMore();
+  }, [hasMore, loadMore]);
 
   return (
     <div className="grid-shell" data-owner="W2">
@@ -135,7 +148,15 @@ export function Grid() {
         </div>
       ) : null}
 
-      <div className="grid" aria-label="Data grid">
+      <div
+        className="grid"
+        aria-label="Data grid"
+        ref={scrollRef}
+        onScroll={onScroll}
+      >
+        {loading && display.rows.length === 0 ? (
+          <div className="grid-more">Loading rows…</div>
+        ) : null}
         <div className="grid-inner" style={{ width: totalW, minWidth: "100%" }}>
           <div className="grid-header-row">
             <div className="grid-corner" />
@@ -348,6 +369,11 @@ export function Grid() {
         {total > display.rows.length ? (
           <div className="grid-more">
             Showing {display.rows.length} of {total} rows
+            {hasMore ? " · scroll for more" : ""}
+          </div>
+        ) : total > 0 ? (
+          <div className="grid-more">
+            {total} row{total === 1 ? "" : "s"}
           </div>
         ) : null}
       </div>
