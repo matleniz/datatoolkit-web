@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import type { ApiClient } from "./client";
 import {
   AlignReport,
-  ColumnProfile,
+  ColumnProfiles,
   EngineError,
   ExportManifest,
   ExportRequest,
@@ -300,7 +300,7 @@ export class MockApiClient implements ApiClient {
   workspaceRows(
     _workspace: Workspace,
     role: Role,
-    version: number,
+    version: number | null,
     offset: number,
     limit: number,
   ): Promise<WorkspaceRows> {
@@ -320,24 +320,37 @@ export class MockApiClient implements ApiClient {
       columns: frame.columns.map((name) => ({
         name,
         dtype: "object",
-        kind: name.endsWith("_id") ? "id" : "cat",
+        kind: name.endsWith("_id")
+          ? ("identifier" as const)
+          : ["age", "monthly_spend", "sessions", "support_calls"].includes(name)
+            ? ("number" as const)
+            : ("text" as const),
       })),
       rows,
       total: frame.rows.length,
-      version,
+      version: version ?? 0,
     });
   }
 
   columnProfiles(
     _workspace: Workspace,
     role: Role,
-    _version: number,
-  ): Promise<ColumnProfile[]> {
+    version: number | null,
+  ): Promise<ColumnProfiles> {
     const frame = role === "train" ? TRAIN : TEST;
-    return Promise.resolve(
-      frame.columns.map((name) => ({
+    return Promise.resolve({
+      version: version ?? 0,
+      columns: frame.columns.map((name) => ({
         name,
-        kind: name.endsWith("_id") ? "id" : "cat",
+        kind: name.endsWith("_id")
+          ? ("identifier" as const)
+          : name === "churn"
+            ? ("bool" as const)
+            : ["age", "monthly_spend", "sessions", "support_calls"].includes(
+                  name,
+                )
+              ? ("number" as const)
+              : ("text" as const),
         count: frame.rows.length,
         missing: frame.rows.filter(
           (r) => (r[frame.columns.indexOf(name)] ?? "") === "",
@@ -355,7 +368,7 @@ export class MockApiClient implements ApiClient {
         numbers_as_text: role === "test" && name === "monthly_spend",
         skewed: false,
       })),
-    );
+    });
   }
 
   previewStep(
@@ -382,39 +395,57 @@ export class MockApiClient implements ApiClient {
   }
 
   alignReport(_workspace: Workspace): Promise<AlignReport> {
-    return Promise.resolve([
-      {
-        train: { name: "support_calls", kind: "num", samples: [0, 2, 0] },
-        test: { name: "nb_support_calls", kind: "num", samples: [1, 4, 0] },
-        status: "type_mismatch",
-        numbers_as_text: false,
-        train_mean: 1.5,
-        test_mean: 1.8,
-        similar: ["nb_support_calls"],
-      },
-      {
-        train: { name: "monthly_spend", kind: "num", samples: [42.5, 12.0] },
-        test: {
-          name: "monthly_spend",
-          kind: "cat",
-          samples: ["41,0", "9,5"],
+    return Promise.resolve({
+      columns: [
+        {
+          train: {
+            name: "support_calls",
+            kind: "number",
+            samples: [0, 2, 0],
+          },
+          test: {
+            name: "nb_support_calls",
+            kind: "number",
+            samples: [1, 4, 0],
+          },
+          status: "type_mismatch",
+          numbers_as_text: false,
+          train_mean: 1.5,
+          test_mean: 1.8,
+          similar: ["nb_support_calls"],
         },
-        status: "type_mismatch",
-        numbers_as_text: true,
-        train_mean: 40,
-        test_mean: null,
-        similar: [],
-      },
-      {
-        train: null,
-        test: { name: "promo_code", kind: "cat", samples: ["SPRING", null] },
-        status: "extra_in_test",
-        numbers_as_text: false,
-        train_mean: null,
-        test_mean: null,
-        similar: [],
-      },
-    ]);
+        {
+          train: {
+            name: "monthly_spend",
+            kind: "number",
+            samples: [42.5, 12.0],
+          },
+          test: {
+            name: "monthly_spend",
+            kind: "text",
+            samples: ["41,0", "9,5"],
+          },
+          status: "type_mismatch",
+          numbers_as_text: true,
+          train_mean: 40,
+          test_mean: null,
+          similar: [],
+        },
+        {
+          train: null,
+          test: {
+            name: "promo_code",
+            kind: "text",
+            samples: ["SPRING", null],
+          },
+          status: "extra_in_test",
+          numbers_as_text: false,
+          train_mean: null,
+          test_mean: null,
+          similar: [],
+        },
+      ],
+    });
   }
 
   upload(filename: string, _body: BodyInit): Promise<UploadResponse> {

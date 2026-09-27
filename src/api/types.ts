@@ -224,7 +224,14 @@ export interface UploadResponse {
 
 /* ---------- MAT-127: workspace inspect ---------- */
 
-export type ColumnKind = "num" | "bin" | "cat" | "date" | "id" | string;
+/** Engine kinds (verified): number | binary | bool | text | date | identifier */
+export type ColumnKind =
+  | "number"
+  | "binary"
+  | "bool"
+  | "text"
+  | "date"
+  | "identifier";
 
 export interface WorkspaceRowsColumn {
   name: string;
@@ -274,13 +281,19 @@ export interface ColumnProfile {
   sentinel_candidates: SentinelCandidate[];
   distinct: number;
   histogram: Histogram | null;
-  top_values: TopValue[];
+  top_values: TopValue[] | null;
   iqr_bounds: IqrBounds | null;
   outliers: number;
   variants: Variants | null;
   looks_like_dates: boolean;
   numbers_as_text: boolean;
   skewed: boolean;
+}
+
+/** POST /workspace/profiles → { columns, version } */
+export interface ColumnProfiles {
+  columns: ColumnProfile[];
+  version: number;
 }
 
 export interface PreviewStepChange {
@@ -326,7 +339,10 @@ export interface AlignReportRow {
   similar: string[];
 }
 
-export type AlignReport = AlignReportRow[];
+/** POST /workspace/align → { columns: [...] } */
+export interface AlignReport {
+  columns: AlignReportRow[];
+}
 
 /* ---------- Errors ---------- */
 

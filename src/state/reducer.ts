@@ -1,4 +1,4 @@
-import type { Step, Workspace } from "../api/types";
+import type { Step, VariableSpec, Workspace } from "../api/types";
 
 export type ScreenId = "sources" | "align" | "bench";
 export type Role = "train" | "test";
@@ -13,6 +13,15 @@ export type ToolId =
   | "outliers"
   | "target"
   | "drift";
+
+/** Course stage ids used by the Suggestions filter (prototype STAGES). */
+export type CourseStage =
+  | "all"
+  | "import"
+  | "clean"
+  | "transform"
+  | "select"
+  | "custom";
 
 export interface CellRef {
   rid: number;
@@ -59,6 +68,9 @@ export interface AppState {
   ctx: CtxMenuState | null;
   /** Source of a dock drag reorder (mirrors prototype `_drag`). */
   dockDragFrom: ToolId | null;
+  /* ---- W3: side panels / export (MAT-135) ---- */
+  showExport: boolean;
+  sugStage: CourseStage;
 }
 
 export const MAX_DOCK_TOOLS = 4;
@@ -93,6 +105,8 @@ export const initialState: AppState = {
   leftTab: "vars",
   ctx: null,
   dockDragFrom: null,
+  showExport: false,
+  sugStage: "all",
 };
 
 /** Keep `align: true` steps first (prototype / FRONT-WEB alignment rule). */
@@ -138,7 +152,15 @@ export type AppAction =
   | { type: "SET_DOCK_POS"; pos: DockPos }
   | { type: "SET_DOCK_SIZE"; size: DockSize }
   | { type: "TOGGLE_WIDE"; id: ToolId }
-  | { type: "SET_MAXIMIZED"; id: ToolId | null };
+  | { type: "SET_MAXIMIZED"; id: ToolId | null }
+  /* ---- W3 actions (MAT-135) ---- */
+  | { type: "SET_SHOW_EXPORT"; show: boolean }
+  | { type: "SET_SUG_STAGE"; stage: CourseStage }
+  | { type: "ADD_VARIABLE"; variable: VariableSpec }
+  | { type: "REMOVE_VARIABLE"; name: string }
+  | { type: "SET_VARIABLES"; variables: VariableSpec[] }
+  /** Insert `@name` into the formula editor (opens it if needed). W2 consumes. */
+  | { type: "INSERT_FORMULA_TOKEN"; token: string };
 
 function openTool(tools: ToolId[], id: ToolId): ToolId[] {
   const next = [...tools];
@@ -173,6 +195,17 @@ export function pickCol(
     columns = [name];
   }
   return { ...selection, columns, row: null, cell: null };
+}
+
+function withVariables(
+  state: AppState,
+  variables: VariableSpec[],
+): AppState {
+  if (!state.workspace) return state;
+  return {
+    ...state,
+    workspace: { ...state.workspace, variables },
+  };
 }
 
 export function appReducer(state: AppState, action: AppAction): AppState {
@@ -352,6 +385,57 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
     case "SET_MAXIMIZED":
       return { ...state, dock: { ...state.dock, maximized: action.id } };
+
+    /* ---- W3: variables / suggestions / export ---- */
+    case "SET_SHOW_EXPORT":
+      return { ...state, showExport: action.show };
+    case "SET_SUG_STAGE":
+      return { ...state, sugStage: action.stage };
+    case "ADD_VARIABLE": {
+      if (!state.workspace) return state;
+      if (
+        state.workspace.variables.some((v) => v.name === action.variable.name)
+      ) {
+        return state;
+      }
+      return withVariables(state, [
+        ...state.workspace.variables,
+        action.variable,
+      ]);
+    }
+    case "REMOVE_VARIABLE": {
+      if (!state.workspace) return state;
+      return withVariables(
+        state,
+        state.workspace.variables.filter((v) => v.name !== action.name),
+      );
+    }
+    case "SET_VARIABLES":
+      return withVariables(state, action.variables);
+    case "INSERT_FORMULA_TOKEN": {
+      const token = action.token;
+      if (state.editor?.op === "formula") {
+        const prev = String(state.editor.params.expr ?? "").replace(/\s+$/, "");
+        const expr = prev ? `${prev} ${token}` : token;
+        return {
+          ...state,
+          editor: {
+            ...state.editor,
+            params: { ...state.editor.params, expr },
+          },
+          ctx: null,
+        };
+      }
+      return {
+        ...state,
+        editor: {
+          op: "formula",
+          params: { expr: token },
+          target: "both",
+        },
+        ctx: null,
+      };
+    }
     default:
       return state;
   }

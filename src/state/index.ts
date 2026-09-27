@@ -20,6 +20,7 @@ export type {
   DockPos,
   DockSize,
   ToolId,
+  CourseStage,
   SelectionState,
   EditorState,
   DockState,

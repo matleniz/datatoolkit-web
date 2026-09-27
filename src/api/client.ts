@@ -1,6 +1,6 @@
 import {
   AlignReport,
-  ColumnProfile,
+  ColumnProfiles,
   EngineError,
   ErrorBody,
   ExportManifest,
@@ -43,15 +43,15 @@ export interface ApiClient {
   workspaceRows(
     workspace: Workspace,
     role: Role,
-    version: number,
+    version: number | null,
     offset: number,
     limit: number,
   ): Promise<WorkspaceRows>;
   columnProfiles(
     workspace: Workspace,
     role: Role,
-    version: number,
-  ): Promise<ColumnProfile[]>;
+    version: number | null,
+  ): Promise<ColumnProfiles>;
   previewStep(
     workspace: Workspace,
     step: Step,
@@ -191,7 +191,7 @@ export class HttpApiClient implements ApiClient {
   workspaceRows(
     workspace: Workspace,
     role: Role,
-    version: number,
+    version: number | null,
     offset: number,
     limit: number,
   ): Promise<WorkspaceRows> {
@@ -207,8 +207,8 @@ export class HttpApiClient implements ApiClient {
   columnProfiles(
     workspace: Workspace,
     role: Role,
-    version: number,
-  ): Promise<ColumnProfile[]> {
+    version: number | null,
+  ): Promise<ColumnProfiles> {
     return this.request("POST", "/workspace/profiles", {
       workspace,
       role,

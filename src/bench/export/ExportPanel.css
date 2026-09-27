@@ -1,0 +1,157 @@
+.export-bar {
+  height: 42px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--dtk-drag-line);
+  background: var(--dtk-surface);
+}
+
+.export-bar-spacer {
+  flex: 1;
+}
+
+.export-open-btn {
+  height: 28px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--dtk-ink);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.export-panel {
+  flex-shrink: 0;
+  display: flex;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--dtk-border);
+  background: var(--dtk-bg-export);
+  height: 220px;
+  box-sizing: border-box;
+}
+
+.export-code-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.export-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.export-title {
+  font-family: var(--dtk-font-serif);
+  font-size: 20px;
+}
+
+.export-code {
+  flex: 1;
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--dtk-code-bg);
+  color: var(--dtk-code-fg);
+  border-radius: 6px;
+  font-family: var(--dtk-font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre;
+  overflow: auto;
+}
+
+.export-side {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.export-side-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.export-outputs {
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.export-side label {
+  font-size: 11px;
+  color: var(--dtk-muted);
+}
+
+.export-side input {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--dtk-border-strong);
+  border-radius: 5px;
+  font-family: var(--dtk-font-mono);
+  font-size: 12px;
+}
+
+.export-run-btn {
+  height: 34px;
+  border: none;
+  border-radius: 6px;
+  background: var(--dtk-ink);
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.export-run-btn:disabled {
+  opacity: 0.5;
+}
+
+.export-close-btn {
+  height: 28px;
+  border: 1px solid var(--dtk-border-strong);
+  border-radius: 6px;
+  background: var(--dtk-surface);
+  font-size: 12px;
+}
+
+.export-manifest-json {
+  margin: 0;
+  max-height: 60px;
+  overflow: auto;
+  font-family: var(--dtk-font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: pre;
+}
+
+.leak-line {
+  font-size: 12px;
+  color: var(--dtk-ok-fg);
+}
+
+.muted {
+  font-size: 11px;
+  color: var(--dtk-muted);
+}
+
+.mono {
+  font-family: var(--dtk-font-mono);
+}
+
+.engine-error {
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: var(--dtk-error-bg);
+  color: var(--dtk-error-fg);
+  font-size: 11px;
+  line-height: 1.4;
+}
