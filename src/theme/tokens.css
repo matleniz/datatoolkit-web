@@ -1,0 +1,128 @@
+/* Prototype palette & fonts — see docs/prototype.dc.html */
+
+:root {
+  /* Surfaces */
+  --dtk-bg: #f4f3ef;
+  --dtk-bg-subtle: #faf9f6;
+  --dtk-bg-export: #f6f5f2;
+  --dtk-surface: #ffffff;
+  --dtk-ink: #1c1b18;
+  --dtk-muted: #5b5850;
+  --dtk-border: #e3e1da;
+  --dtk-border-strong: #d6d3ca;
+  --dtk-border-soft: #dcd9d0;
+  --dtk-hairline: #f0efea;
+  --dtk-drag-line: #eeede8;
+
+  /* Accent */
+  --dtk-accent: #1d5b86;
+  --dtk-accent-deep: #123d5b;
+  --dtk-accent-soft: #e3eef6;
+  --dtk-accent-border: #b9d0e2;
+  --dtk-accent-mid: #9fbbd1;
+
+  /* Stage colours (pipeline nodes) */
+  --dtk-stage-import: #6b5ea8;
+  --dtk-stage-clean: #b4460f;
+  --dtk-stage-transform: #1d5b86;
+  --dtk-stage-select: #2f6b3a;
+  --dtk-stage-custom: #8a5a9e;
+  --dtk-stage-custom-soft: #f5eef8;
+  --dtk-stage-custom-ink: #6a3f7d;
+
+  /* Anomaly / cell flags */
+  --dtk-missing-bg: #fbe9dc;
+  --dtk-missing-fg: #8f3809;
+  --dtk-missing-border: #e9c3a6;
+  --dtk-outlier-bg: #efe9f8;
+  --dtk-outlier-fg: #4e3a8a;
+  --dtk-outlier-border: #cfc3ea;
+
+  /* Preview diff */
+  --dtk-changed-bg: #dff0e2;
+  --dtk-changed-fg: #1f5a2b;
+  --dtk-new-bg: #eef7ef;
+  --dtk-new-header-bg: #e6f2e7;
+  --dtk-new-chip-bg: #d3ead6;
+  --dtk-removed-bg: #fbeced;
+  --dtk-removed-header-bg: #f7e1e2;
+  --dtk-removed-fg: #a3242c;
+  --dtk-removed-chip-bg: #f2cfd1;
+  --dtk-removed-border: #e7b3b6;
+  --dtk-error-bg: #f7e1e2;
+  --dtk-error-fg: #7d1c22;
+  --dtk-warn-bg: #fdf3d8;
+  --dtk-warn-fg: #6b4f05;
+  --dtk-warn-border: #ecd9a2;
+  --dtk-ok-fg: #1f5a2b;
+  --dtk-ok-bg: #e2f0e3;
+  --dtk-info-fg: #4f4390;
+  --dtk-info-bg: #ece8f7;
+  --dtk-sel-row: #f1f6fa;
+  --dtk-code-bg: #1c1b18;
+  --dtk-code-fg: #ece9e1;
+
+  /* Kind bars (grid header histograms) */
+  --dtk-kind-num: #8fb0c9;
+  --dtk-kind-bin: #a9c3a0;
+  --dtk-kind-cat: #cdb48a;
+  --dtk-kind-date: #b3a6d6;
+  --dtk-kind-id: #c9c5ba;
+
+  /* Layout (prototype shell) */
+  --dtk-header-h: 52px;
+  --dtk-pipeline-h: 96px;
+  --dtk-left-w: 280px;
+  --dtk-inspector-w: 318px;
+  --dtk-toolrail-w: 56px;
+
+  /* Typography */
+  --dtk-font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --dtk-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --dtk-font-serif: "Instrument Serif", Georgia, serif;
+  --dtk-font-size: 13px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--dtk-bg);
+  color: var(--dtk-ink);
+  font-family: var(--dtk-font-sans);
+  font-size: var(--dtk-font-size);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--dtk-accent);
+  outline-offset: 1px;
+}
+
+a {
+  color: var(--dtk-accent);
+}
+
+a:hover {
+  color: var(--dtk-accent-deep);
+}
