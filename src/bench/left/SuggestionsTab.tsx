@@ -33,16 +33,24 @@ export function SuggestionsTab() {
   useEffect(() => {
     if (!workspace?.datasets.train.x.path) {
       setCards([]);
+      dispatch({ type: "SET_SUG_COUNT", count: 0 });
       return;
     }
     let cancelled = false;
     (async () => {
       setLoading(true);
+      setError(null);
       try {
+        // Wait for the debounced auto-save, then PUT again so keys that
+        // resolve `{kind:"dataset", workspace}` always see the latest JSON.
+        if (window.__DTK_WORKSPACE_SAVED__) {
+          await window.__DTK_WORKSPACE_SAVED__;
+        }
         await apiClient.saveWorkspace(workspace);
         const source = datasetSource(workspace, "train", true);
         const target = targetColumnOf(workspace);
         const results: { keyId: string; result: Result }[] = [];
+        const errors: string[] = [];
         for (const keyId of SUGGESTION_KEYS) {
           const params: Record<string, unknown> = { source };
           if (keyId === "preprocessing_advisor" && target) {
@@ -57,19 +65,26 @@ export function SuggestionsTab() {
             const result = await apiClient.runKey(keyId, params);
             results.push({ keyId, result });
           } catch (e) {
-            // Keep going; surface one error if everything fails.
-            if (results.length === 0 && e instanceof EngineError) {
-              throw e;
-            }
+            const msg = e instanceof EngineError ? e.message : String(e);
+            errors.push(`${keyId}: ${msg}`);
           }
         }
         if (cancelled) return;
-        setCards(mapSuggestionCards(results));
-        setError(null);
+        const next = mapSuggestionCards(results);
+        setCards(next);
+        dispatch({ type: "SET_SUG_COUNT", count: next.length });
+        if (errors.length && results.length === 0) {
+          setError(errors.join("\n"));
+        } else if (errors.length) {
+          setError(errors.join("\n"));
+        } else {
+          setError(null);
+        }
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof EngineError ? e.message : String(e));
         setCards([]);
+        dispatch({ type: "SET_SUG_COUNT", count: 0 });
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -77,7 +92,7 @@ export function SuggestionsTab() {
     return () => {
       cancelled = true;
     };
-  }, [workspace]);
+  }, [workspace, dispatch]);
 
   const shown = useMemo(
     () => filterCardsByStage(cards, sugStage),
@@ -105,10 +120,14 @@ export function SuggestionsTab() {
         ))}
       </div>
       {loading ? <div className="muted">Loading suggestions…</div> : null}
-      {error ? <div className="engine-error" role="alert">{error}</div> : null}
-      <div className="sug-list">
+      {error ? (
+        <div className="engine-error" role="alert">
+          {error}
+        </div>
+      ) : null}
+      <div className="sug-list" data-sug-cards={shown.length}>
         {shown.map((cd) => (
-          <div key={cd.id} className="sug-card">
+          <div key={cd.id} className="sug-card" data-sug-id={cd.id}>
             <div className="sug-stage">
               <span
                 className="sug-dot"
@@ -139,7 +158,7 @@ export function SuggestionsTab() {
             ) : null}
           </div>
         ))}
-        {!loading && !shown.length ? (
+        {!loading && !shown.length && !error ? (
           <div className="empty-dash">Nothing flagged here.</div>
         ) : null}
       </div>

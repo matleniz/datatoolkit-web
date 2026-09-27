@@ -71,6 +71,8 @@ export interface AppState {
   /* ---- W3: side panels / export (MAT-135) ---- */
   showExport: boolean;
   sugStage: CourseStage;
+  /** Badge count for the Suggestions tab (updated by SuggestionsTab). */
+  sugCount: number;
 }
 
 export const MAX_DOCK_TOOLS = 4;
@@ -107,6 +109,7 @@ export const initialState: AppState = {
   dockDragFrom: null,
   showExport: false,
   sugStage: "all",
+  sugCount: 0,
 };
 
 /** Keep `align: true` steps first (prototype / FRONT-WEB alignment rule). */
@@ -156,6 +159,7 @@ export type AppAction =
   /* ---- W3 actions (MAT-135) ---- */
   | { type: "SET_SHOW_EXPORT"; show: boolean }
   | { type: "SET_SUG_STAGE"; stage: CourseStage }
+  | { type: "SET_SUG_COUNT"; count: number }
   | { type: "ADD_VARIABLE"; variable: VariableSpec }
   | { type: "REMOVE_VARIABLE"; name: string }
   | { type: "SET_VARIABLES"; variables: VariableSpec[] }
@@ -211,7 +215,7 @@ function withVariables(
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case "SET_WORKSPACE":
-      return { ...state, workspace: action.workspace };
+      return { ...state, workspace: action.workspace, sugCount: 0 };
     case "SET_SCREEN":
       return { ...state, screen: action.screen, ctx: null };
     case "SET_ROLE":
@@ -391,6 +395,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, showExport: action.show };
     case "SET_SUG_STAGE":
       return { ...state, sugStage: action.stage };
+    case "SET_SUG_COUNT":
+      return { ...state, sugCount: action.count };
     case "ADD_VARIABLE": {
       if (!state.workspace) return state;
       if (

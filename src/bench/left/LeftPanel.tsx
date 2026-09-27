@@ -17,11 +17,9 @@ const TABS: { id: LeftTab; label: (nSug: number, nSteps: number) => string }[] =
 
 /** W3 — left tabs (Variables / Suggestions / Recipe), 280px. */
 export function LeftPanel() {
-  const { leftTab, workspace } = useAppState();
+  const { leftTab, workspace, sugCount } = useAppState();
   const dispatch = useAppDispatch();
   const nSteps = workspace?.steps.length ?? 0;
-  // Badge count is refreshed inside SuggestionsTab; show step count for recipe.
-  const nSug = 0;
 
   return (
     <aside
@@ -39,16 +37,23 @@ export function LeftPanel() {
               role="tab"
               aria-selected={on}
               className={on ? "left-tab on" : "left-tab"}
+              data-sug-count={t.id === "suggestions" ? sugCount : undefined}
               onClick={() => dispatch({ type: "SET_LEFT_TAB", tab: t.id })}
             >
-              {t.label(nSug, nSteps)}
+              {t.label(sugCount, nSteps)}
             </button>
           );
         })}
       </div>
       <div className="left-scroll">
         {leftTab === "vars" ? <VariablesTab /> : null}
-        {leftTab === "suggestions" ? <SuggestionsTab /> : null}
+        {/* Keep mounted so analysis keys run and the badge stays current. */}
+        <div
+          hidden={leftTab !== "suggestions"}
+          aria-hidden={leftTab !== "suggestions"}
+        >
+          <SuggestionsTab />
+        </div>
         {leftTab === "recipe" ? <RecipeTab /> : null}
       </div>
     </aside>

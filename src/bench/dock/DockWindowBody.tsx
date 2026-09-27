@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "../../api/client";
-import type { ColumnProfile, Result } from "../../api/types";
+import type { ColumnProfile, Result, WorkspaceRow } from "../../api/types";
 import { EngineError } from "../../api/types";
 import { useAppState } from "../../state/AppStore";
 import type { ToolId } from "../../state/reducer";
 import { datasetSource, targetColumnOf } from "../left/datasetSource";
-import { fmtStat, round3 } from "../left/stats";
+import { computeStat, fmtStat, round3 } from "../left/stats";
 import { toolDef } from "../toolrail/tools";
 import { ResultView } from "./ResultView";
 
@@ -15,7 +15,7 @@ function isNumericKind(kind: string): boolean {
 }
 
 function pearson(
-  rows: Record<string, unknown>[],
+  rows: WorkspaceRow[],
   a: string,
   b: string,
 ): number | null {
@@ -77,15 +77,17 @@ function topBars(
 }
 
 const ENGINE_TOOLS = new Set<ToolId>(["outliers", "target", "drift"]);
+const COMPARE_STATS = ["mean", "median", "std", "min", "max"] as const;
 
 export function DockWindowBody({ id }: { id: ToolId }) {
   const { workspace, selection, role, viewVersion } = useAppState();
   const [profiles, setProfiles] = useState<ColumnProfile[]>([]);
-  const [rows, setRows] = useState<Record<string, unknown>[]>([]);
+  const [rows, setRows] = useState<WorkspaceRow[]>([]);
   const [result, setResult] = useState<Result | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [bound, setBound] = useState("");
+  const [ready, setReady] = useState(false);
 
   const selCols = selection.columns;
   const focus = selCols[0] ?? selection.cell?.col ?? null;
@@ -99,14 +101,20 @@ export function DockWindowBody({ id }: { id: ToolId }) {
       setProfiles([]);
       setRows([]);
       setResult(null);
+      setReady(true);
+      setError(null);
       return;
     }
     let cancelled = false;
     (async () => {
+      setReady(false);
       setError(null);
       setMsg(null);
       setResult(null);
       try {
+        if (window.__DTK_WORKSPACE_SAVED__) {
+          await window.__DTK_WORKSPACE_SAVED__;
+        }
         const version = viewVersion;
         const prof = await apiClient.columnProfiles(workspace, role, version);
         const wr = await apiClient.workspaceRows(
@@ -226,6 +234,8 @@ export function DockWindowBody({ id }: { id: ToolId }) {
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof EngineError ? e.message : String(e));
+      } finally {
+        if (!cancelled) setReady(true);
       }
     })();
     return () => {
@@ -239,7 +249,14 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     return m;
   }, [profiles]);
 
-  if (error) return <div className="engine-error">{error}</div>;
+  if (error) {
+    return (
+      <div className="engine-error" role="alert">
+        {error}
+      </div>
+    );
+  }
+  if (!ready) return <div className="dock-msg muted">Loading…</div>;
   if (msg) return <div className="dock-msg">{msg}</div>;
 
   if (id === "compare") {
@@ -358,7 +375,7 @@ function CompareNative({
 }: {
   cols: string[];
   profiles: Map<string, ColumnProfile>;
-  rows: Record<string, unknown>[];
+  rows: WorkspaceRow[];
   target: string | null;
   bound: string;
 }) {
@@ -367,6 +384,16 @@ function CompareNative({
     { name: "missing", fn: (c) => String(profiles.get(c)?.missing ?? 0) },
     { name: "distinct", fn: (c) => String(profiles.get(c)?.distinct ?? 0) },
   ];
+  for (const stat of COMPARE_STATS) {
+    rowsDef.push({
+      name: stat,
+      fn: (c) => {
+        const kind = profiles.get(c)?.kind;
+        if (!kind || !isNumericKind(kind)) return "–";
+        return fmtStat(computeStat(rows, stat, c));
+      },
+    });
+  }
   if (target && profiles.has(target)) {
     rowsDef.push({
       name: `r with ${target}`,
@@ -378,7 +405,7 @@ function CompareNative({
   }
 
   return (
-    <div>
+    <div data-compare-cols={cols.join(",")}>
       <div className="dock-bound muted">{bound}</div>
       <div className="matrix">
         <div className="matrix-head">
@@ -390,12 +417,18 @@ function CompareNative({
           ))}
         </div>
         {rowsDef.map((d) => (
-          <div key={d.name} className="matrix-row">
+          <div key={d.name} className="matrix-row" data-stat={d.name}>
             <span className="matrix-label" title={d.name}>
               {d.name}
             </span>
             {cols.map((c) => (
-              <span key={c} className="matrix-cell" title={`${c} · ${d.name}`}>
+              <span
+                key={c}
+                className="matrix-cell"
+                data-col={c}
+                data-stat={d.name}
+                title={`${c} · ${d.name}`}
+              >
                 {d.fn(c)}
               </span>
             ))}
@@ -440,13 +473,13 @@ function CorrNative({
   bound,
 }: {
   cols: string[];
-  rows: Record<string, unknown>[];
+  rows: WorkspaceRow[];
   bound: string;
 }) {
   return (
-    <div>
+    <div data-corr-size={cols.length}>
       <div className="dock-bound muted">{bound}</div>
-      <div className="matrix">
+      <div className="matrix" data-corr-matrix="1">
         <div className="matrix-head">
           <span className="matrix-corner" />
           {cols.map((n) => (
@@ -456,7 +489,7 @@ function CorrNative({
           ))}
         </div>
         {cols.map((a) => (
-          <div key={a} className="matrix-row">
+          <div key={a} className="matrix-row" data-corr-row={a}>
             <span className="matrix-label" title={a}>
               {a}
             </span>
@@ -475,6 +508,7 @@ function CorrNative({
                 <span
                   key={b}
                   className="matrix-cell"
+                  data-corr-cell={`${a}×${b}`}
                   title={`${a} × ${b} : r = ${t}`}
                   style={{ background: bg, color: fg }}
                 >

@@ -130,7 +130,9 @@ export class HttpApiClient implements ApiClient {
   }
 
   runKey(id: string, params: Record<string, unknown>): Promise<Result> {
-    return this.request("POST", `/keys/${encodeURIComponent(id)}/run`, params);
+    return this.request("POST", `/keys/${encodeURIComponent(id)}/run`, {
+      params,
+    });
   }
 
   listTransforms(): Promise<TransformInfo[]> {

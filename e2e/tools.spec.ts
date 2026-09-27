@@ -40,7 +40,7 @@ function churnWorkspace(): Workspace {
 }
 
 test.describe("W3 tools / dock / export", () => {
-  test.describe.configure({ timeout: 90_000 });
+  test.describe.configure({ timeout: 120_000 });
 
   test.beforeEach(async ({ page }) => {
     mkdirSync(shotDir, { recursive: true });
@@ -57,12 +57,36 @@ test.describe("W3 tools / dock / export", () => {
       const d = window.__DTK_DISPATCH__!;
       d({ type: "SET_WORKSPACE", workspace });
       d({ type: "SET_SCREEN", screen: "bench" });
-      d({ type: "PICK_COL", name: "age" });
-      d({ type: "PICK_COL", name: "monthly_spend", add: true });
+      d({ type: "CLEAR_SELECTION" });
     }, ws);
+    // App auto-saves; wait until the engine store has the workspace.
+    await page.waitForFunction(async () => {
+      const p = window.__DTK_WORKSPACE_SAVED__;
+      if (!p) return false;
+      await p;
+      return true;
+    });
   });
 
   test("create variable, dock windows, export", async ({ page }) => {
+    // Suggestions badge must reflect real analysis-key findings.
+    await expect
+      .poll(async () =>
+        page.evaluate(() => window.__DTK_STATE__!().sugCount),
+      )
+      .toBeGreaterThan(0);
+    await expect(
+      page.getByRole("tab", { name: /Suggestions · [1-9]/ }),
+    ).toBeVisible();
+
+    await page.getByRole("tab", { name: /Suggestions/ }).click();
+    await expect(page.locator(".sug-card").first()).toBeVisible({
+      timeout: 30_000,
+    });
+    const sugText = await page.locator(".sug-list").innerText();
+    expect(sugText.toLowerCase()).toMatch(/duplicate/);
+    expect(sugText).toMatch(/-999/);
+
     await page.getByRole("tab", { name: /Variables/ }).click();
     await page.getByRole("button", { name: "median", exact: true }).click();
     await page
@@ -83,11 +107,57 @@ test.describe("W3 tools / dock / export", () => {
       fullPage: true,
     });
 
-    await page.getByRole("button", { name: "Compare columns" }).click();
+    // Correlation with nothing selected → all numeric columns (≥ 4×4).
+    await page.evaluate(() => {
+      window.__DTK_DISPATCH__!({ type: "CLEAR_SELECTION" });
+    });
     await page.getByRole("button", { name: "Correlation matrix" }).click();
-    await expect(page.getByLabel("Tool dock")).toBeVisible();
-    await expect(page.locator('[data-tool="compare"]')).toBeVisible();
     await expect(page.locator('[data-tool="corr"]')).toBeVisible();
+    await expect(page.locator('[data-tool="corr"] [data-corr-size]')).toBeVisible({
+      timeout: 20_000,
+    });
+    const corrSize = Number(
+      await page
+        .locator('[data-tool="corr"] [data-corr-size]')
+        .getAttribute("data-corr-size"),
+    );
+    expect(corrSize).toBeGreaterThanOrEqual(4);
+    await expect(
+      page.locator('[data-tool="corr"] [data-corr-matrix] .matrix-cell'),
+    ).toHaveCount(corrSize * corrSize);
+
+    // Compare age + sessions with mean values.
+    await page.evaluate(() => {
+      const d = window.__DTK_DISPATCH__!;
+      d({ type: "CLEAR_SELECTION" });
+      d({ type: "PICK_COL", name: "age" });
+      d({ type: "PICK_COL", name: "sessions", add: true });
+    });
+    await page.getByRole("button", { name: "Compare columns" }).click();
+    await expect(page.locator('[data-tool="compare"]')).toBeVisible();
+    await expect(
+      page.locator('[data-tool="compare"] [data-compare-cols]'),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(
+      page.locator(
+        '[data-tool="compare"] [data-stat="mean"][data-col="age"]',
+      ),
+    ).not.toHaveText(/^[–—∅]?$/);
+    await expect(
+      page.locator(
+        '[data-tool="compare"] [data-stat="mean"][data-col="sessions"]',
+      ),
+    ).not.toHaveText(/^[–—∅]?$/);
+    const ageMean = await page
+      .locator('[data-tool="compare"] [data-stat="mean"][data-col="age"]')
+      .innerText();
+    const sessionsMean = await page
+      .locator(
+        '[data-tool="compare"] [data-stat="mean"][data-col="sessions"]',
+      )
+      .innerText();
+    expect(Number(ageMean)).toBeGreaterThan(0);
+    expect(Number(sessionsMean)).toBeGreaterThan(0);
 
     await page.screenshot({
       path: join(shotDir, "02-compare-corr.png"),
