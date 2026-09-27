@@ -1,30 +1,44 @@
 import { defineConfig, devices } from "@playwright/test";
-import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 
-function dtkApiAvailable(): boolean {
-  const r = spawnSync("dtk-api", ["--help"], {
-    encoding: "utf8",
-    timeout: 5000,
-  });
-  return r.status === 0 || (r.stdout ?? "").includes("usage") || (r.stderr ?? "").includes("usage");
+const DTK_API_CANDIDATES = [
+  process.env.DTK_API_BIN,
+  join(homedir(), "datatoolkit/.venv/bin/dtk-api"),
+  "dtk-api",
+].filter(Boolean) as string[];
+
+function resolveDtkApi(): string | null {
+  for (const c of DTK_API_CANDIDATES) {
+    if (c === "dtk-api") return c;
+    if (existsSync(c)) return c;
+  }
+  return null;
 }
 
-const hasApi = dtkApiAvailable();
-if (!hasApi) {
+const dtkApi = resolveDtkApi();
+if (!dtkApi) {
   console.warn(
-    "[e2e] dtk-api not found on PATH — starting Vite only. " +
-      "Install the engine API with: cd ~/datatoolkit && uv run --extra api dtk-api --help",
+    "[e2e] dtk-api not found — starting Vite only. " +
+      "Expected ~/datatoolkit/.venv/bin/dtk-api",
   );
 }
 
+const dtkHome = mkdtempSync(join(tmpdir(), "dtk-e2e-"));
+
 const webServers = [
-  ...(hasApi
+  ...(dtkApi
     ? [
         {
-          command: "dtk-api --port 8765",
+          command: `${dtkApi} --port 8765`,
           url: "http://127.0.0.1:8765/api/keys",
           reuseExistingServer: !process.env.CI,
           timeout: 120_000,
+          env: {
+            ...process.env,
+            DTK_HOME: dtkHome,
+          },
         },
       ]
     : []),
@@ -38,7 +52,7 @@ const webServers = [
 
 export default defineConfig({
   testDir: "./e2e",
-  fullyParallel: true,
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: "list",

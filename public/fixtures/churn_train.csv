@@ -1,0 +1,21 @@
+customer_id,signup_date,age,city,plan,monthly_spend,sessions,support_calls
+C001,2024-01-05,34,Paris,pro,42.5,18,0
+C002,2024-01-09,51,Lyon,basic,12.0,4,2
+C003,12/01/2024,-999,paris,premium,88.0,25,0
+C004,2024-01-15,27,Marseille,basic,9.9,3,3
+C005,2024-02-02,45,PARIS ,pro,39.0,15,1
+C006,03/02/2024,,Lyon,basic,14.5,6,4
+C007,2024-02-11,38,Lille,premium,95.0,30,0
+C008,2024-02-20,62,lyon,pro,47.0,12,1
+C009,2024-03-01,29,Paris,basic,11.0,2,5
+C010,2024-03-04,-999,Marseille,pro,44.0,16,0
+C011,2024-03-09,41,Paris,premium,980.0,41,0
+C012,15/03/2024,33,Lille,basic,10.5,5,2
+C013,2024-03-22,57,Lyon,pro,40.0,14,1
+C014,2024-04-02,24,paris,basic,8.0,1,6
+C015,2024-04-06,48,Marseille,premium,102.0,28,0
+C016,2024-04-10,36,Lille ,pro,38.5,11,2
+C017,2024-04-18,44,Paris,basic,13.0,7,3
+C018,2024-04-25,30,Lyon,pro,45.5,17,0
+C004,2024-01-15,27,Marseille,basic,9.9,3,3
+C009,2024-03-01,29,Paris,basic,11.0,2,5

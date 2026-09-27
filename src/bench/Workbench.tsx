@@ -1,4 +1,3 @@
-import { useAppState } from "../state/AppStore";
 import { ContextMenu } from "./contextmenu/ContextMenu";
 import { Dock } from "./dock/Dock";
 import { StepEditor } from "./editor/StepEditor";
@@ -8,6 +7,8 @@ import { Inspector } from "./inspector/Inspector";
 import { LeftPanel } from "./left/LeftPanel";
 import { PipelineBar } from "./pipeline/PipelineBar";
 import { ToolRail } from "./toolrail/ToolRail";
+import { WorkbenchDataProvider } from "./WorkbenchData";
+import { useAppState } from "../state/AppStore";
 import "./Workbench.css";
 
 /**
@@ -23,25 +24,27 @@ export function Workbench() {
   const showGrid = !(maximized && dockOpen);
 
   return (
-    <div className="workbench" aria-label="Workbench">
-      <PipelineBar />
-      <div className="workbench-body">
-        <LeftPanel />
-        <main className="workbench-main">
-          <ExportPanel />
-          <div
-            className={
-              right ? "workbench-grid-area row" : "workbench-grid-area"
-            }
-          >
-            {showGrid ? <Grid /> : null}
-            <Dock />
-          </div>
-        </main>
-        {editor ? <StepEditor /> : <Inspector />}
-        <ToolRail />
+    <WorkbenchDataProvider>
+      <div className="workbench" aria-label="Workbench">
+        <PipelineBar />
+        <div className="workbench-body">
+          <LeftPanel />
+          <main className="workbench-main">
+            <ExportPanel />
+            <div
+              className={
+                right ? "workbench-grid-area row" : "workbench-grid-area"
+              }
+            >
+              {showGrid ? <Grid /> : null}
+              <Dock />
+            </div>
+          </main>
+          {editor ? <StepEditor /> : <Inspector />}
+          <ToolRail />
+        </div>
+        <ContextMenu />
       </div>
-      <ContextMenu />
-    </div>
+    </WorkbenchDataProvider>
   );
 }
