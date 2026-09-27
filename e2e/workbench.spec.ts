@@ -160,6 +160,14 @@ test("workbench: replace sentinels → impute → one-hot → time travel → de
   await expect(page.getByText("Drop First", { exact: true })).toBeVisible();
   await expect(page.getByText("Handle Unknown", { exact: true })).toBeVisible();
   await expect(page.getByText("Live preview")).toBeVisible({ timeout: 20_000 });
+  // Live-preview banner "Apply step" must stay on one line
+  const applyBtn = page
+    .locator(".preview-banner")
+    .getByRole("button", { name: "Apply step" });
+  await expect(applyBtn).toBeVisible();
+  const applyBox = await applyBtn.boundingBox();
+  expect(applyBox, "Apply step box").not.toBeNull();
+  expect(applyBox!.height, "Apply step single-line height").toBeLessThanOrEqual(36);
   const addedCol = page.locator(".grid-th.added").first();
   await expect(addedCol).toBeVisible({ timeout: 15_000 });
   const addedName = ((await addedCol.locator(".th-name").textContent()) ?? "").trim();

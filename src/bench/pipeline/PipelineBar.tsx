@@ -138,7 +138,9 @@ export function PipelineBar() {
             : "—",
       delta,
       deltaClass,
-      badge: `${step.target}${fitted ? " · fit" : ""}`,
+      badge: `${step.target}${fitted ? " · fit" : ""}${
+        step.align ? " · align" : ""
+      }`,
       tip: err
         ? err
         : `${step.op} ${JSON.stringify(step.params)} · applies to ${step.target}${

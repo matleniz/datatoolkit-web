@@ -138,6 +138,32 @@ test("full sources and alignment flow with fixtures and screenshots", async ({
   await expect(page.getByLabel("Workbench")).toBeVisible();
   await expect(page.getByLabel("Pipeline")).toBeVisible();
 
+  // Alignment steps stay first, use import stage colour, show "align" badge
+  const renameNode = page.locator(".pipeline-node", { hasText: "Rename" }).first();
+  const dropNode = page
+    .locator(".pipeline-node", { hasText: "Drop columns" })
+    .first();
+  await expect(renameNode).toBeVisible();
+  await expect(dropNode).toBeVisible();
+  await expect(renameNode.locator(".pipeline-badge")).toContainText("align");
+  await expect(dropNode.locator(".pipeline-badge")).toContainText("align");
+  for (const node of [renameNode, dropNode]) {
+    const bar = node.locator(".pipeline-stage-bar");
+    await expect(bar).toHaveCSS("background-color", "rgb(107, 94, 168)"); // #6b5ea8
+  }
+
+  // Train / Test toggle remains usable after alignment
+  await expect(page.getByRole("group", { name: "Dataset shown" })).toBeVisible();
+  await page.getByRole("button", { name: "Test", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Test", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByRole("button", { name: "Train", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Train", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+
   // Capture Workbench Aligned screenshot
   await page.screenshot({
     path: join(alignScreenshotsDir, "workbench_aligned.png"),

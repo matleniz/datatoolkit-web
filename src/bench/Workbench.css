@@ -725,6 +725,14 @@
   padding: 0 14px;
   border-radius: 5px;
   font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Live-preview banner actions must stay on one line ("Apply step"). */
+.preview-banner .btn-primary,
+.preview-banner .btn-secondary {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .btn-primary {
