@@ -12,10 +12,13 @@ const SCREENS: { id: ScreenId; n: number; label: string }[] = [
 ];
 
 export function App() {
-  const { screen, role, workspace } = useAppState();
+  const { screen, role, workspace, alignToDecideCount } = useAppState();
   const dispatch = useAppDispatch();
   const wsName = workspace?.name ?? "no workspace";
-  const alignCount = workspace?.steps.filter((s) => s.align).length ?? 0;
+  const alignCount =
+    alignToDecideCount !== undefined && alignToDecideCount !== null
+      ? alignToDecideCount
+      : (workspace?.steps.filter((s) => s.align).length ?? 0);
 
   return (
     <div className="app-shell" data-root="1">

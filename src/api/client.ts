@@ -50,7 +50,7 @@ export interface ApiClient {
   columnProfiles(
     workspace: Workspace,
     role: Role,
-    version: number | null,
+    version?: number | null,
   ): Promise<ColumnProfiles>;
   previewStep(
     workspace: Workspace,
@@ -71,6 +71,18 @@ function isErrorBody(value: unknown): value is ErrorBody {
     typeof (value as ErrorBody).type === "string" &&
     typeof (value as ErrorBody).message === "string"
   );
+}
+
+function sanitizeStep(step: Step): Record<string, unknown> {
+  const { align: _align, ...rest } = step;
+  return rest;
+}
+
+function sanitizeWorkspace(ws: Workspace): Record<string, unknown> {
+  return {
+    ...ws,
+    steps: ws.steps.map(sanitizeStep),
+  };
 }
 
 export class HttpApiClient implements ApiClient {
@@ -158,7 +170,7 @@ export class HttpApiClient implements ApiClient {
     return this.request(
       "PUT",
       `/workspaces/${encodeURIComponent(ws.name)}`,
-      ws,
+      sanitizeWorkspace(ws),
     );
   }
 
@@ -184,7 +196,7 @@ export class HttpApiClient implements ApiClient {
     headRows = 5,
   ): Promise<WorkspacePreview> {
     return this.request("POST", "/workspace/preview", {
-      workspace,
+      workspace: sanitizeWorkspace(workspace),
       role,
       head_rows: headRows,
     });
@@ -198,7 +210,7 @@ export class HttpApiClient implements ApiClient {
     limit: number,
   ): Promise<WorkspaceRows> {
     return this.request("POST", "/workspace/rows", {
-      workspace,
+      workspace: sanitizeWorkspace(workspace),
       role,
       version,
       offset,
@@ -209,10 +221,10 @@ export class HttpApiClient implements ApiClient {
   columnProfiles(
     workspace: Workspace,
     role: Role,
-    version: number | null,
+    version: number | null = null,
   ): Promise<ColumnProfiles> {
     return this.request("POST", "/workspace/profiles", {
-      workspace,
+      workspace: sanitizeWorkspace(workspace),
       role,
       version,
     });
@@ -224,14 +236,16 @@ export class HttpApiClient implements ApiClient {
     role: Role,
   ): Promise<PreviewStep> {
     return this.request("POST", "/workspace/preview-step", {
-      workspace,
-      step,
+      workspace: sanitizeWorkspace(workspace),
+      step: sanitizeStep(step),
       role,
     });
   }
 
   alignReport(workspace: Workspace): Promise<AlignReport> {
-    return this.request("POST", "/workspace/align", { workspace });
+    return this.request("POST", "/workspace/align", {
+      workspace: sanitizeWorkspace(workspace),
+    });
   }
 
   upload(filename: string, body: BodyInit): Promise<UploadResponse> {

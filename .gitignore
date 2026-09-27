@@ -12,4 +12,5 @@ e2e/screenshots
 *.log
 .vite
 *.tsbuildinfo
+.cursor
 
