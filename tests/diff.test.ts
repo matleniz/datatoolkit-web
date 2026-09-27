@@ -66,7 +66,12 @@ describe("buildDisplay / diff colouring", () => {
       { name: "city_Paris", dtype: "int64", kind: "binary" },
       { name: "city_Lyon", dtype: "int64", kind: "binary" },
     ];
-    const d = buildDisplay(cols, rows, preview, rows, nextCols);
+    const nextRows: WorkspaceRow[] = [
+      { _rid: 0, age: 34, city_Paris: 1, city_Lyon: 0 },
+      { _rid: 1, age: -999, city_Paris: 0, city_Lyon: 1 },
+      { _rid: 2, age: 40, city_Paris: 1, city_Lyon: 0 },
+    ];
+    const d = buildDisplay(cols, rows, preview, nextRows, nextCols);
     expect(d.cols.filter((c) => c.status === "added").map((c) => c.name)).toEqual([
       "city_Paris",
       "city_Lyon",
@@ -74,6 +79,8 @@ describe("buildDisplay / diff colouring", () => {
     expect(d.cols.some((c) => c.name === "city" && c.status === "removed")).toBe(
       true,
     );
+    expect(d.rows[0]?.vals.city_Paris).toBe(1);
+    expect(d.rows[0]?.vals.city_Lyon).toBe(0);
     expect(diffText(d.diff)).toContain("+2 col");
     expect(diffText(d.diff)).toContain("−1 col");
   });

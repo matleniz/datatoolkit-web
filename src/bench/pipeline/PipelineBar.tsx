@@ -129,7 +129,13 @@ export function PipelineBar() {
       ver: `v${i + 1}`,
       title: titleFor(step.op),
       sub: err ? `fails: ${err}` : stepSubLabel(step.op, step.params),
-      shape: err ? "—" : shape ? `${shape.rows} × ${shape.cols}` : "—",
+      shape: err
+        ? "—"
+        : shape
+          ? `${shape.rows} × ${shape.cols}`
+          : shapes.length > 0
+            ? "…"
+            : "—",
       delta,
       deltaClass,
       badge: `${step.target}${fitted ? " · fit" : ""}`,

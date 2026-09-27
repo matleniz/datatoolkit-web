@@ -29,6 +29,81 @@ export interface EditorField {
 }
 
 /**
+ * Unwrap `anyOf` / `oneOf` / `type: [T, "null"]` unions so mapping sees the
+ * non-null branch (engine schemas often use Optional[...] → anyOf + null).
+ */
+export function resolveSchemaProp(prop: JsonSchema): JsonSchema {
+  const variants = prop.anyOf ?? prop.oneOf;
+  if (variants && variants.length > 0) {
+    const nonNull = variants.filter((v) => !isNullOnlySchema(v));
+    if (nonNull.length === 1) {
+      const inner = resolveSchemaProp(nonNull[0]!);
+      return resolveSchemaProp({
+        ...inner,
+        title: prop.title ?? inner.title,
+        description: prop.description ?? inner.description,
+        default: prop.default !== undefined ? prop.default : inner.default,
+        enum: prop.enum ?? inner.enum,
+        "x-dtk-widget": prop["x-dtk-widget"] ?? inner["x-dtk-widget"],
+        "x-dtk-dtype": prop["x-dtk-dtype"] ?? inner["x-dtk-dtype"],
+        "x-dtk-source": prop["x-dtk-source"] ?? inner["x-dtk-source"],
+      });
+    }
+    if (nonNull.length > 1) {
+      const resolved = nonNull.map((v) => resolveSchemaProp(v));
+      const types = new Set<string>();
+      for (const r of resolved) {
+        if (!r.type) continue;
+        if (Array.isArray(r.type)) r.type.forEach((t) => types.add(t));
+        else types.add(r.type);
+      }
+      const base: JsonSchema = {
+        title: prop.title,
+        description: prop.description,
+        default: prop.default,
+        enum: prop.enum,
+        "x-dtk-widget": prop["x-dtk-widget"],
+        "x-dtk-dtype": prop["x-dtk-dtype"],
+        "x-dtk-source": prop["x-dtk-source"],
+      };
+      if (types.has("array")) {
+        const arr = resolved.find((r) => r.type === "array");
+        return { ...base, type: "array", items: arr?.items ?? { type: "string" } };
+      }
+      if (types.has("number") || types.has("integer")) {
+        return { ...base, type: "number" };
+      }
+      if (types.has("boolean") && types.size === 1) {
+        return { ...base, type: "boolean" };
+      }
+      if (types.has("string")) {
+        return { ...base, type: "string" };
+      }
+      if (types.has("object")) {
+        return { ...base, type: "object" };
+      }
+    }
+  }
+
+  if (Array.isArray(prop.type)) {
+    const nonNull = prop.type.filter((t) => t !== "null");
+    if (nonNull.length === 1) {
+      return { ...prop, type: nonNull[0] };
+    }
+  }
+
+  return prop;
+}
+
+function isNullOnlySchema(prop: JsonSchema): boolean {
+  if (prop.type === "null") return true;
+  if (Array.isArray(prop.type) && prop.type.length === 1 && prop.type[0] === "null") {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Map GET /transforms/{op}/schema → editor field descriptors.
  * Special-cases engine object params (sentinels, categories, mapping, dtypes).
  */
@@ -38,7 +113,7 @@ export function schemaToFields(schema: JsonSchema, op: string): EditorField[] {
   const fields: EditorField[] = [];
 
   for (const [key, raw] of Object.entries(props)) {
-    const prop = raw as JsonSchema;
+    const prop = resolveSchemaProp(raw as JsonSchema);
     if (key === "fill_value") {
       fields.push({
         key,
@@ -209,7 +284,7 @@ export function schemaToFields(schema: JsonSchema, op: string): EditorField[] {
   return fields;
 }
 
-/** Default params from schema defaults + common op defaults. */
+/** Default params from schema defaults + common op defaults. Skip null defaults. */
 export function defaultParams(
   schema: JsonSchema,
   op: string,
@@ -217,8 +292,10 @@ export function defaultParams(
   const out: Record<string, unknown> = {};
   const props = schema.properties ?? {};
   for (const [key, raw] of Object.entries(props)) {
-    const prop = raw as JsonSchema;
-    if (prop.default !== undefined) out[key] = prop.default;
+    const prop = resolveSchemaProp(raw as JsonSchema);
+    if (prop.default !== undefined && prop.default !== null) {
+      out[key] = prop.default;
+    }
   }
   if (op === "impute" && out.strategy === undefined) out.strategy = "median";
   if (op === "clip") {
@@ -241,6 +318,17 @@ export function defaultParams(
   if (op === "cast" && out.dtypes === undefined) out.dtypes = {};
   if (op === "formula") {
     if (out.variables === undefined) out.variables = [];
+  }
+  return out;
+}
+
+/** Drop null/undefined entries before sending params to the engine. */
+export function stripNullParams(
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== null && v !== undefined) out[k] = v;
   }
   return out;
 }
@@ -310,5 +398,7 @@ export function applySchemaDefault(
   key: string,
 ): JsonValue | undefined {
   const prop = schema.properties?.[key] as JsonSchema | undefined;
-  return prop?.default as JsonValue | undefined;
+  if (!prop) return undefined;
+  const resolved = resolveSchemaProp(prop);
+  return resolved.default as JsonValue | undefined;
 }

@@ -35,6 +35,7 @@ test("workbench: replace sentinels → impute → one-hot → time travel → de
   page,
 }) => {
   test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
   await openBench(page);
 
   await page.screenshot({
@@ -64,9 +65,16 @@ test("workbench: replace sentinels → impute → one-hot → time travel → de
     fullPage: true,
   });
 
-  // Impute age — learned fill visible
+  // Impute age — schema fields + learned fill visible
   await ageHeader.click({ button: "right" });
   await page.getByRole("menuitem", { name: /^Impute/ }).click();
+  await expect(page.getByLabel("Step editor")).toBeVisible();
+  await expect(page.getByText("Strategy", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByRole("button", { name: "median" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "most_frequent" })).toBeVisible();
+  await expect(page.getByText("Add Indicator", { exact: true })).toBeVisible();
   await expect(page.getByText("Learned on train", { exact: true })).toBeVisible();
   await expect(page.locator(".ed-learned")).toContainText(/fill|age/i, {
     timeout: 15_000,
@@ -77,16 +85,50 @@ test("workbench: replace sentinels → impute → one-hot → time travel → de
   });
   await page.getByRole("button", { name: "Apply step" }).first().click();
   await expect(page.getByText("v2")).toBeVisible({ timeout: 15_000 });
+  // Pipeline node v2 must show shape, not em-dash
+  const v2Node = page.locator(".pipeline-node", { hasText: "v2" }).first();
+  await expect(v2Node).toContainText(/20\s*×\s*10/, { timeout: 20_000 });
 
-  // One-hot city with diff
+  // One-hot city with diff — real 0/1 values in added columns
   const cityHeader = page.locator(".grid-th", { hasText: "city" }).first();
   await cityHeader.click({ button: "right" });
   await page.getByRole("menuitem", { name: /One-hot/ }).click();
+  await expect(page.getByText("Min Frequency", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText("Drop First", { exact: true })).toBeVisible();
+  await expect(page.getByText("Handle Unknown", { exact: true })).toBeVisible();
   await expect(page.getByText("Live preview")).toBeVisible({ timeout: 20_000 });
+  const addedCol = page.locator(".grid-th.added").first();
+  await expect(addedCol).toBeVisible({ timeout: 15_000 });
+  const addedName = ((await addedCol.locator(".th-name").textContent()) ?? "").trim();
+  expect(addedName).toMatch(/^city_/);
+  // First data cell of the first added column should be 0 or 1, not "missing"
+  const firstAddedCell = page
+    .locator(".grid-row")
+    .first()
+    .locator(".grid-td.tone-added")
+    .first();
+  await expect(firstAddedCell).toBeVisible();
+  await expect(firstAddedCell).toHaveText(/^[01]$/);
   await page.screenshot({
     path: join(shotDir, "04-onehot-diff.png"),
     fullPage: true,
   });
+
+  // Toolbar stays on one line at 1440 and 1280
+  for (const size of [
+    { width: 1440, height: 900 },
+    { width: 1280, height: 800 },
+  ] as const) {
+    await page.setViewportSize(size);
+    const toolbar = page.locator(".grid-toolbar");
+    const box = await toolbar.boundingBox();
+    expect(box, `toolbar box at ${size.width}`).not.toBeNull();
+    expect(box!.height, `toolbar height at ${size.width}`).toBeLessThanOrEqual(48);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+
   await page.getByRole("button", { name: "Apply step" }).first().click();
   await expect(page.getByText("v3")).toBeVisible({ timeout: 15_000 });
 

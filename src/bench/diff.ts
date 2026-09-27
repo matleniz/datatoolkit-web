@@ -115,7 +115,7 @@ export function buildDisplay(
 
   const nextByRid = new Map<number, WorkspaceRow>();
   if (nextRows) {
-    for (const r of nextRows) nextByRid.set(r._rid, r);
+    for (const r of nextRows) nextByRid.set(Number(r._rid), r);
   }
 
   const rows: DisplayRow[] = baseRows.map((r) => {
@@ -128,10 +128,15 @@ export function buildDisplay(
         changed: {},
       };
     }
-    const n = nextByRid.get(r._rid);
-    const vals: Record<string, JsonValue> = n
-      ? { ...r, ...n }
-      : { ...r };
+    const n = nextByRid.get(Number(r._rid));
+    // Prefer the after-frame row (incl. added columns' 0/1 values).
+    const vals: Record<string, JsonValue> = n ? { ...n } : { ...r };
+    // Keep removed-column before-values for strikethrough display.
+    for (const c of cols) {
+      if (c.status === "removed" && r[c.name] !== undefined) {
+        vals[c.name] = r[c.name] as JsonValue;
+      }
+    }
     // Apply changed after-values when next frame is absent.
     if (!n) {
       for (const ch of preview.changed) {

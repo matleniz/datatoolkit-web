@@ -397,18 +397,26 @@ function Field({
   }
 
   if (field.widget === "number" || field.widget === "text") {
+    const rawVal = params[field.key];
+    const display =
+      rawVal === null || rawVal === undefined ? "" : String(rawVal);
     return (
       <div className="ed-field">
         <span className="ed-label">{field.label}</span>
         <input
           aria-label={field.label}
           className="ed-input"
-          value={String(params[field.key] ?? "")}
+          value={display}
+          placeholder={field.widget === "number" ? "optional" : undefined}
           onChange={(e) => {
             const raw = e.target.value;
             if (field.widget === "number") {
+              if (raw.trim() === "") {
+                set(field.key, null);
+                return;
+              }
               const v = Number(raw);
-              set(field.key, Number.isNaN(v) ? 0 : v);
+              set(field.key, Number.isNaN(v) ? null : v);
             } else if (field.key === "name") {
               set(field.key, raw.replace(/[^A-Za-z0-9_]/g, "_"));
             } else {

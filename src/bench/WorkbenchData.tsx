@@ -7,6 +7,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -28,6 +29,7 @@ import {
   defaultParams,
   schemaToFields,
   stepParamsValid,
+  stripNullParams,
   type EditorField,
 } from "./schemaFields";
 
@@ -71,6 +73,16 @@ function effectiveVersion(ws: Workspace, viewVersion: number | null): number {
   return viewVersion;
 }
 
+function stepKey(step: Step | null): string | null {
+  if (!step) return null;
+  return JSON.stringify({
+    op: step.op,
+    target: step.target,
+    params: step.params,
+    align: step.align ?? false,
+  });
+}
+
 export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
   const { workspace, role, viewVersion, editor } = useAppState();
   const dispatch = useAppDispatch();
@@ -95,6 +107,9 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
   const [schemaFields, setSchemaFields] = useState<EditorField[]>([]);
   const [schemaLoading, setSchemaLoading] = useState(false);
   const [tick, setTick] = useState(0);
+
+  const columnsRef = useRef(columns);
+  columnsRef.current = columns;
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
 
@@ -135,10 +150,12 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       setTotal(0);
       setProfiles(new Map());
       setShapes([{ rows: 0, cols: 0 }]);
+      setStepErrors(new Map());
       return;
     }
     let cancelled = false;
     const ws = workspace;
+    const n = ws.steps.length;
 
     (async () => {
       try {
@@ -146,35 +163,37 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
           apiClient.workspaceRows(ws, role, version, 0, PAGE),
           apiClient.columnProfiles(ws, role, version),
         ]);
-        if (cancelled) return;
-        setColumns(rowsRes.columns);
-        setRows(rowsRes.rows);
-        setTotal(rowsRes.total);
-        setProfiles(new Map(profRes.columns.map((p) => [p.name, p])));
-        dispatch({ type: "SET_BENCH_ERROR", message: null });
+        if (!cancelled) {
+          setColumns(rowsRes.columns);
+          setRows(rowsRes.rows);
+          setTotal(rowsRes.total);
+          setProfiles(new Map(profRes.columns.map((p) => [p.name, p])));
+          dispatch({ type: "SET_BENCH_ERROR", message: null });
+        }
       } catch (e) {
-        if (cancelled) return;
-        const msg =
-          e instanceof EngineError ? e.message : String(e);
-        dispatch({ type: "SET_BENCH_ERROR", message: msg });
+        if (!cancelled) {
+          const msg =
+            e instanceof EngineError ? e.message : String(e);
+          dispatch({ type: "SET_BENCH_ERROR", message: msg });
+        }
       }
 
       // Shapes per version (raw + each step). limit=1 — engine rejects 0.
-      const n = ws.steps.length;
+      // Sequential: stop at first failing step (pipeline semantics).
       const nextShapes: PipelineShape[] = [];
       const errs = new Map<number, string>();
       for (let v = 0; v <= n; v++) {
+        if (cancelled) return;
         try {
           const r = await apiClient.workspaceRows(ws, role, v, 0, 1);
-          if (cancelled) return;
           nextShapes.push({ rows: r.total, cols: r.columns.length });
         } catch (e) {
-          if (cancelled) return;
           const msg =
             e instanceof EngineError ? e.message : String(e);
-          // Failure at version v means step index v-1 failed.
           if (v > 0) errs.set(v - 1, msg);
-          nextShapes.push(nextShapes[nextShapes.length - 1] ?? { rows: 0, cols: 0 });
+          nextShapes.push(
+            nextShapes[nextShapes.length - 1] ?? { rows: 0, cols: 0 },
+          );
           break;
         }
       }
@@ -189,23 +208,30 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     };
   }, [workspace, role, version, tick, dispatch]);
 
-  // Schema for open editor op.
+  // Schema for open editor op — depend only on op (not columns) to avoid
+  // cancelling the fetch when the grid reloads after Apply.
   useEffect(() => {
     if (!editor?.op) {
       setSchemaFields([]);
+      setSchemaLoading(false);
       return;
     }
     const op = resolveOp(editor.op);
     const openedParams = editor.params;
     let cancelled = false;
+    setSchemaFields([]);
     setSchemaLoading(true);
     apiClient
       .transformSchema(op)
       .then((schema) => {
         if (cancelled) return;
-        setSchemaFields(schemaToFields(schema, op));
+        const fields = schemaToFields(schema, op);
+        setSchemaFields(fields);
         const defaults = defaultParams(schema, op);
-        const merged: Record<string, unknown> = { ...defaults, ...openedParams };
+        const merged: Record<string, unknown> = {
+          ...defaults,
+          ...openedParams,
+        };
         if (op === "drop_duplicates") {
           const keep = merged.keep ?? "none";
           if (
@@ -214,7 +240,9 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
               (Array.isArray(merged.sort_by) &&
                 (merged.sort_by as unknown[]).length === 0))
           ) {
-            const idCol = columns.find((c) => c.kind === "identifier");
+            const idCol = columnsRef.current.find(
+              (c) => c.kind === "identifier",
+            );
             if (idCol) merged.sort_by = [idCol.name];
             else {
               merged.keep = "none";
@@ -226,6 +254,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       })
       .catch((e) => {
         if (!cancelled) {
+          setSchemaFields([]);
           setPreviewError(
             e instanceof EngineError ? e.message : String(e),
           );
@@ -237,22 +266,25 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-    // Only re-fetch when the op changes (not on every param keystroke).
-  }, [editor?.op, columns, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editor?.op, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Build pending step + live preview.
   const pendingStep = useMemo((): Step | null => {
     if (!editor?.op || !isLatest) return null;
     const uiOp = editor.op;
     const engineOp = resolveOp(uiOp);
-    const params = toEngineParams(uiOp, editor.params);
+    const params = stripNullParams(toEngineParams(uiOp, editor.params));
     const check = stepParamsValid(engineOp, params, schemaFields);
     if (!check.ok) return null;
+    // Wait for schema→fields so the editor never previews with an empty form.
+    if (schemaLoading || schemaFields.length === 0) return null;
     return { op: engineOp, target: editor.target, params };
-  }, [editor, isLatest, schemaFields]);
+  }, [editor, isLatest, schemaFields, schemaLoading]);
+
+  const pendingStepKey = stepKey(pendingStep);
 
   useEffect(() => {
-    if (!workspace || !pendingStep) {
+    if (!workspace || !pendingStep || !pendingStepKey) {
       setPreview(null);
       setPreviewError(null);
       setNextRows(null);
@@ -270,6 +302,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
         setPreview(prev);
         setPreviewError(null);
 
+        // preview_step only returns diffs — fetch the after-frame and merge by _rid.
         const withStep: Workspace = {
           ...ws,
           steps: [...ws.steps, step],
@@ -278,17 +311,22 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
           const after = await apiClient.workspaceRows(
             withStep,
             role,
-            ws.steps.length + 1,
+            withStep.steps.length,
             0,
             PAGE,
           );
           if (cancelled) return;
           setNextRows(after.rows);
           setNextColumns(after.columns);
-        } catch {
+        } catch (e) {
           if (!cancelled) {
             setNextRows(null);
             setNextColumns(null);
+            setPreviewError(
+              e instanceof EngineError
+                ? e.message
+                : `Preview rows failed: ${String(e)}`,
+            );
           }
         }
       } catch (e) {
@@ -303,7 +341,8 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [workspace, pendingStep, role]);
+    // pendingStepKey stabilises object-identity churn from useMemo.
+  }, [workspace, pendingStepKey, role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const display = useMemo(
     () =>
