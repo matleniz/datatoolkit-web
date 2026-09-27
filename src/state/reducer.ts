@@ -1,0 +1,358 @@
+import type { Step, Workspace } from "../api/types";
+
+export type ScreenId = "sources" | "align" | "bench";
+export type Role = "train" | "test";
+export type LeftTab = "vars" | "suggestions" | "recipe";
+export type DockPos = "bottom" | "right";
+export type DockSize = "S" | "M" | "L";
+export type ToolId =
+  | "compare"
+  | "corr"
+  | "dist"
+  | "missing"
+  | "outliers"
+  | "target"
+  | "drift";
+
+export interface CellRef {
+  rid: number;
+  col: string;
+}
+
+export interface SelectionState {
+  columns: string[];
+  row: number | null;
+  cell: CellRef | null;
+  multi: boolean;
+}
+
+export interface EditorState {
+  op: string | null;
+  params: Record<string, unknown>;
+  target: "train" | "test" | "both";
+}
+
+export interface DockState {
+  tools: ToolId[];
+  wide: Partial<Record<ToolId, boolean>>;
+  pos: DockPos;
+  size: DockSize;
+  maximized: ToolId | null;
+}
+
+export interface CtxMenuState {
+  col: string;
+  x: number;
+  y: number;
+}
+
+export interface AppState {
+  workspace: Workspace | null;
+  screen: ScreenId;
+  role: Role;
+  /** null = latest version */
+  viewVersion: number | null;
+  selection: SelectionState;
+  editor: EditorState | null;
+  dock: DockState;
+  leftTab: LeftTab;
+  ctx: CtxMenuState | null;
+  /** Source of a dock drag reorder (mirrors prototype `_drag`). */
+  dockDragFrom: ToolId | null;
+}
+
+export const MAX_DOCK_TOOLS = 4;
+
+export function emptyWorkspace(name = "untitled"): Workspace {
+  return {
+    name,
+    datasets: {
+      train: { x: { kind: "csv", path: "" } },
+    },
+    label: { mode: "order" },
+    merges: [],
+    variables: [],
+    steps: [],
+  };
+}
+
+export const initialState: AppState = {
+  workspace: null,
+  screen: "sources",
+  role: "train",
+  viewVersion: null,
+  selection: { columns: [], row: null, cell: null, multi: false },
+  editor: null,
+  dock: {
+    tools: [],
+    wide: {},
+    pos: "bottom",
+    size: "M",
+    maximized: null,
+  },
+  leftTab: "vars",
+  ctx: null,
+  dockDragFrom: null,
+};
+
+/** Keep `align: true` steps first (prototype / FRONT-WEB alignment rule). */
+export function orderSteps(steps: Step[]): Step[] {
+  const align = steps.filter((s) => s.align);
+  const rest = steps.filter((s) => !s.align);
+  return [...align, ...rest];
+}
+
+export type AppAction =
+  | { type: "SET_WORKSPACE"; workspace: Workspace | null }
+  | { type: "SET_SCREEN"; screen: ScreenId }
+  | { type: "SET_ROLE"; role: Role }
+  | { type: "SET_VIEW_VERSION"; version: number | null }
+  | { type: "SET_LEFT_TAB"; tab: LeftTab }
+  | { type: "SET_STEPS"; steps: Step[] }
+  | { type: "TOGGLE_MULTI" }
+  | {
+      type: "PICK_COL";
+      name: string;
+      /** shift / meta / ctrl → add mode (also when multi is on) */
+      add?: boolean;
+    }
+  | { type: "PICK_ROW"; rid: number }
+  | { type: "PICK_CELL"; rid: number; col: string }
+  | { type: "CLEAR_SELECTION" }
+  | { type: "OPEN_CTX"; col: string; x: number; y: number }
+  | { type: "CLOSE_CTX" }
+  | {
+      type: "OPEN_EDITOR";
+      op: string | null;
+      params?: Record<string, unknown>;
+      target?: "train" | "test" | "both";
+    }
+  | { type: "SET_EDITOR_PARAMS"; params: Record<string, unknown> }
+  | { type: "SET_EDITOR_TARGET"; target: "train" | "test" | "both" }
+  | { type: "CLOSE_EDITOR" }
+  | { type: "OPEN_TOOL"; id: ToolId }
+  | { type: "TOGGLE_TOOL"; id: ToolId }
+  | { type: "MOVE_TOOL"; id: ToolId; delta: number }
+  | { type: "DRAG_TOOL"; id: ToolId }
+  | { type: "DROP_TOOL"; id: ToolId }
+  | { type: "SET_DOCK_POS"; pos: DockPos }
+  | { type: "SET_DOCK_SIZE"; size: DockSize }
+  | { type: "TOGGLE_WIDE"; id: ToolId }
+  | { type: "SET_MAXIMIZED"; id: ToolId | null };
+
+function openTool(tools: ToolId[], id: ToolId): ToolId[] {
+  const next = [...tools];
+  if (!next.includes(id)) {
+    next.push(id);
+    if (next.length > MAX_DOCK_TOOLS) next.shift();
+  }
+  return next;
+}
+
+/**
+ * Column pick rules from the prototype `pickCol`:
+ * - add mode (multi or modifier): toggle name in the list
+ * - otherwise: click same sole column → clear; else select only that column
+ * Always clears row / cell / ctx.
+ */
+export function pickCol(
+  selection: SelectionState,
+  name: string,
+  add = false,
+): SelectionState {
+  const useAdd = selection.multi || add;
+  let columns: string[];
+  if (useAdd) {
+    columns = [...selection.columns];
+    const i = columns.indexOf(name);
+    if (i >= 0) columns.splice(i, 1);
+    else columns.push(name);
+  } else if (selection.columns.length === 1 && selection.columns[0] === name) {
+    columns = [];
+  } else {
+    columns = [name];
+  }
+  return { ...selection, columns, row: null, cell: null };
+}
+
+export function appReducer(state: AppState, action: AppAction): AppState {
+  switch (action.type) {
+    case "SET_WORKSPACE":
+      return { ...state, workspace: action.workspace };
+    case "SET_SCREEN":
+      return { ...state, screen: action.screen, ctx: null };
+    case "SET_ROLE":
+      return { ...state, role: action.role };
+    case "SET_VIEW_VERSION":
+      return { ...state, viewVersion: action.version };
+    case "SET_LEFT_TAB":
+      return { ...state, leftTab: action.tab };
+    case "SET_STEPS": {
+      if (!state.workspace) return state;
+      return {
+        ...state,
+        workspace: {
+          ...state.workspace,
+          steps: orderSteps(action.steps),
+        },
+      };
+    }
+    case "TOGGLE_MULTI":
+      return {
+        ...state,
+        selection: { ...state.selection, multi: !state.selection.multi },
+      };
+    case "PICK_COL":
+      return {
+        ...state,
+        selection: pickCol(state.selection, action.name, action.add),
+        ctx: null,
+      };
+    case "PICK_ROW": {
+      const same = state.selection.row === action.rid;
+      return {
+        ...state,
+        selection: {
+          ...state.selection,
+          row: same ? null : action.rid,
+          cell: null,
+          columns: [],
+        },
+        ctx: null,
+      };
+    }
+    case "PICK_CELL": {
+      const cur = state.selection.cell;
+      const same =
+        cur !== null && cur.rid === action.rid && cur.col === action.col;
+      return {
+        ...state,
+        selection: {
+          ...state.selection,
+          cell: same ? null : { rid: action.rid, col: action.col },
+          row: null,
+          columns: [action.col],
+        },
+        ctx: null,
+        editor: null,
+      };
+    }
+    case "CLEAR_SELECTION":
+      return {
+        ...state,
+        selection: {
+          ...state.selection,
+          columns: [],
+          row: null,
+          cell: null,
+        },
+        ctx: null,
+      };
+    case "OPEN_CTX": {
+      const already = state.selection.columns.includes(action.col);
+      return {
+        ...state,
+        ctx: { col: action.col, x: action.x, y: action.y },
+        selection: {
+          ...state.selection,
+          columns: already ? state.selection.columns : [action.col],
+          row: null,
+          cell: null,
+        },
+      };
+    }
+    case "CLOSE_CTX":
+      return { ...state, ctx: null };
+    case "OPEN_EDITOR":
+      return {
+        ...state,
+        editor: {
+          op: action.op,
+          params: action.params ?? {},
+          target: action.target ?? "both",
+        },
+        ctx: null,
+      };
+    case "SET_EDITOR_PARAMS":
+      if (!state.editor) return state;
+      return {
+        ...state,
+        editor: { ...state.editor, params: action.params },
+      };
+    case "SET_EDITOR_TARGET":
+      if (!state.editor) return state;
+      return {
+        ...state,
+        editor: { ...state.editor, target: action.target },
+      };
+    case "CLOSE_EDITOR":
+      return { ...state, editor: null };
+    case "OPEN_TOOL":
+      return {
+        ...state,
+        dock: { ...state.dock, tools: openTool(state.dock.tools, action.id) },
+        ctx: null,
+      };
+    case "TOGGLE_TOOL": {
+      const i = state.dock.tools.indexOf(action.id);
+      if (i >= 0) {
+        const tools = state.dock.tools.filter((t) => t !== action.id);
+        return {
+          ...state,
+          dock: {
+            ...state.dock,
+            tools,
+            maximized:
+              state.dock.maximized === action.id ? null : state.dock.maximized,
+          },
+        };
+      }
+      return {
+        ...state,
+        dock: { ...state.dock, tools: openTool(state.dock.tools, action.id) },
+        ctx: null,
+      };
+    }
+    case "MOVE_TOOL": {
+      const tools = [...state.dock.tools];
+      const i = tools.indexOf(action.id);
+      const j = i + action.delta;
+      if (i < 0 || j < 0 || j >= tools.length) return state;
+      const [item] = tools.splice(i, 1);
+      if (item === undefined) return state;
+      tools.splice(j, 0, item);
+      return { ...state, dock: { ...state.dock, tools } };
+    }
+    case "DRAG_TOOL":
+      return { ...state, dockDragFrom: action.id };
+    case "DROP_TOOL": {
+      const from = state.dockDragFrom;
+      if (!from || from === action.id) {
+        return { ...state, dockDragFrom: null };
+      }
+      const tools = [...state.dock.tools];
+      const fromIx = tools.indexOf(from);
+      const toIx = tools.indexOf(action.id);
+      if (fromIx < 0 || toIx < 0) {
+        return { ...state, dockDragFrom: null };
+      }
+      tools.splice(fromIx, 1);
+      const insertAt = tools.indexOf(action.id);
+      tools.splice(insertAt, 0, from);
+      return { ...state, dock: { ...state.dock, tools }, dockDragFrom: null };
+    }
+    case "SET_DOCK_POS":
+      return { ...state, dock: { ...state.dock, pos: action.pos } };
+    case "SET_DOCK_SIZE":
+      return { ...state, dock: { ...state.dock, size: action.size } };
+    case "TOGGLE_WIDE": {
+      const wide = { ...state.dock.wide };
+      wide[action.id] = !wide[action.id];
+      return { ...state, dock: { ...state.dock, wide } };
+    }
+    case "SET_MAXIMIZED":
+      return { ...state, dock: { ...state.dock, maximized: action.id } };
+    default:
+      return state;
+  }
+}

@@ -1,0 +1,7 @@
+customer_id,signup_date,age,city,plan,monthly_spend,sessions,nb_support_calls,promo_code
+T101,2024-05-02,39,Paris,pro,"41,0",14,1,SPRING
+T102,06/05/2024,-999,nice,basic,"9,5",3,4,
+T103,2024-05-11,52,Lyon ,premium,"99,0",27,0,SPRING
+T104,2024-05-15,,Marseille,basic,"12,5",5,3,
+T105,2024-05-19,31,Nice,pro,"43,0",15,1,WELCOME
+T106,2024-05-23,46,lille,basic,"11,5",4,2,
