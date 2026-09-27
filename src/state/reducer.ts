@@ -1,4 +1,5 @@
 import type { CsvSource, Step, VariableSpec, Workspace } from "../api/types";
+import type { WorkspaceSourcesState } from "../screens/sources/sourcesLogic";
 
 export type ScreenId = "sources" | "align" | "bench";
 export type Role = "train" | "test";
@@ -80,6 +81,11 @@ export interface AppState {
   targetColumn: string | null;
   /** Last engine error message while replaying / previewing (verbatim). */
   benchError: string | null;
+  /**
+   * Sources screen file lists keyed by workspace name (FX-A / MAT-139).
+   * Switching workspaces must not leak another workspace's files.
+   */
+  filesByWorkspace: Record<string, WorkspaceSourcesState>;
 }
 
 export const MAX_DOCK_TOOLS = 4;
@@ -121,6 +127,7 @@ export const initialState: AppState = {
   /* W2 */
   targetColumn: "churn",
   benchError: null,
+  filesByWorkspace: {},
 };
 
 /** Keep `align: true` steps first (prototype / FRONT-WEB alignment rule). */
@@ -181,6 +188,12 @@ export type AppAction =
   | { type: "ADD_ALIGN_STEP"; step: Step }
   | { type: "REMOVE_STEP_BY_INDEX"; index: number }
   | { type: "SET_TEST_DECIMAL"; decimal: string | null }
+  | {
+      type: "SET_WORKSPACE_FILES";
+      name: string;
+      sources: WorkspaceSourcesState;
+    }
+  | { type: "CLEAR_WORKSPACE_FILES"; name: string }
   /* W2 workbench-core */
   | { type: "SET_TARGET_COLUMN"; name: string | null }
   | { type: "SET_BENCH_ERROR"; message: string | null }
@@ -517,6 +530,21 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           },
         },
       };
+    }
+
+    case "SET_WORKSPACE_FILES":
+      return {
+        ...state,
+        filesByWorkspace: {
+          ...state.filesByWorkspace,
+          [action.name]: action.sources,
+        },
+      };
+
+    case "CLEAR_WORKSPACE_FILES": {
+      const next = { ...state.filesByWorkspace };
+      delete next[action.name];
+      return { ...state, filesByWorkspace: next };
     }
 
     /* ---------- W2 workbench-core ---------- */

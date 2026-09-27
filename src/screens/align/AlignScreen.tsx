@@ -143,17 +143,21 @@ export function AlignScreen() {
     dispatch({ type: "REMOVE_STEP_BY_INDEX", index: stepIndex });
   };
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const handleOpenWorkbench = async () => {
     if (workspace) {
       try {
         await apiClient.saveWorkspace(workspace);
-      } catch {
-        // Ignored
+        setSaveError(null);
+      } catch (err: unknown) {
+        const msg = (err as EngineError).message || String(err);
+        setSaveError(msg);
+        return;
       }
     }
     dispatch({ type: "SET_SCREEN", screen: "bench" });
   };
-
   // Inspect source option on test
   const testSource = alignWorkspace.datasets.test?.x;
   const testDecimalOption =
@@ -205,6 +209,16 @@ export function AlignScreen() {
             style={{ marginBottom: "10px" }}
           >
             {alignReportError}
+          </div>
+        )}
+
+        {saveError && (
+          <div
+            className="engine-error-box"
+            role="alert"
+            style={{ marginBottom: "10px" }}
+          >
+            {saveError}
           </div>
         )}
 
