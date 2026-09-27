@@ -15,7 +15,7 @@ test("Flow 6: export (manifest shown, files exist on disk)", async ({
 
   // 2. Open Export panel
   await page.getByRole("button", { name: "Export", exact: true }).click();
-  const exportPanel = page.getByLabel("Export");
+  const exportPanel = page.getByLabel("Export", { exact: true });
   await expect(exportPanel).toBeVisible();
 
   // Verify workspace JSON is rendered
@@ -39,11 +39,15 @@ test("Flow 6: export (manifest shown, files exist on disk)", async ({
   expect(manifestJsonText).toContain("outputs");
   expect(manifestJsonText).toContain("manifest_version");
 
-  // Manifest in panel displays paths ending in train.parquet / test.parquet / manifest.json
+  // FX-B shows out_dir (input) plus engine export paths under that directory:
+  // processed/train.parquet, processed/test.parquet (manifest.outputs), and
+  // manifest.json (see dtk_engine/workspace/export.py).
+  await expect(outDirInput).toHaveValue(outDir);
   const manifestPanelText = await manifestRegion.innerText();
-  expect(manifestPanelText).toMatch(/[\w./\\-]+train\.parquet/);
-  expect(manifestPanelText).toMatch(/[\w./\\-]+test\.parquet/);
-  expect(manifestPanelText).toMatch(/[\w./\\-]+manifest\.json/);
+  expect(manifestPanelText).toContain("processed/train.parquet");
+  expect(manifestPanelText).toContain("processed/test.parquet");
+  const exportPanelText = await exportPanel.innerText();
+  expect(exportPanelText).toContain("manifest.json");
 
   // (b) Assert files exist on disk
   const manifestFile = join(outDir, "manifest.json");

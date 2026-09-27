@@ -115,29 +115,38 @@ test("Flow 5: compare + correlation windows, drag reorder, dock right, maximize 
     `dock window right (${dockBox!.x + dockBox!.width}) is left of inspector x (${inspectorBox!.x})`,
   ).toBeLessThanOrEqual(inspectorBox!.x + 1);
 
-  // No grid header box overlaps the inspector box
-  const thCount = await page.locator(".grid-th").count();
-  expect(thCount).toBeGreaterThan(0);
-  for (let i = 0; i < thCount; i++) {
-    const th = page.locator(".grid-th").nth(i);
-    const thBox = await th.boundingBox();
-    if (thBox) {
-      const overlapX =
-        thBox.x < inspectorBox!.x + inspectorBox!.width &&
-        thBox.x + thBox.width > inspectorBox!.x;
-      const overlapY =
-        thBox.y < inspectorBox!.y + inspectorBox!.height &&
-        thBox.y + thBox.height > inspectorBox!.y;
-      expect(
-        overlapX && overlapY,
-        `grid header ${i} overlaps inspector box`,
-      ).toBe(false);
-      expect(
-        thBox.x + thBox.width,
-        `grid header ${i} right edge (${thBox.x + thBox.width}) does not extend past inspector x (${inspectorBox!.x})`,
-      ).toBeLessThanOrEqual(inspectorBox!.x + 1);
+  // Visibility-correct: headers scrolled out of the grid still have a geometric
+  // bounding box that can extend past the scroll container while clipped. Probe
+  // the inspector with elementFromPoint instead of comparing unclipped boxes.
+  const inspectorHits = await page.evaluate((box) => {
+    const inspector = document.querySelector('[aria-label="Inspector"]');
+    if (!inspector || !box) return [];
+    const x = box.x + 10;
+    const hits = [];
+    for (let i = 0; i < 5; i++) {
+      const y = box.y + (box.height * (i + 0.5)) / 5;
+      const el = document.elementFromPoint(x, y);
+      hits.push({
+        x,
+        y,
+        inside: el !== null && (el === inspector || inspector.contains(el)),
+      });
     }
+    return hits;
+  }, inspectorBox);
+  expect(inspectorHits.length).toBe(5);
+  for (const hit of inspectorHits) {
+    expect(
+      hit.inside,
+      `elementFromPoint(${hit.x}, ${hit.y}) is inside the inspector`,
+    ).toBe(true);
   }
+
+  // Grid scroll container (.grid) must end at or before the dock window
+  expect(
+    gridBox!.x + gridBox!.width,
+    `grid scroll right (${gridBox!.x + gridBox!.width}) <= dock window x (${dockBox!.x})`,
+  ).toBeLessThanOrEqual(dockBox!.x + 1);
 
   await captureFlowScreenshot(page, "5-compare-dock", "03-dock-right.png");
 
