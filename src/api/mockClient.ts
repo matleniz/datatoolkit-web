@@ -378,7 +378,10 @@ export class MockApiClient implements ApiClient {
         missing: frame.rows.filter(
           (r) => (r[frame.columns.indexOf(name)] ?? "") === "",
         ).length,
-        sentinel_candidates: [],
+        sentinel_candidates:
+          name === "age"
+            ? [{ value: -999, count: 2 }]
+            : [],
         distinct: new Set(
           frame.rows.map((r) => r[frame.columns.indexOf(name)] ?? ""),
         ).size,

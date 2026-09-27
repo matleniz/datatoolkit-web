@@ -75,6 +75,11 @@ export interface AppState {
   sugCount: number;
   /** Number of alignment items to decide (shown in header tab badge). */
   alignToDecideCount?: number | null;
+  /* ---------- W2 workbench-core (MAT-134) ---------- */
+  /** Target column name (y), mirrored for inspector / grid target glyph. */
+  targetColumn: string | null;
+  /** Last engine error message while replaying / previewing (verbatim). */
+  benchError: string | null;
 }
 
 export const MAX_DOCK_TOOLS = 4;
@@ -113,6 +118,9 @@ export const initialState: AppState = {
   sugStage: "all",
   sugCount: 0,
   alignToDecideCount: null,
+  /* W2 */
+  targetColumn: "churn",
+  benchError: null,
 };
 
 /** Keep `align: true` steps first (prototype / FRONT-WEB alignment rule). */
@@ -172,7 +180,12 @@ export type AppAction =
   | { type: "SET_ALIGN_TO_DECIDE_COUNT"; count: number | null }
   | { type: "ADD_ALIGN_STEP"; step: Step }
   | { type: "REMOVE_STEP_BY_INDEX"; index: number }
-  | { type: "SET_TEST_DECIMAL"; decimal: string | null };
+  | { type: "SET_TEST_DECIMAL"; decimal: string | null }
+  /* W2 workbench-core */
+  | { type: "SET_TARGET_COLUMN"; name: string | null }
+  | { type: "SET_BENCH_ERROR"; message: string | null }
+  | { type: "ADD_STEP"; step: Step }
+  | { type: "REMOVE_STEP"; index: number };
 
 function openTool(tools: ToolId[], id: ToolId): ToolId[] {
   const next = [...tools];
@@ -450,6 +463,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ctx: null,
       };
     }
+
     /* ---------- Stream W1 actions (Sources & Alignment) ---------- */
     case "SET_ALIGN_TO_DECIDE_COUNT":
       return { ...state, alignToDecideCount: action.count };
@@ -505,6 +519,43 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
+    /* ---------- W2 workbench-core ---------- */
+    case "SET_TARGET_COLUMN":
+      return { ...state, targetColumn: action.name };
+    case "SET_BENCH_ERROR":
+      return { ...state, benchError: action.message };
+    case "ADD_STEP": {
+      if (!state.workspace) return state;
+      return {
+        ...state,
+        workspace: {
+          ...state.workspace,
+          steps: orderSteps([...state.workspace.steps, action.step]),
+        },
+        editor: null,
+        viewVersion: null,
+        selection: {
+          ...state.selection,
+          row: null,
+          cell: null,
+        },
+        benchError: null,
+      };
+    }
+    case "REMOVE_STEP": {
+      if (!state.workspace) return state;
+      const steps = state.workspace.steps.slice();
+      if (action.index < 0 || action.index >= steps.length) return state;
+      steps.splice(action.index, 1);
+      return {
+        ...state,
+        workspace: { ...state.workspace, steps: orderSteps(steps) },
+        editor: null,
+        viewVersion: null,
+        selection: { ...state.selection, cell: null },
+        benchError: null,
+      };
+    }
     default:
       return state;
   }

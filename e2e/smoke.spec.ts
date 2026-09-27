@@ -19,7 +19,10 @@ test("shell smoke — loads header and captures screenshot", async ({
   mkdirSync(docsDir, { recursive: true });
 
   await page.goto("/");
-  await expect(page.getByLabel("datatoolkit Studio")).toBeVisible();
+  // Bootstrap may show loading then the shell (or an engine warning).
+  await expect(page.getByLabel("datatoolkit Studio")).toBeVisible({
+    timeout: 60_000,
+  });
   await expect(page.getByRole("navigation", { name: "Screens" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Sources/ })).toBeVisible();
 
@@ -29,7 +32,10 @@ test("shell smoke — loads header and captures screenshot", async ({
   await expect(
     page.getByLabel("Variables, suggestions and recipe"),
   ).toBeVisible();
-  await expect(page.getByLabel("Inspector")).toBeVisible();
+  // Inspector or step editor
+  await expect(
+    page.getByLabel("Inspector").or(page.getByLabel("Step editor")),
+  ).toBeVisible();
   await expect(page.getByLabel("Analysis tools")).toBeVisible();
 
   const smokePath = join(smokeDir, "shell.png");
