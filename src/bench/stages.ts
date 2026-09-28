@@ -72,6 +72,7 @@ export const OP_STAGE: Record<string, StageId> = {
   standardize_text: "clean",
   map_value: "clean",
   to_numeric: "clean",
+  extract: "clean",
   drop_high_missing: "clean",
   impute: "clean",
   clip: "clean",
@@ -150,6 +151,7 @@ export function opTitle(op: string): string {
     onehot: "One-hot",
     standardize_text: "Standardize text",
     to_numeric: "Parse numeric text",
+    extract: "Extract by regex",
     drop_high_missing: "Drop high-missing columns",
     drop_columns: "Drop columns",
     drop_duplicates: "Drop duplicates",
@@ -240,6 +242,12 @@ export function stepSubLabel(
         params.percent ? "%" : "",
       ].filter(Boolean);
       return `${cols.join(", ")} · ${bits.join(" · ")}`;
+    }
+    case "extract": {
+      const col = String(params.column ?? "");
+      const pattern = String(params.pattern ?? "");
+      if (!col && !pattern) return "";
+      return pattern ? `${col} · ${pattern}` : col;
     }
     case "drop_high_missing": {
       const thr = params.threshold ?? 0.5;

@@ -34,6 +34,8 @@ const WHAT: Record<string, string> = {
     "Strips spaces and/or lowercases so spelling variants become one category. Optionally unify separators (- _ .) into spaces.",
   to_numeric:
     "Parses text numbers with currency symbols, thousands / decimal separators, and optional % into floats.",
+  extract:
+    "Pulls named regex groups from a text column into new typed columns.",
   drop_high_missing:
     "Drops columns whose train missing fraction exceeds a threshold. The same columns are dropped on test.",
   formula:
@@ -151,6 +153,7 @@ export function StepEditor() {
                         "standardize_text",
                         "replace_sentinels",
                         "to_numeric",
+                        "extract",
                       ].includes(op)
                     ) {
                       preset.column = sel1;

@@ -78,6 +78,12 @@
     "needs_target": false
   },
   {
+    "op": "extract",
+    "title": "Extract by regex",
+    "description": "Pull named regex groups from a text column into new typed columns.",
+    "needs_target": false
+  },
+  {
     "op": "ffill",
     "title": "Forward fill",
     "description": "Carry the last seen value forward in sort_by order (never backward).",

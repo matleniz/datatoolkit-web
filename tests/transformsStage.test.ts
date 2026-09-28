@@ -121,6 +121,20 @@ describe("transforms stage mapping and exclusion", () => {
     }
   });
 
+  it("extract maps column/pattern/prefix/errors for the generic editor (MAT-208)", () => {
+    expect(OP_STAGE.extract).toBe("clean");
+    const schema = loadSchema("extract");
+    const fields = schemaToFields(schema, "extract");
+    expect(fields.find((f) => f.key === "column")?.widget).toBe("column");
+    expect(fields.find((f) => f.key === "pattern")?.widget).toBe("text");
+    expect(fields.find((f) => f.key === "prefix")?.widget).toBe("text");
+    expect(fields.find((f) => f.key === "errors")?.widget).toBe("enum");
+    expect(fields.find((f) => f.key === "errors")?.enumValues).toEqual([
+      "raise",
+      "coerce",
+    ]);
+  });
+
   it("to_numeric maps decimal/errors enums and nullable thousands", () => {
     const schema = loadSchema("to_numeric");
     const fields = schemaToFields(schema, "to_numeric");
