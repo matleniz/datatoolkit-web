@@ -2,12 +2,17 @@ import { expect, test } from "@playwright/test";
 import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { captureFlowScreenshot, openWorkbench } from "./helpers";
+import {
+  captureFlowScreenshot,
+  clearFlowScreenshots,
+  openWorkbench,
+} from "./helpers";
 
 test("Flow 6: export (manifest shown, files exist on disk)", async ({
   page,
 }) => {
   test.setTimeout(120_000);
+  clearFlowScreenshots("6-export");
   await page.setViewportSize({ width: 1440, height: 900 });
 
   // 1. Open workbench

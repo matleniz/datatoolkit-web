@@ -1,10 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { captureFlowScreenshot, openWorkbench } from "./helpers";
+import {
+  captureFlowScreenshot,
+  clearFlowScreenshots,
+  openWorkbench,
+} from "./helpers";
 
 test("Flow 5: compare + correlation windows, drag reorder, dock right, maximize (no loading states)", async ({
   page,
 }) => {
   test.setTimeout(120_000);
+  clearFlowScreenshots("5-compare-dock");
   await page.setViewportSize({ width: 1440, height: 900 });
 
   // 1. Open workbench

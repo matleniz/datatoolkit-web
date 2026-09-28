@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { captureFlowScreenshot } from "./helpers";
+import { captureFlowScreenshot, clearFlowScreenshots } from "./helpers";
 
 test("Flow 2: alignment (decimal fix, rename match, drop extra -> 0 to decide)", async ({
   page,
 }) => {
+  clearFlowScreenshots("2-alignment");
   await page.setViewportSize({ width: 1440, height: 900 });
 
   // 1. Navigate to Alignment screen with clean unaligned workspace

@@ -1,10 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { captureFlowScreenshot, openWorkbench } from "./helpers";
+import {
+  captureFlowScreenshot,
+  clearFlowScreenshots,
+  openWorkbench,
+} from "./helpers";
 
 test("Flow 4: variables + formula (create @spend_median, formula step, syntax error shown, value visible on Test view)", async ({
   page,
 }) => {
   test.setTimeout(120_000);
+  clearFlowScreenshots("4-variables-formula");
   await page.setViewportSize({ width: 1440, height: 900 });
 
   // 1. Open workbench with reset

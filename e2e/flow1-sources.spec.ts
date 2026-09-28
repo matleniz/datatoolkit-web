@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { captureFlowScreenshot } from "./helpers";
+import { captureFlowScreenshot, clearFlowScreenshots } from "./helpers";
 
 test("Flow 1: sources (roles, y by order, merge extra table, result chips)", async ({
   page,
 }) => {
+  clearFlowScreenshots("1-sources");
   await page.setViewportSize({ width: 1440, height: 900 });
 
   // 1. Load Sources screen

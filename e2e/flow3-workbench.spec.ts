@@ -1,11 +1,17 @@
 import { expect, test } from "@playwright/test";
 import type { Workspace } from "../src/api/types";
-import { captureFlowScreenshot, churnWorkspace, fixturesDir } from "./helpers";
+import {
+  captureFlowScreenshot,
+  clearFlowScreenshots,
+  churnWorkspace,
+  fixturesDir,
+} from "./helpers";
 
 test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel, delete, suggestions > 0)", async ({
   page,
 }) => {
   test.setTimeout(180_000);
+  clearFlowScreenshots("3-workbench");
   await page.setViewportSize({ width: 1440, height: 900 });
 
   // 1. Reset to clean workspace then navigate from alignment screen

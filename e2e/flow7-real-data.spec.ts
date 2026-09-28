@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { captureFlowScreenshot } from "./helpers";
+import { captureFlowScreenshot, clearFlowScreenshots } from "./helpers";
 
 const REAL_DATA_DIR = "/mnt/c/Users/mat24/Downloads";
 const X_TRAIN = join(REAL_DATA_DIR, "X_train_6ZIKlTY.csv");
@@ -19,6 +19,7 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
     `Real dataset Parkinson CSVs not present in ${REAL_DATA_DIR}`,
   );
   test.setTimeout(180_000);
+  clearFlowScreenshots("7-real-data");
   await page.setViewportSize({ width: 1440, height: 900 });
 
   // 1. Go to Sources screen
@@ -137,7 +138,11 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
   const rawNode = page
     .locator(".pipeline-node")
     .filter({ has: page.locator(".pipeline-ver", { hasText: /^raw$/ }) });
-  await expect(rawNode).toContainText(/55\s?603\s*×\s*13/);
+  // Raw shape on the real dataset can take >5 s; do not assert the pipeline
+  // sub-label "extra" (FX-B makes it data-driven, e.g. "train X + y" with no merge).
+  await expect(rawNode).toContainText(/55\s?603\s*×\s*13/, {
+    timeout: 60_000,
+  });
 
   // Workbench grid shows rows with patient_id values
   await expect(

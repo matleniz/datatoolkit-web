@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,6 +9,15 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const e2eScreenshotsDir = join(here, "screenshots");
 export const docsScreenshotsDir = join(here, "../docs/screenshots/t1-e2e");
 export const fixturesDir = join(here, "fixtures");
+
+/**
+ * Delete prior e2e screenshots for a flow so a failed run never leaves stale PNGs.
+ * Call at the start of each flow before the first capture.
+ * (docs/screenshots are overwritten in place and left for the PR.)
+ */
+export function clearFlowScreenshots(flow: string): void {
+  rmSync(join(e2eScreenshotsDir, flow), { recursive: true, force: true });
+}
 
 export async function captureFlowScreenshot(
   page: Page,
