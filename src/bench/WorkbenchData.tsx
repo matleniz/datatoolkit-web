@@ -541,11 +541,16 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     const prev = workspace?.steps.length
       ? workspace.steps[workspace.steps.length - 1]!
       : null;
+    const missingByColumn = new Map<string, number>();
+    for (const [name, pr] of profiles) {
+      missingByColumn.set(name, pr.missing);
+    }
     return stepEditorBlockers(engineOp, params, editor.target, {
       availableColumns: columns.map((c) => c.name),
       previousStep: prev
         ? { op: prev.op, target: prev.target, params: prev.params }
         : null,
+      missingByColumn,
     });
   }, [
     editor,
@@ -553,6 +558,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     schemaLoading,
     schemaError,
     columns,
+    profiles,
     workspace?.steps,
   ]);
 

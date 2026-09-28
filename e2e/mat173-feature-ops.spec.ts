@@ -142,6 +142,50 @@ test.describe("MAT-173 feature ops", () => {
     ).toBeVisible({ timeout: 20_000 });
   });
 
+  test("polynomial on age (missing) shows impute hint + Open Impute (MAT-191)", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    await openWorkbench(page, true);
+    await waitForGridReady(page);
+
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __DTK_DISPATCH__?: (a: unknown) => void;
+      };
+      const d = w.__DTK_DISPATCH__;
+      if (!d) throw new Error("no dispatch");
+      d({ type: "CLEAR_SELECTION" });
+      d({ type: "PICK_COL", name: "age" });
+      d({ type: "PICK_COL", name: "sessions", add: true });
+    });
+
+    const ageHeader = page.locator(".grid-th", { hasText: "age" }).first();
+    await ageHeader.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Polynomial features…" }).click();
+
+    await expect(page.getByLabel("Step editor")).toBeVisible();
+    const reason = page.locator("[data-ed-disabled-reason]");
+    await expect(reason).toBeVisible({ timeout: 20_000 });
+    await expect(reason).toContainText("Impute missing values first");
+    await expect(reason).toContainText("age");
+    // Must not wait on / surface the raw engine message.
+    await expect(reason).not.toContainText("add an impute step before this one");
+
+    const openImpute = page.locator("[data-ed-open-impute]");
+    await expect(openImpute).toBeVisible();
+    await openImpute.click();
+    await expect(page.locator(".ed-title")).toContainText("Impute");
+    // Engine impute uses columns[] (toEngineParams maps column → columns).
+    await expect(
+      page.locator("[data-ed-field=columns] .small-chip.on", {
+        hasText: "age",
+      }),
+    ).toBeVisible();
+  });
+
   test("New feature formula where(Age < 18, 1, 0) → is_child", async ({
     page,
   }) => {

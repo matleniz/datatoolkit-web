@@ -34,12 +34,13 @@ import {
   type SourceFileItem,
   type WorkspaceSourcesState,
 } from "./sourcesLogic";
+import { E2E_FIXTURES_DIR } from "../../e2eFixtures";
 import { SourceOptionsEditor } from "./SourceOptionsEditor";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import "./sources.css";
 
-const FIXTURE_BASE =
-  "/home/matleniz/wt-datatoolkit-web/fxa-sources/e2e/fixtures";
+/** Offline / empty-cache churn fallback — this checkout's e2e fixtures (MAT-190). */
+const FIXTURE_BASE = E2E_FIXTURES_DIR;
 
 /** Shown when train has 0 columns / empty file (MAT-154). */
 const EMPTY_TRAIN_MESSAGE =

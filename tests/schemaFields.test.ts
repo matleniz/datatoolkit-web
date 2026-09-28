@@ -12,6 +12,7 @@ import {
 import { toEngineParams } from "../src/bench/presets";
 import {
   defaultParams,
+  featureOpColumnsNeedingImpute,
   resolveSchemaProp,
   schemaFieldsGap,
   schemaToFields,
@@ -430,5 +431,64 @@ describe("MAT-177 schema robustness + drop blockers", () => {
         },
       ),
     ).toBeNull();
+  });
+
+  it("blocks polynomial / power / quantile when columns have missing (MAT-191)", () => {
+    const missingByColumn = { age: 1, sessions: 0, monthly_spend: 0 };
+
+    expect(
+      featureOpColumnsNeedingImpute(
+        "polynomial",
+        { columns: ["age", "sessions"] },
+        missingByColumn,
+      ),
+    ).toEqual(["age"]);
+
+    expect(
+      stepEditorBlockers(
+        "polynomial",
+        { columns: ["age", "sessions"], degree: 2 },
+        "both",
+        {
+          availableColumns: ["age", "sessions", "monthly_spend"],
+          previousStep: null,
+          missingByColumn,
+        },
+      ),
+    ).toMatch(/Impute missing values first.*age/);
+
+    expect(
+      stepEditorBlockers(
+        "power_transform",
+        { columns: ["age", "sessions"] },
+        "both",
+        {
+          availableColumns: ["age", "sessions"],
+          previousStep: null,
+          missingByColumn,
+        },
+      ),
+    ).toMatch(/Impute missing values first/);
+
+    expect(
+      stepEditorBlockers(
+        "quantile_transform",
+        { columns: ["monthly_spend", "sessions"] },
+        "both",
+        {
+          availableColumns: ["age", "sessions", "monthly_spend"],
+          previousStep: null,
+          missingByColumn,
+        },
+      ),
+    ).toBeNull();
+
+    expect(
+      featureOpColumnsNeedingImpute(
+        "scale",
+        { columns: ["age"] },
+        missingByColumn,
+      ),
+    ).toEqual([]);
   });
 });
