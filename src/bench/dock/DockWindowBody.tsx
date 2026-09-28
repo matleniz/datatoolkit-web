@@ -20,6 +20,7 @@ import {
   schemaHasColumns,
   selectedNumericColumns,
 } from "./columnScope";
+import { EMPTY_DATA_ROWS_MSG } from "../format";
 import { ResultView } from "./ResultView";
 
 function pearson(
@@ -465,6 +466,22 @@ export function DockWindowBody({ id }: { id: ToolId }) {
       <div>
         {scopeBar}
         <div className="dock-msg muted">Loading…</div>
+      </div>
+    );
+  }
+  // Header-only / empty frame: no blank axes in Distribution etc. (MAT-154 #2).
+  if (
+    bench.total === 0 &&
+    (profiles.length > 0 ||
+      bench.columns.length > 0 ||
+      bench.display.cols.length > 0)
+  ) {
+    return (
+      <div data-empty-rows="1">
+        {scopeBar}
+        <div className="dock-empty-state" role="status">
+          {EMPTY_DATA_ROWS_MSG}
+        </div>
       </div>
     );
   }

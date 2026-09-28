@@ -132,6 +132,17 @@
   line-height: 1.5;
 }
 
+.dock-empty-state {
+  margin: 8px 0;
+  padding: 14px 16px;
+  border: 1px dashed var(--dtk-border-strong);
+  border-radius: 8px;
+  background: var(--dtk-bg-subtle);
+  color: var(--dtk-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .dock-bound {
   margin-bottom: 6px;
 }

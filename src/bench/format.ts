@@ -1,5 +1,12 @@
 import type { JsonValue } from "../api/types";
 
+/** Preview length for long string cells (grid + inspector). MAT-154 item 3. */
+export const TEXT_PREVIEW_CHARS = 500;
+
+/** Empty-state copy when a frame has columns but 0 data rows. MAT-154 item 2. */
+export const EMPTY_DATA_ROWS_MSG =
+  "0 data rows — nothing to display / analyse";
+
 export function isNull(v: unknown): boolean {
   return v === null || v === undefined;
 }
@@ -23,9 +30,38 @@ export function fmt(v: JsonValue | undefined): string {
   return String(v);
 }
 
+/** Truncate a string for display; caller can offer a “Show full text” toggle. */
+export function truncateText(
+  s: string,
+  max = TEXT_PREVIEW_CHARS,
+): { text: string; truncated: boolean } {
+  if (s.length <= max) return { text: s, truncated: false };
+  return { text: s.slice(0, max), truncated: true };
+}
+
+/**
+ * Format a value for tooltips / short labels, truncating giant strings so the
+ * DOM never materialises 50k-char nodes by accident.
+ */
+export function fmtPreview(
+  v: JsonValue | undefined,
+  max = TEXT_PREVIEW_CHARS,
+): string {
+  if (typeof v === "string") {
+    const { text, truncated } = truncateText(v, max);
+    return truncated ? `${text}…` : text;
+  }
+  return fmt(v);
+}
+
 export function cellDisplay(v: JsonValue | undefined): string {
   if (isNull(v)) return "missing";
-  if (typeof v === "string" && v !== v.trim()) return `“${v}”`;
+  if (typeof v === "string") {
+    const quoted = v !== v.trim();
+    const { text, truncated } = truncateText(v);
+    const body = truncated ? `${text}…` : text;
+    return quoted ? `“${body}”` : body;
+  }
   return fmt(v as JsonValue);
 }
 
