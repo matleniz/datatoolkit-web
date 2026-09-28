@@ -36,6 +36,7 @@ import {
 } from "./schemaFields";
 import {
   PAGE_DEFAULT,
+  PAGE_WIDE,
   rowsPageSize,
   WIDE_COL_THRESHOLD,
 } from "./grid/columnWindow";
@@ -241,15 +242,36 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       let rawShapeError: string | null = null;
 
       try {
-        // Peek column count so wide frames use a smaller first page (MAT-152).
-        // limit=1 still returns full column metadata without a 6MB body.
-        const peek = await apiClient.workspaceRows(ws, role, ver, 0, 1);
-        if (gen !== fetchGen.current) return;
-        const page = rowsPageSize(peek.columns.length);
-        const rowsRes =
-          page <= 1
-            ? peek
-            : await apiClient.workspaceRows(ws, role, ver, 0, page);
+        // Narrow (or already-known narrow): one page fetch — skip the peek.
+        // Wide / unknown: peek limit=1 for column count then size the page
+        // (MAT-152 — wide frames must not pull PAGE_DEFAULT rows).
+        const knownCols = columnsRef.current.length;
+        let rowsRes: Awaited<ReturnType<typeof apiClient.workspaceRows>>;
+        if (knownCols > 0 && knownCols < WIDE_COL_THRESHOLD) {
+          rowsRes = await apiClient.workspaceRows(
+            ws,
+            role,
+            ver,
+            0,
+            PAGE_DEFAULT,
+          );
+        } else if (knownCols >= WIDE_COL_THRESHOLD) {
+          rowsRes = await apiClient.workspaceRows(
+            ws,
+            role,
+            ver,
+            0,
+            PAGE_WIDE,
+          );
+        } else {
+          const peek = await apiClient.workspaceRows(ws, role, ver, 0, 1);
+          if (gen !== fetchGen.current) return;
+          const page = rowsPageSize(peek.columns.length);
+          rowsRes =
+            page <= 1
+              ? peek
+              : await apiClient.workspaceRows(ws, role, ver, 0, page);
+        }
         if (gen !== fetchGen.current) return;
 
         setColumns(rowsRes.columns);
@@ -363,39 +385,53 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
             setShapes([{ rows: rowsRes.total, cols: rowsRes.columns.length }]);
             setStepErrors(new Map());
           } else {
-            for (let v = 0; v <= n; v++) {
-              if (v === ver) continue;
-              if (gen !== fetchGen.current) return;
-              try {
-                const r = await apiClient.workspaceRows(ws, role, v, 0, 1);
-                nextShapes[v] = { rows: r.total, cols: r.columns.length };
-              } catch (e) {
-                const msg =
-                  e instanceof EngineError ? e.message : String(e);
-                if (v > 0) errs.set(v - 1, msg);
-                if (v === 0) {
-                  rawShapeError = msg;
-                  dispatch({ type: "SET_BENCH_ERROR", message: msg });
+            // Independent shape peeks — parallelize (was sequential await loop).
+            const otherVersions = Array.from(
+              { length: n + 1 },
+              (_, v) => v,
+            ).filter((v) => v !== ver);
+            const settled = await Promise.all(
+              otherVersions.map(async (v) => {
+                try {
+                  const r = await apiClient.workspaceRows(ws, role, v, 0, 1);
+                  return {
+                    v,
+                    shape: {
+                      rows: r.total,
+                      cols: r.columns.length,
+                    } as PipelineShape,
+                    error: null as string | null,
+                  };
+                } catch (e) {
+                  return {
+                    v,
+                    shape: null as PipelineShape | null,
+                    error: e instanceof EngineError ? e.message : String(e),
+                  };
                 }
-                nextShapes[v] =
-                  nextShapes[v - 1] ?? { rows: 0, cols: 0 };
-                // Fill remaining with last known so the bar stays sized.
-                for (let u = v + 1; u <= n; u++) {
-                  if (!nextShapes[u]) nextShapes[u] = nextShapes[v]!;
-                }
-                break;
+              }),
+            );
+            if (gen !== fetchGen.current) return;
+            // Apply in version order so a failed step can fill from the
+            // previous known shape (same fill+break semantics as the old loop).
+            for (const { v, shape, error } of settled.sort(
+              (a, b) => a.v - b.v,
+            )) {
+              if (shape) {
+                nextShapes[v] = shape;
+                continue;
               }
-              if (gen === fetchGen.current) {
-                setShapes(
-                  nextShapes.map(
-                    (s, i) =>
-                      s ??
-                      nextShapes[ver] ??
-                      nextShapes[i - 1] ?? { rows: 0, cols: 0 },
-                  ),
-                );
-                setStepErrors(new Map(errs));
+              const msg = error ?? "shape fetch failed";
+              if (v > 0) errs.set(v - 1, msg);
+              if (v === 0) {
+                rawShapeError = msg;
+                dispatch({ type: "SET_BENCH_ERROR", message: msg });
               }
+              nextShapes[v] = nextShapes[v - 1] ?? { rows: 0, cols: 0 };
+              for (let u = v + 1; u <= n; u++) {
+                if (!nextShapes[u]) nextShapes[u] = nextShapes[v]!;
+              }
+              break;
             }
             if (gen === fetchGen.current) {
               setShapes(
@@ -597,6 +633,9 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
 
   const pendingStepKey = stepKey(pendingStep);
 
+  // Same debounce as dock params — avoid previewStep+rows on every keystroke.
+  const PREVIEW_DEBOUNCE_MS = 300;
+
   useEffect(() => {
     if (!workspace || !pendingStep || !pendingStepKey) {
       setPreview(null);
@@ -606,36 +645,47 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       setPreviewLoading(false);
       return;
     }
+    const ac = new AbortController();
     let cancelled = false;
     const ws = workspace;
     const step = pendingStep;
-    setPreviewLoading(true);
 
-    (async () => {
-      try {
-        const prev = await apiClient.previewStep(ws, step, role);
-        if (cancelled) return;
-        setPreview(prev);
-        setPreviewError(null);
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      setPreviewLoading(true);
 
-        // preview_step only returns diffs — fetch the after-frame and merge by _rid.
-        const withStep: Workspace = {
-          ...ws,
-          steps: [...ws.steps, step],
-        };
+      void (async () => {
         try {
-          const after = await apiClient.workspaceRows(
-            withStep,
+          const prev = await apiClient.previewStep(
+            ws,
+            step,
             role,
-            withStep.steps.length,
-            0,
-            rowsPageSize(columnsRef.current.length) || PAGE_DEFAULT,
+            ac.signal,
           );
-          if (cancelled) return;
-          setNextRows(after.rows);
-          setNextColumns(after.columns);
-        } catch (e) {
-          if (!cancelled) {
+          if (cancelled || ac.signal.aborted) return;
+          setPreview(prev);
+          setPreviewError(null);
+
+          // preview_step only returns diffs — fetch the after-frame and merge by _rid.
+          const withStep: Workspace = {
+            ...ws,
+            steps: [...ws.steps, step],
+          };
+          try {
+            const after = await apiClient.workspaceRows(
+              withStep,
+              role,
+              withStep.steps.length,
+              0,
+              rowsPageSize(columnsRef.current.length) || PAGE_DEFAULT,
+              ac.signal,
+            );
+            if (cancelled || ac.signal.aborted) return;
+            setNextRows(after.rows);
+            setNextColumns(after.columns);
+          } catch (e) {
+            if (cancelled || ac.signal.aborted) return;
+            if (e instanceof Error && e.name === "AbortError") return;
             setNextRows(null);
             setNextColumns(null);
             setPreviewError(
@@ -644,20 +694,23 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
                 : `Preview rows failed: ${String(e)}`,
             );
           }
+        } catch (e) {
+          if (cancelled || ac.signal.aborted) return;
+          if (e instanceof Error && e.name === "AbortError") return;
+          setPreview(null);
+          setNextRows(null);
+          setNextColumns(null);
+          setPreviewError(e instanceof EngineError ? e.message : String(e));
+        } finally {
+          if (!cancelled && !ac.signal.aborted) setPreviewLoading(false);
         }
-      } catch (e) {
-        if (cancelled) return;
-        setPreview(null);
-        setNextRows(null);
-        setNextColumns(null);
-        setPreviewError(e instanceof EngineError ? e.message : String(e));
-      } finally {
-        if (!cancelled) setPreviewLoading(false);
-      }
-    })();
+      })();
+    }, PREVIEW_DEBOUNCE_MS);
 
     return () => {
       cancelled = true;
+      ac.abort();
+      window.clearTimeout(timer);
     };
     // pendingStepKey stabilises object-identity churn from useMemo.
   }, [workspace, pendingStepKey, role]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -6,7 +6,6 @@ import { EngineError } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import type { CourseStage } from "../../state/reducer";
 import { toEngineParams } from "../presets";
-import { WIDE_COL_THRESHOLD } from "../grid/columnWindow";
 import { useWorkbenchData } from "../WorkbenchData";
 import { datasetSource, targetColumnOf } from "./datasetSource";
 import { keyParamsFromSchema } from "./keyParams";
@@ -42,6 +41,7 @@ export function SuggestionsTab() {
   const wsKey = workspace
     ? `${workspace.name}|${workspace.steps.length}|${workspace.variables.length}|${workspace.datasets.train.x.path}`
     : "";
+  const rechecking = loading && cards.length > 0;
 
   useEffect(() => {
     if (!workspace?.datasets.train.x.path) {
@@ -53,8 +53,6 @@ export function SuggestionsTab() {
     if (!gridReady) return;
 
     let cancelled = false;
-    let idleHandle: number | undefined;
-    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
     const run = async () => {
       if (cancelled) return;
@@ -64,6 +62,7 @@ export function SuggestionsTab() {
         if (window.__DTK_WORKSPACE_SAVED__) {
           await window.__DTK_WORKSPACE_SAVED__;
         }
+        if (cancelled) return;
         const source = datasetSource(workspace, "train", true);
         let target = targetColumnOf(workspace);
         if (!target && workspace.datasets.train.y) {
@@ -75,22 +74,36 @@ export function SuggestionsTab() {
           available.test = datasetSource(workspace, "test", false);
         }
 
+        // Parallel across keys (schema→run stays sequential per key).
+        const settled = await Promise.all(
+          SUGGESTION_KEYS.map(async (keyId) => {
+            if (keyId === "feature_selection" && !target) {
+              return null;
+            }
+            try {
+              const schema = await apiClient.keySchema(keyId);
+              const params = keyParamsFromSchema(schema, available);
+              const result = await apiClient.runKey(keyId, params);
+              return { keyId, result, error: null as string | null };
+            } catch (e) {
+              const msg = e instanceof EngineError ? e.message : String(e);
+              return {
+                keyId,
+                result: null as Result | null,
+                error: `${keyId}: ${msg}`,
+              };
+            }
+          }),
+        );
+        if (cancelled) return;
+
         const results: { keyId: string; result: Result }[] = [];
         const errors: string[] = [];
-        for (const keyId of SUGGESTION_KEYS) {
-          if (cancelled) return;
-          if (keyId === "feature_selection" && !target) continue;
-          try {
-            const schema = await apiClient.keySchema(keyId);
-            const params = keyParamsFromSchema(schema, available);
-            const result = await apiClient.runKey(keyId, params);
-            results.push({ keyId, result });
-          } catch (e) {
-            const msg = e instanceof EngineError ? e.message : String(e);
-            errors.push(`${keyId}: ${msg}`);
-          }
+        for (const item of settled) {
+          if (!item) continue;
+          if (item.result) results.push({ keyId: item.keyId, result: item.result });
+          if (item.error) errors.push(item.error);
         }
-        if (cancelled) return;
         const next = mapSuggestionCards(results);
         setCards(next);
         dispatch({ type: "SET_SUG_COUNT", count: next.length });
@@ -109,32 +122,14 @@ export function SuggestionsTab() {
       }
     };
 
-    // Wide frames: defer suggestion keys so first paint / Apply stay responsive
-    // (MAT-152). Narrow frames keep the short idle delay from MAT-144.
-    const deferMs = columns.length >= WIDE_COL_THRESHOLD ? 750 : 0;
-    const schedule = () => {
-      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-        idleHandle = window.requestIdleCallback(() => {
-          void run();
-        }, { timeout: deferMs + 2000 });
-      } else {
-        timeoutHandle = setTimeout(() => void run(), deferMs || 16);
-      }
-    };
-    if (deferMs > 0) {
-      timeoutHandle = setTimeout(schedule, deferMs);
-    } else {
-      schedule();
-    }
+    // Run promptly after the save gate — no multi-second idle defer
+    // (that made applied suggestions look stuck until a manual reload).
+    void run();
 
     return () => {
       cancelled = true;
-      if (idleHandle !== undefined && "cancelIdleCallback" in window) {
-        window.cancelIdleCallback(idleHandle);
-      }
-      if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
     };
-  }, [wsKey, gridReady, workspace, dispatch, columns.length]);
+  }, [wsKey, gridReady, workspace, dispatch]);
 
   const shown = useMemo(
     () => filterCardsByStage(cards, sugStage),
@@ -161,7 +156,11 @@ export function SuggestionsTab() {
           </button>
         ))}
       </div>
-      {loading || (!gridReady && workspace?.datasets.train.x.path) ? (
+      {rechecking ? (
+        <div className="muted" role="status" data-sug-rechecking="1">
+          Re-checking…
+        </div>
+      ) : loading || (!gridReady && workspace?.datasets.train.x.path) ? (
         <div className="muted">Loading suggestions…</div>
       ) : null}
       {error ? (
@@ -171,7 +170,12 @@ export function SuggestionsTab() {
       ) : null}
       <div className="sug-list" data-sug-cards={shown.length}>
         {shown.map((cd) => (
-          <div key={cd.id} className="sug-card" data-sug-id={cd.id}>
+          <div
+            key={cd.id}
+            className="sug-card"
+            data-sug-id={cd.id}
+            data-sug-stale={rechecking ? "1" : undefined}
+          >
             <div className="sug-stage">
               <span
                 className="sug-dot"
