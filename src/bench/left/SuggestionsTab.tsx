@@ -6,6 +6,7 @@ import { EngineError } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import type { CourseStage } from "../../state/reducer";
 import { toEngineParams } from "../presets";
+import { WIDE_COL_THRESHOLD } from "../grid/columnWindow";
 import { useWorkbenchData } from "../WorkbenchData";
 import { datasetSource, targetColumnOf } from "./datasetSource";
 import { keyParamsFromSchema } from "./keyParams";
@@ -50,7 +51,11 @@ export function SuggestionsTab() {
     if (!gridReady) return;
 
     let cancelled = false;
-    (async () => {
+    let idleHandle: number | undefined;
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+    const run = async () => {
+      if (cancelled) return;
       setLoading(true);
       setError(null);
       try {
@@ -71,6 +76,7 @@ export function SuggestionsTab() {
         const results: { keyId: string; result: Result }[] = [];
         const errors: string[] = [];
         for (const keyId of SUGGESTION_KEYS) {
+          if (cancelled) return;
           if (keyId === "feature_selection" && !target) continue;
           try {
             const schema = await apiClient.keySchema(keyId);
@@ -99,11 +105,34 @@ export function SuggestionsTab() {
       } finally {
         if (!cancelled) setLoading(false);
       }
-    })();
+    };
+
+    // Wide frames: defer suggestion keys so first paint / Apply stay responsive
+    // (MAT-152). Narrow frames keep the short idle delay from MAT-144.
+    const deferMs = columns.length >= WIDE_COL_THRESHOLD ? 750 : 0;
+    const schedule = () => {
+      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+        idleHandle = window.requestIdleCallback(() => {
+          void run();
+        }, { timeout: deferMs + 2000 });
+      } else {
+        timeoutHandle = setTimeout(() => void run(), deferMs || 16);
+      }
+    };
+    if (deferMs > 0) {
+      timeoutHandle = setTimeout(schedule, deferMs);
+    } else {
+      schedule();
+    }
+
     return () => {
       cancelled = true;
+      if (idleHandle !== undefined && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleHandle);
+      }
+      if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
     };
-  }, [wsKey, gridReady, workspace, dispatch]);
+  }, [wsKey, gridReady, workspace, dispatch, columns.length]);
 
   const shown = useMemo(
     () => filterCardsByStage(cards, sugStage),

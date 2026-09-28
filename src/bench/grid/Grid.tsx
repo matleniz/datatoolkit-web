@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { colAlerts, isOutlierValue, missPct, profileBars } from "../alerts";
@@ -7,8 +7,9 @@ import { cellDisplay, fmt, nameDisplay } from "../format";
 import { colWidth, isNumericKind, KIND_BAR, KIND_LABEL } from "../kinds";
 import { stepSummary } from "../stages";
 import { useWorkbenchData } from "../WorkbenchData";
+import { columnWindow } from "./columnWindow";
 
-/** W2 — data grid. */
+/** W2 — data grid with horizontally windowed columns (MAT-152). */
 export function Grid() {
   const { selection, targetColumn, benchError } = useAppState();
   const dispatch = useAppDispatch();
@@ -25,6 +26,7 @@ export function Grid() {
     loading,
     hasMore,
     loadMore,
+    reportVisibleColumns,
   } = useWorkbenchData();
 
   const { workspace } = useAppState();
@@ -52,9 +54,39 @@ export function Grid() {
   display.rows.forEach((r, i) => rowNum.set(r.rid, i + 1));
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const [viewportW, setViewportW] = useState(0);
+
+  const measureViewport = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setScrollLeft(el.scrollLeft);
+    setViewportW(el.clientWidth);
+  }, []);
+
+  useEffect(() => {
+    measureViewport();
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => measureViewport());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measureViewport, display.cols.length]);
+
+  const windowed = useMemo(
+    () => columnWindow(display.cols, scrollLeft, Math.max(0, viewportW - 44)),
+    [display.cols, scrollLeft, viewportW],
+  );
+
+  useEffect(() => {
+    reportVisibleColumns(windowed.visible.map((c) => c.name));
+  }, [windowed.visible, reportVisibleColumns]);
+
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
-    if (!el || !hasMore) return;
+    if (!el) return;
+    setScrollLeft(el.scrollLeft);
+    if (!hasMore) return;
     const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
     if (remaining < 240) loadMore();
   }, [hasMore, loadMore]);
@@ -153,6 +185,7 @@ export function Grid() {
       <div
         className="grid"
         aria-label="Data grid"
+        data-col-window={`${windowed.start}:${windowed.end}/${display.cols.length}`}
         ref={scrollRef}
         onScroll={onScroll}
       >
@@ -162,7 +195,14 @@ export function Grid() {
         <div className="grid-inner" style={{ width: totalW, minWidth: "100%" }}>
           <div className="grid-header-row">
             <div className="grid-corner" />
-            {display.cols.map((c) => {
+            {windowed.leftPad > 0 ? (
+              <div
+                className="grid-col-spacer"
+                aria-hidden="true"
+                style={{ width: windowed.leftPad }}
+              />
+            ) : null}
+            {windowed.visible.map((c) => {
               const sel = selection.columns.includes(c.name);
               const isT = c.name === targetColumn;
               const pr = profiles.get(c.name);
@@ -283,6 +323,13 @@ export function Grid() {
                 </button>
               );
             })}
+            {windowed.rightPad > 0 ? (
+              <div
+                className="grid-col-spacer"
+                aria-hidden="true"
+                style={{ width: windowed.rightPad }}
+              />
+            ) : null}
           </div>
 
           {display.rows.map((row) => {
@@ -306,7 +353,14 @@ export function Grid() {
                 >
                   {num}
                 </button>
-                {display.cols.map((c) => {
+                {windowed.leftPad > 0 ? (
+                  <div
+                    className="grid-col-spacer"
+                    aria-hidden="true"
+                    style={{ width: windowed.leftPad }}
+                  />
+                ) : null}
+                {windowed.visible.map((c) => {
                   const v = row.vals[c.name];
                   const csel =
                     selection.cell?.rid === row.rid &&
@@ -364,6 +418,13 @@ export function Grid() {
                     </button>
                   );
                 })}
+                {windowed.rightPad > 0 ? (
+                  <div
+                    className="grid-col-spacer"
+                    aria-hidden="true"
+                    style={{ width: windowed.rightPad }}
+                  />
+                ) : null}
               </div>
             );
           })}

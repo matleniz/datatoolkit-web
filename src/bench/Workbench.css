@@ -458,6 +458,11 @@
   border-right: 1px solid #e3e1da;
 }
 
+.grid-col-spacer {
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
 .grid-th {
   flex-shrink: 0;
   box-sizing: border-box;
