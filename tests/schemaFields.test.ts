@@ -7,7 +7,10 @@ import type { JsonSchema } from "../src/api/types";
 import {
   defaultParams,
   resolveSchemaProp,
+  schemaFieldsGap,
   schemaToFields,
+  stepEditorBlockers,
+  stepsAreIdentical,
   stepParamsValid,
   stripNullParams,
 } from "../src/bench/schemaFields";
@@ -242,5 +245,119 @@ describe("toEngineParams", () => {
       lower: false,
       mapping: { PARIS: "paris" },
     });
+  });
+});
+
+
+describe("MAT-177 schema robustness + drop blockers", () => {
+  it("maps drop_columns without x-dtk-widget to columns chips", () => {
+    const oldEngine: JsonSchema = {
+      type: "object",
+      properties: {
+        columns: {
+          type: "array",
+          items: { type: "string" },
+          minItems: 1,
+          title: "Columns",
+        },
+        missing_ok: { type: "boolean", default: false, title: "Missing Ok" },
+      },
+      required: ["columns"],
+    };
+    const fields = schemaToFields(oldEngine, "drop_columns");
+    expect(fields.find((f) => f.key === "columns")?.widget).toBe("columns");
+    expect(schemaFieldsGap(oldEngine, fields)).toBeNull();
+  });
+
+  it("resolves local $ref so required columns is not silently dropped", () => {
+    const refSchema: JsonSchema = {
+      type: "object",
+      properties: {
+        columns: { $ref: "#/$defs/ColumnsList" },
+      },
+      required: ["columns"],
+      $defs: {
+        ColumnsList: {
+          type: "array",
+          items: { type: "string" },
+          title: "Columns",
+          minItems: 1,
+          "x-dtk-widget": "columns",
+        },
+      },
+    };
+    const fields = schemaToFields(refSchema, "drop_columns");
+    expect(fields.map((f) => f.key)).toContain("columns");
+    expect(fields[0]?.widget).toBe("columns");
+    expect(schemaFieldsGap(refSchema, fields)).toBeNull();
+  });
+
+  it("reports a schema gap when required params yield no fields", () => {
+    const broken: JsonSchema = {
+      type: "object",
+      properties: {
+        columns: { $ref: "#/$defs/Missing" },
+      },
+      required: ["columns"],
+    };
+    const fields = schemaToFields(broken, "drop_columns");
+    expect(fields).toEqual([]);
+    expect(schemaFieldsGap(broken, fields)).toMatch(/required params: columns/);
+  });
+
+  it("flags identical consecutive steps and already-gone columns", () => {
+    const prev = {
+      op: "drop_columns",
+      target: "both",
+      params: { columns: ["time_since_diagnosis"] },
+    };
+    expect(
+      stepsAreIdentical(prev, {
+        op: "drop_columns",
+        target: "both",
+        params: { columns: ["time_since_diagnosis"] },
+      }),
+    ).toBe(true);
+
+    // Already-gone wins even when the previous step is the identical drop.
+    expect(
+      stepEditorBlockers(
+        "drop_columns",
+        { columns: ["time_since_diagnosis"] },
+        "both",
+        {
+          availableColumns: ["Index", "age"],
+          previousStep: prev,
+        },
+      ),
+    ).toMatch(/already gone/);
+
+    expect(
+      stepEditorBlockers(
+        "drop_columns",
+        { columns: ["Index"] },
+        "both",
+        {
+          availableColumns: ["Index", "age"],
+          previousStep: {
+            op: "drop_columns",
+            target: "both",
+            params: { columns: ["Index"] },
+          },
+        },
+      ),
+    ).toMatch(/identical to the previous/);
+
+    expect(
+      stepEditorBlockers(
+        "drop_columns",
+        { columns: ["Index"] },
+        "both",
+        {
+          availableColumns: ["Index", "age"],
+          previousStep: prev,
+        },
+      ),
+    ).toBeNull();
   });
 });

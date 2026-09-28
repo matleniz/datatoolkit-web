@@ -27,7 +27,9 @@ import { buildDisplay, diffText, type DisplayFrame } from "./diff";
 import { resolveOp, toEngineParams } from "./presets";
 import {
   defaultParams,
+  schemaFieldsGap,
   schemaToFields,
+  stepEditorBlockers,
   stepParamsValid,
   stripNullParams,
   type EditorField,
@@ -67,6 +69,10 @@ export interface WorkbenchDataValue {
   transforms: { op: string; title: string; description: string }[];
   schemaFields: EditorField[];
   schemaLoading: boolean;
+  /** Schema fetch / mapping failure — never silently clear when pendingStep is null. */
+  schemaError: string | null;
+  /** Front-side Apply blockers (duplicate step, column already gone). */
+  editorBlocker: string | null;
   loading: boolean;
   /** True while a live preview request is in flight for the pending step. */
   previewLoading: boolean;
@@ -116,6 +122,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
   >([]);
   const [schemaFields, setSchemaFields] = useState<EditorField[]>([]);
   const [schemaLoading, setSchemaLoading] = useState(false);
+  const [schemaError, setSchemaError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -467,6 +474,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     if (!editor?.op) {
       setSchemaFields([]);
       setSchemaLoading(false);
+      setSchemaError(null);
       return;
     }
     const op = resolveOp(editor.op);
@@ -474,12 +482,15 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     setSchemaFields([]);
     setSchemaLoading(true);
+    setSchemaError(null);
     apiClient
       .transformSchema(op)
       .then((schema) => {
         if (cancelled) return;
         const fields = schemaToFields(schema, op);
+        const gap = schemaFieldsGap(schema, fields);
         setSchemaFields(fields);
+        setSchemaError(gap);
         const defaults = defaultParams(schema, op);
         const opened = toEngineParams(op, openedParams);
         const merged: Record<string, unknown> = {
@@ -509,7 +520,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       .catch((e) => {
         if (!cancelled) {
           setSchemaFields([]);
-          setPreviewError(
+          setSchemaError(
             e instanceof EngineError ? e.message : String(e),
           );
         }
@@ -522,9 +533,36 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     };
   }, [editor?.op, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const editorBlocker = useMemo((): string | null => {
+    if (!editor?.op || !isLatest) return null;
+    if (schemaLoading || schemaError) return null;
+    const engineOp = resolveOp(editor.op);
+    const params = stripNullParams(toEngineParams(editor.op, editor.params));
+    const prev = workspace?.steps.length
+      ? workspace.steps[workspace.steps.length - 1]!
+      : null;
+    return stepEditorBlockers(engineOp, params, editor.target, {
+      availableColumns: columns.map((c) => c.name),
+      previousStep: prev
+        ? { op: prev.op, target: prev.target, params: prev.params }
+        : null,
+    });
+  }, [
+    editor,
+    isLatest,
+    schemaLoading,
+    schemaError,
+    columns,
+    workspace?.steps,
+  ]);
+
   // Build pending step + live preview.
   const pendingStep = useMemo((): Step | null => {
     if (!editor?.op || !isLatest) return null;
+    // Wait for schema→fields; never preview while schema is broken/empty for
+    // a param-bearing op (schemaError covers required-field gaps — MAT-177).
+    if (schemaLoading || schemaError) return null;
+    if (editorBlocker) return null;
     const uiOp = editor.op;
     const engineOp = resolveOp(uiOp);
     let editorParams = editor.params;
@@ -540,10 +578,16 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     const params = stripNullParams(toEngineParams(uiOp, editorParams));
     const check = stepParamsValid(engineOp, params, schemaFields);
     if (!check.ok) return null;
-    // Wait for schema→fields so the editor never previews with an empty form.
-    if (schemaLoading || schemaFields.length === 0) return null;
     return { op: engineOp, target: editor.target, params };
-  }, [editor, isLatest, schemaFields, schemaLoading, workspace?.variables]);
+  }, [
+    editor,
+    isLatest,
+    schemaFields,
+    schemaLoading,
+    schemaError,
+    editorBlocker,
+    workspace?.variables,
+  ]);
 
   const pendingStepKey = stepKey(pendingStep);
 
@@ -646,6 +690,8 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     transforms,
     schemaFields,
     schemaLoading,
+    schemaError,
+    editorBlocker,
     loading,
     previewLoading,
     hasMore,

@@ -74,6 +74,9 @@ export function StepEditor() {
     profiles,
     transforms,
     schemaFields,
+    schemaLoading,
+    schemaError,
+    editorBlocker,
     preview,
     previewError,
     pendingStep,
@@ -256,15 +259,36 @@ export function StepEditor() {
   const title = info?.title ?? op;
   const what = WHAT[op] ?? info?.description ?? "";
   const paramsValid = stepParamsValid(op, editor.params, schemaFields);
-  const canApply = !!pendingStep && !previewError && isLatest;
+  const formError =
+    schemaError ||
+    editorBlocker ||
+    previewError ||
+    (!paramsValid.ok ? paramsValid.missing : null) ||
+    null;
+  // Wait for schema + successful preview before Apply (slow Parkinson-sized
+  // frames used to allow Apply during previewLoading — MAT-177).
+  const canApply =
+    !!pendingStep &&
+    !previewError &&
+    !schemaError &&
+    !editorBlocker &&
+    !schemaLoading &&
+    !previewLoading &&
+    isLatest;
   const fits = FITTING_OPS.has(op);
   let learned: string;
   if (!fits) {
     learned = "Not fitted: nothing is learned on train";
   } else if (preview) {
     learned = formatLearnedState(preview.state);
+  } else if (schemaError) {
+    learned = "Fix the schema error to see what is learned.";
+  } else if (schemaLoading) {
+    learned = "Loading parameters…";
   } else if (!paramsValid.ok) {
     learned = "Complete the parameters to see what is learned.";
+  } else if (editorBlocker) {
+    learned = editorBlocker;
   } else if (previewLoading) {
     learned = "Fitting on train…";
   } else {
@@ -300,6 +324,25 @@ export function StepEditor() {
       <div className="ed-what">{what}</div>
 
       <div className="ed-fields">
+        {schemaLoading ? (
+          <div className="ed-help" data-ed-schema-loading="">
+            Loading parameters from the transform schema…
+          </div>
+        ) : null}
+        {!schemaLoading && schemaError ? (
+          <div className="ed-error" role="alert" data-ed-schema-error="">
+            {schemaError}
+          </div>
+        ) : null}
+        {!schemaLoading &&
+          !schemaError &&
+          schemaFields.length === 0 &&
+          editor.op ? (
+          <div className="ed-help" data-ed-schema-empty="">
+            Loading parameters… if this persists, the transform schema may be
+            empty or mismatched with this Studio build.
+          </div>
+        ) : null}
         {schemaFields.map((field) => (
           <Field
             key={field.key}
@@ -348,14 +391,14 @@ export function StepEditor() {
         </div>
       </div>
 
-      {(previewError || (!paramsValid.ok && paramsValid.missing)) && (
+      {(formError && !schemaError) || editorBlocker ? (
         <div className="ed-error" role="alert" data-ed-disabled-reason="">
-          {previewError || paramsValid.missing}
+          {editorBlocker || previewError || paramsValid.missing}
         </div>
-      )}
-      {!canApply && !previewError && paramsValid.ok === false && paramsValid.missing ? (
+      ) : null}
+      {!canApply && formError ? (
         <div className="ed-help" data-ed-apply-hint="">
-          Apply is disabled: {paramsValid.missing}
+          Apply is disabled: {formError}
         </div>
       ) : null}
 
@@ -373,9 +416,14 @@ export function StepEditor() {
           disabled={!canApply}
           title={
             !canApply
-              ? previewError ||
-                paramsValid.missing ||
-                (!isLatest ? "Go back to the latest version first." : "Complete the parameters")
+              ? formError ||
+                (schemaLoading
+                  ? "Loading parameters…"
+                  : previewLoading
+                    ? "Waiting for preview…"
+                    : !isLatest
+                      ? "Go back to the latest version first."
+                      : "Complete the parameters")
               : undefined
           }
           onClick={applyPending}
@@ -480,6 +528,31 @@ function Field({
               </button>
             );
           })}
+          {/* Stale names (already dropped) stay selectable so the user can clear them (MAT-177). */}
+          {current
+            .filter((n) => !eligible.includes(n))
+            .map((n) => (
+              <button
+                key={`gone-${n}`}
+                type="button"
+                className="small-chip on"
+                aria-pressed={true}
+                aria-label={`${field.label}: ${n} (already gone)`}
+                title="Already gone from this frame — click to remove"
+                onClick={() => {
+                  if (multi) {
+                    set(
+                      field.key,
+                      current.filter((x) => x !== n),
+                    );
+                  } else {
+                    set(field.key, null);
+                  }
+                }}
+              >
+                {n} ×
+              </button>
+            ))}
         </div>
         {!eligible.length ? (
           <span className="ed-help">No matching column.</span>
