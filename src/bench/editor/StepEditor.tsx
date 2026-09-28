@@ -9,6 +9,7 @@ import { resolveOp, toEngineParams } from "../presets";
 import {
   featureOpColumnsNeedingImpute,
   filterColumnsByDtype,
+  imputeConstantNeedsNumber,
   stepParamsValid,
   fieldValuePresent,
   type EditorField,
@@ -738,28 +739,63 @@ function Field({
     const rawVal = params[field.key];
     const display =
       rawVal === null || rawVal === undefined ? "" : String(rawVal);
+    // Engine fill_value is string | number; numeric columns must get a number
+    // (string "0" raises). Coerce while typing when selected cols are numeric.
+    const asNumber =
+      field.widget === "number" ||
+      (field.key === "fill_value" &&
+        imputeConstantNeedsNumber(params, columns));
     return (
-      <div className="ed-field">
+      <div
+        className="ed-field"
+        data-ed-field={field.key}
+        data-ed-fill-numeric={
+          field.key === "fill_value" ? (asNumber ? "1" : "0") : undefined
+        }
+      >
         <span className="ed-label">{field.label}</span>
         <input
           aria-label={field.label}
           className="ed-input"
+          inputMode={asNumber ? "decimal" : undefined}
           value={display}
-          placeholder={field.widget === "number" ? "optional" : undefined}
+          placeholder={
+            asNumber
+              ? field.key === "fill_value"
+                ? "e.g. 0"
+                : "optional"
+              : field.key === "fill_value"
+                ? "e.g. MISSING"
+                : undefined
+          }
           onChange={(e) => {
             const raw = e.target.value;
-            if (field.widget === "number") {
+            if (asNumber) {
               if (raw.trim() === "") {
                 set(field.key, null);
                 return;
               }
               const v = Number(raw);
-              set(field.key, Number.isNaN(v) ? null : v);
+              // Keep raw string while incomplete (e.g. "-" / "1.") so the user
+              // can finish typing; coerce on blur via pending-step path.
+              set(field.key, Number.isNaN(v) ? raw : v);
             } else if (field.key === "name") {
               set(field.key, raw.replace(/[^A-Za-z0-9_]/g, "_"));
             } else {
               set(field.key, raw);
             }
+          }}
+          onBlur={() => {
+            if (!asNumber || field.key !== "fill_value") return;
+            const cur = params[field.key];
+            if (typeof cur !== "string") return;
+            const trimmed = cur.trim();
+            if (trimmed === "") {
+              set(field.key, null);
+              return;
+            }
+            const v = Number(trimmed);
+            if (!Number.isNaN(v)) set(field.key, v);
           }}
         />
       </div>

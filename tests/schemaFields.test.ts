@@ -11,8 +11,10 @@ import {
 } from "../src/bench/left/keyTunable";
 import { toEngineParams } from "../src/bench/presets";
 import {
+  coerceImputeFillValue,
   defaultParams,
   featureOpColumnsNeedingImpute,
+  imputeConstantNeedsNumber,
   resolveSchemaProp,
   schemaFieldsGap,
   schemaToFields,
@@ -152,6 +154,51 @@ describe("schema → editor fields", () => {
     expect(
       stripNullParams({ columns: ["age"], fill_value: null, strategy: "median" }),
     ).toEqual({ columns: ["age"], strategy: "median" });
+  });
+
+  it("coerceImputeFillValue sends a number for numeric columns (MAT-205)", () => {
+    const cols = [
+      { name: "age", kind: "number" as const },
+      { name: "city", kind: "text" as const },
+    ];
+    expect(
+      imputeConstantNeedsNumber(
+        { columns: ["age"], strategy: "constant", fill_value: "0" },
+        cols,
+      ),
+    ).toBe(true);
+    expect(
+      coerceImputeFillValue(
+        { columns: ["age"], strategy: "constant", fill_value: "0" },
+        cols,
+      ),
+    ).toEqual({ columns: ["age"], strategy: "constant", fill_value: 0 });
+    expect(
+      coerceImputeFillValue(
+        { columns: ["age"], strategy: "constant", fill_value: 42 },
+        cols,
+      ).fill_value,
+    ).toBe(42);
+    // Categorical: keep string.
+    expect(
+      imputeConstantNeedsNumber(
+        { columns: ["city"], strategy: "constant", fill_value: "MISSING" },
+        cols,
+      ),
+    ).toBe(false);
+    expect(
+      coerceImputeFillValue(
+        { columns: ["city"], strategy: "constant", fill_value: "MISSING" },
+        cols,
+      ).fill_value,
+    ).toBe("MISSING");
+    // Non-constant strategy: no-op.
+    expect(
+      coerceImputeFillValue(
+        { columns: ["age"], strategy: "median", fill_value: "0" },
+        cols,
+      ).fill_value,
+    ).toBe("0");
   });
 });
 
