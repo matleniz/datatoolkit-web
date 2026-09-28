@@ -129,6 +129,23 @@ function CsvOptions({
           onChange={(e) => set({ parse_dates: parseCsvList(e.target.value) })}
         />
       </label>
+      <label className="source-opt">
+        <span>on_bad_lines</span>
+        <select
+          aria-label="on_bad_lines"
+          value={spec.on_bad_lines ?? "error"}
+          disabled={busy}
+          onChange={(e) =>
+            set({
+              on_bad_lines: e.target.value as "error" | "warn" | "skip",
+            })
+          }
+        >
+          <option value="error">error</option>
+          <option value="warn">warn</option>
+          <option value="skip">skip</option>
+        </select>
+      </label>
     </div>
   );
 }

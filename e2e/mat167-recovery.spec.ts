@@ -6,7 +6,9 @@ import {
 } from "../src/bench/format";
 import { fixturesDir, waitForGridReady } from "./helpers";
 
-const STORED_FAIL = /Stored train source failed to parse/;
+/** MAT-167 parse-error banner: Stored prefix and/or engine SourceError text. */
+const STORED_FAIL =
+  /Stored train source failed to parse|SourceError|saved as csv/i;
 const EMPTY_MSG =
   /This train file has no columns \(empty or unreadable\)/;
 
@@ -144,7 +146,7 @@ test("MAT-167: group_agg Aggs defaults to mean and highlights when cleared", asy
   await page.waitForFunction(
     () => typeof window.__DTK_DISPATCH__ === "function",
   );
-  await page.evaluate(() => {
+  await page.evaluate((trainPath) => {
     const d = window.__DTK_DISPATCH__!;
     d({
       type: "SET_WORKSPACE",
@@ -154,7 +156,7 @@ test("MAT-167: group_agg Aggs defaults to mean and highlights when cleared", asy
           train: {
             x: {
               kind: "csv",
-              path: "/home/matleniz/wt-datatoolkit-web/fix-mat167/e2e/fixtures/churn_train.csv",
+              path: trainPath,
             },
           },
         },
@@ -165,7 +167,7 @@ test("MAT-167: group_agg Aggs defaults to mean and highlights when cleared", asy
       },
     });
     d({ type: "SET_SCREEN", screen: "bench" });
-  });
+  }, join(fixturesDir, "churn_train.csv"));
   await waitForGridReady(page);
 
   await page.locator(".grid-th", { hasText: "city" }).click();

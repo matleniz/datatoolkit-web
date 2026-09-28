@@ -63,7 +63,7 @@ test("MAT-149: select workspace then Open workbench immediately keeps datasets",
 
   await expect(page.getByLabel("Workbench")).toBeVisible({ timeout: 60_000 });
   await waitForGridReady(page);
-  await expect(page.locator(".grid-th", { hasText: "age" })).toBeVisible({
+  await expect(page.getByRole("button", { name: "age, number" })).toBeVisible({
     timeout: 30_000,
   });
 

@@ -45,9 +45,22 @@ export function columnWindow<T extends ColLike>(
     return { start: 0, end: 0, leftPad: 0, rightPad: 0, visible: [] };
   }
 
+  // Narrow frames: mount every column (MAT-169). Windowing is for wide
+  // datasets (MAT-152); a 13-col file must not hide headers behind spacers.
+  if (n < WIDE_COL_THRESHOLD) {
+    return {
+      start: 0,
+      end: n,
+      leftPad: 0,
+      rightPad: 0,
+      visible: cols,
+    };
+  }
+
   const widths = cols.map((c) => colWidth(c.kind));
 
-  // Degenerate / not-yet-measured viewport: mount a small leading window.
+  // Degenerate / not-yet-measured viewport: mount a leading window that still
+  // covers a typical desk width so every on-screen column is included.
   const vw = viewportWidth > 0 ? viewportWidth : 800;
   const sl = Math.max(0, scrollLeft);
 

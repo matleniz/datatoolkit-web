@@ -1,0 +1,13 @@
+country,city,sales,recorded_at
+usa,New York,1200,2021-01-05
+United States,new york,980,01/05/2021
+U.S.A.,NEW YORK ,1100,5 Jan 2021
+uk,London,800,2021-02-10
+United Kingdom,london ,750,10/02/2021
+U.K.,LONDON,820,Feb 10 2021
+germany,Berlin,600,2021-03-01
+Deutschland,berlin,580,01.03.2021
+DE,BERLIN ,610,2021/3/1
+france,Paris,900,2021-04-12
+France ,PARIS,880,12-04-2021
+FR,paris ,920,April 12, 2021
