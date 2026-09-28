@@ -58,6 +58,7 @@ test("MAT-149: select workspace then Open workbench immediately keeps datasets",
   await page
     .locator(".ws-item")
     .filter({ has: page.locator(".ws-item-name", { hasText: /^churn$/ }) })
+    .locator(".ws-item-select")
     .click();
   await page.getByRole("button", { name: "Open workbench" }).click();
 

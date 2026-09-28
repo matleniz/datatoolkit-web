@@ -18,6 +18,16 @@ export function rememberWorkspaceName(name: string): void {
   }
 }
 
+export function forgetWorkspaceName(name?: string): void {
+  try {
+    if (name == null || localStorage.getItem(LAST_WORKSPACE_KEY) === name) {
+      localStorage.removeItem(LAST_WORKSPACE_KEY);
+    }
+  } catch {
+    /* private mode / SSR */
+  }
+}
+
 export function rememberedWorkspaceName(): string | null {
   try {
     return localStorage.getItem(LAST_WORKSPACE_KEY);

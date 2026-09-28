@@ -194,6 +194,27 @@ export interface Workspace {
   steps: Step[];
 }
 
+/** One role's file meta from GET /workspaces/summaries (MAT-171). */
+export interface WorkspaceRoleSummary {
+  kind: string | null;
+  path: string | null;
+  file: string | null;
+  /** [rows, cols] after steps, or null if unloadable / absent. */
+  shape: [number, number] | null;
+}
+
+/** Lightweight workspace row for the Sources sidebar manager (MAT-171). */
+export interface WorkspaceSummary {
+  name: string;
+  /** UTC ISO mtime of the stored workspace JSON. */
+  mtime: string;
+  step_count: number;
+  /** Train target_column, else y basename, else null. */
+  target: string | null;
+  train: WorkspaceRoleSummary;
+  test: WorkspaceRoleSummary | null;
+}
+
 export interface ExportRequest {
   out_dir: string;
   overwrite?: boolean;

@@ -20,4 +20,28 @@ describe("MockApiClient", () => {
     expect(rows.rows).toHaveLength(5);
     expect(rows.rows[0]?._rid).toBe(0);
   });
+
+  it("summaries, duplicate, rename, and delete (MAT-171)", async () => {
+    const client = new MockApiClient();
+    const summaries = await client.listWorkspaceSummaries();
+    expect(summaries[0]?.name).toBe("churn");
+    expect(summaries[0]?.train.file).toMatch(/churn_train/);
+    expect(summaries[0]?.step_count).toBe(0);
+
+    const dup = await client.duplicateWorkspace("churn", "churn-copy");
+    expect(dup.name).toBe("churn-copy");
+    expect(dup.datasets.train.x.path).toBe(
+      (await client.getWorkspace("churn")).datasets.train.x.path,
+    );
+
+    const renamed = await client.renameWorkspace("churn-copy", "churn-renamed");
+    expect(renamed.name).toBe("churn-renamed");
+    await expect(client.getWorkspace("churn-copy")).rejects.toMatchObject({
+      type: "WorkspaceNotFoundError",
+    });
+
+    await client.deleteWorkspace("churn-renamed");
+    const names = (await client.listWorkspaceSummaries()).map((s) => s.name);
+    expect(names).toEqual(["churn"]);
+  });
 });

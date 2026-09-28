@@ -26,9 +26,24 @@ const AppDispatchContext = createContext<Dispatch<AppAction> | null>(null);
  *  explicitly can skip the AppStore duplicate PUT). */
 let lastSavedWorkspaceJson: string | null = null;
 
+/**
+ * Bumped to cancel in-flight / cleanup flush PUTs (MAT-171 delete of the
+ * active workspace must not resurrect it — see MAT-149).
+ */
+let saveEpoch = 0;
+
 /** Call after an explicit saveWorkspace so AppStore skips a redundant PUT. */
 export function markWorkspaceSaved(ws: Workspace): void {
   lastSavedWorkspaceJson = serializeWorkspace(ws);
+}
+
+/**
+ * Invalidate any pending AppStore workspace PUT. Call before clearing or
+ * replacing a workspace that was just deleted / renamed away.
+ */
+export function abandonPendingWorkspaceSave(): void {
+  saveEpoch += 1;
+  lastSavedWorkspaceJson = null;
 }
 
 declare global {
@@ -84,6 +99,7 @@ export function AppProvider({
       return;
     }
 
+    const epochAtStart = saveEpoch;
     const gen = ++saveGen.current;
     let settled = false;
     let resolveGate!: () => void;
@@ -97,35 +113,45 @@ export function AppProvider({
     };
     window.__DTK_WORKSPACE_SAVED__ = gate;
 
+    const stillCurrent = () =>
+      gen === saveGen.current && epochAtStart === saveEpoch;
+
     const timer = window.setTimeout(() => {
       void (async () => {
-        if (serialized === lastSavedWorkspaceJson) {
+        if (!stillCurrent() || serialized === lastSavedWorkspaceJson) {
           settle();
           return;
         }
         try {
           await apiClient.saveWorkspace(ws);
-          if (gen === saveGen.current) {
+          if (stillCurrent()) {
             lastSavedWorkspaceJson = serialized;
           }
         } catch {
           /* Consumers surface engine errors on the next key/export call. */
         } finally {
-          if (gen === saveGen.current) settle();
+          settle();
         }
       })();
     }, SAVE_DEBOUNCE_MS);
 
     return () => {
       window.clearTimeout(timer);
-      if (serialized === lastSavedWorkspaceJson) {
+      if (!stillCurrent() || serialized === lastSavedWorkspaceJson) {
         settle();
         return;
       }
       void (async () => {
+        // Skip flush if a delete/rename abandoned this generation (MAT-171).
+        if (!stillCurrent()) {
+          settle();
+          return;
+        }
         try {
           await apiClient.saveWorkspace(ws);
-          lastSavedWorkspaceJson = serialized;
+          if (stillCurrent()) {
+            lastSavedWorkspaceJson = serialized;
+          }
         } catch {
           /* ignore */
         } finally {

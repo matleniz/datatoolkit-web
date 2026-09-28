@@ -25,6 +25,7 @@ import {
   Workspace,
   WorkspacePreview,
   WorkspaceRows,
+  WorkspaceSummary,
 } from "./types";
 
 const FIXTURES = join(
@@ -231,6 +232,76 @@ export class MockApiClient implements ApiClient {
     );
   }
 
+  listWorkspaceSummaries(): Promise<WorkspaceSummary[]> {
+    const summaries: WorkspaceSummary[] = [...this.workspaces.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((ws) => this.summaryOf(ws));
+    return Promise.resolve(summaries);
+  }
+
+  private summaryOf(ws: Workspace): WorkspaceSummary {
+    const trainPath = ws.datasets.train.x.path ?? null;
+    const testPath = ws.datasets.test?.x.path ?? null;
+    const yPath = ws.datasets.train.y?.path ?? null;
+    const target =
+      ws.datasets.train.target_column ??
+      (yPath ? yPath.replace(/\\/g, "/").split("/").pop() ?? null : null);
+    const trainRows =
+      trainPath && trainPath.includes("churn_train")
+        ? TRAIN.rows.length
+        : trainPath
+          ? 0
+          : null;
+    const trainCols =
+      trainPath && trainPath.includes("churn_train")
+        ? TRAIN.columns.length
+        : trainPath
+          ? 0
+          : null;
+    const testRows =
+      testPath && testPath.includes("churn_test")
+        ? TEST.rows.length
+        : testPath
+          ? 0
+          : null;
+    const testCols =
+      testPath && testPath.includes("churn_test")
+        ? TEST.columns.length
+        : testPath
+          ? 0
+          : null;
+    return {
+      name: ws.name,
+      mtime: new Date().toISOString(),
+      step_count: ws.steps.length,
+      target,
+      train: {
+        kind: ws.datasets.train.x.kind,
+        path: trainPath,
+        file: trainPath
+          ? trainPath.replace(/\\/g, "/").split("/").pop() ?? null
+          : null,
+        shape:
+          trainRows != null && trainCols != null
+            ? [trainRows, trainCols]
+            : null,
+      },
+      test: ws.datasets.test
+        ? {
+            kind: ws.datasets.test.x.kind,
+            path: testPath,
+            file: testPath
+              ? testPath.replace(/\\/g, "/").split("/").pop() ?? null
+              : null,
+            shape:
+              testRows != null && testCols != null
+                ? [testRows, testCols]
+                : null,
+          }
+        : null,
+    };
+  }
+
   getWorkspace(name: string): Promise<Workspace> {
     const ws = this.workspaces.get(name);
     if (!ws) {
@@ -255,6 +326,47 @@ export class MockApiClient implements ApiClient {
     }
     this.workspaces.delete(name);
     return Promise.resolve();
+  }
+
+  renameWorkspace(name: string, newName: string): Promise<Workspace> {
+    const ws = this.workspaces.get(name);
+    if (!ws) {
+      return Promise.reject(
+        new EngineError("WorkspaceNotFoundError", `unknown workspace ${name}`),
+      );
+    }
+    if (this.workspaces.has(newName)) {
+      return Promise.reject(
+        new EngineError(
+          "KeyParamsError",
+          `workspace '${newName}' already exists`,
+        ),
+      );
+    }
+    this.workspaces.delete(name);
+    const renamed = structuredClone({ ...ws, name: newName });
+    this.workspaces.set(newName, renamed);
+    return Promise.resolve(structuredClone(renamed));
+  }
+
+  duplicateWorkspace(name: string, newName: string): Promise<Workspace> {
+    const ws = this.workspaces.get(name);
+    if (!ws) {
+      return Promise.reject(
+        new EngineError("WorkspaceNotFoundError", `unknown workspace ${name}`),
+      );
+    }
+    if (this.workspaces.has(newName)) {
+      return Promise.reject(
+        new EngineError(
+          "KeyParamsError",
+          `workspace '${newName}' already exists`,
+        ),
+      );
+    }
+    const copy = structuredClone({ ...ws, name: newName });
+    this.workspaces.set(newName, copy);
+    return Promise.resolve(structuredClone(copy));
   }
 
   exportWorkspace(name: string, body: ExportRequest): Promise<ExportManifest> {

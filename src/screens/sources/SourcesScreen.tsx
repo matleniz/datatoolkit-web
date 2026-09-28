@@ -7,10 +7,15 @@ import {
   useState,
   type ChangeEvent,
 } from "react";
-import { rememberWorkspaceName } from "../../bootstrap";
+import { rememberWorkspaceName, forgetWorkspaceName } from "../../bootstrap";
 import { apiClient } from "../../api/client";
-import type { EngineError, FileSourceSpec, Workspace } from "../../api/types";
-import { useAppDispatch, useAppState, markWorkspaceSaved } from "../../state/AppStore";
+import type { EngineError, FileSourceSpec, Workspace, WorkspaceSummary } from "../../api/types";
+import {
+  useAppDispatch,
+  useAppState,
+  markWorkspaceSaved,
+  abandonPendingWorkspaceSave,
+} from "../../state/AppStore";
 import {
   ALL_ROLES,
   buildWorkspaceJson,
@@ -30,6 +35,7 @@ import {
   type WorkspaceSourcesState,
 } from "./sourcesLogic";
 import { SourceOptionsEditor } from "./SourceOptionsEditor";
+import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import "./sources.css";
 
 const FIXTURE_BASE =
@@ -162,12 +168,10 @@ export function SourcesScreen() {
   const dispatch = useAppDispatch();
   const fileInputId = useId();
 
-  const [workspacesList, setWorkspacesList] = useState<Workspace[]>([]);
+  const [summaries, setSummaries] = useState<WorkspaceSummary[]>([]);
   const [activeWsName, setActiveWsName] = useState<string>(
     workspace?.name ?? "churn",
   );
-  const [showNewWsInput, setShowNewWsInput] = useState(false);
-  const [newWsName, setNewWsName] = useState("");
   const [listError, setListError] = useState<string | null>(null);
 
   const initialSources = useMemo((): WorkspaceSourcesState => {
@@ -294,14 +298,14 @@ export function SourcesScreen() {
     dispatch,
   ]);
 
-  // Load workspaces on mount
+  // Load workspace summaries on mount
   useEffect(() => {
     let active = true;
     apiClient
-      .listWorkspaces()
+      .listWorkspaceSummaries()
       .then((list) => {
         if (!active) return;
-        setWorkspacesList(list);
+        setSummaries(list);
         setListError(null);
       })
       .catch((err: unknown) => {
@@ -400,10 +404,10 @@ export function SourcesScreen() {
     };
 
     try {
-      const listed = workspacesList.some((w) => w.name === name);
+      const listed = summaries.some((w) => w.name === name);
       const onDisk =
         listed ||
-        (await apiClient.listWorkspaces()).some((w) => w.name === name);
+        (await apiClient.listWorkspaceSummaries()).some((w) => w.name === name);
       if (gen !== selectGenRef.current) return;
       if (!onDisk) {
         const empty: Workspace = {
@@ -451,16 +455,14 @@ export function SourcesScreen() {
     }
   };
 
-  const handleCreateWorkspace = async () => {
-    const trimmed = newWsName.trim();
-    if (!trimmed) return;
+  const handleCreateWorkspace = (name: string) => {
     dispatch({
       type: "SET_WORKSPACE_FILES",
       name: activeWsName,
       sources: currentSources(),
     });
     const ws: Workspace = {
-      name: trimmed,
+      name,
       datasets: {
         train: { x: { kind: "csv", path: "" } },
       },
@@ -469,25 +471,86 @@ export function SourcesScreen() {
       variables: [],
       steps: [],
     };
-    try {
-      await apiClient.saveWorkspace(ws);
-      setWorkspacesList((prev) => [
-        ...prev.filter((w) => w.name !== trimmed),
-        ws,
-      ]);
-      setListError(null);
-    } catch (err: unknown) {
-      setEngineErrors([engineMessage(err)]);
-    }
     dispatch({ type: "SET_WORKSPACE", workspace: ws });
     const empty = emptyWorkspaceSources();
-    dispatch({ type: "SET_WORKSPACE_FILES", name: trimmed, sources: empty });
+    dispatch({ type: "SET_WORKSPACE_FILES", name, sources: empty });
     persistSkip.current = true;
-    activeNameRef.current = trimmed;
-    setActiveWsName(trimmed);
+    activeNameRef.current = name;
+    setActiveWsName(name);
     applySources(empty);
-    setShowNewWsInput(false);
-    setNewWsName("");
+    rememberWorkspaceName(name);
+  };
+
+  const handleWorkspaceRenamed = (oldName: string, ws: Workspace) => {
+    // Invalidate any in-flight select of the old name (e.g. auto-select after
+    // duplicate still loading when the user renames immediately).
+    selectGenRef.current += 1;
+    abandonPendingWorkspaceSave();
+    const cached = filesByWorkspace[oldName] ??
+      (oldName === activeWsName ? currentSources() : null);
+    dispatch({ type: "CLEAR_WORKSPACE_FILES", name: oldName });
+    if (cached) {
+      dispatch({
+        type: "SET_WORKSPACE_FILES",
+        name: ws.name,
+        sources: cached,
+      });
+    }
+    if (oldName === activeWsName || workspace?.name === oldName) {
+      persistSkip.current = true;
+      activeNameRef.current = ws.name;
+      setActiveWsName(ws.name);
+      dispatch({ type: "SET_WORKSPACE", workspace: ws });
+      markWorkspaceSaved(ws);
+      rememberWorkspaceName(ws.name);
+      if (cached) applySources(cached);
+    }
+  };
+
+  const handleWorkspaceDuplicated = (ws: Workspace) => {
+    void handleSelectWorkspace(ws.name);
+  };
+
+  const handleActiveRemoved = (
+    deletedNames: string[],
+    fallback: string | null,
+  ) => {
+    abandonPendingWorkspaceSave();
+    for (const name of deletedNames) {
+      dispatch({ type: "CLEAR_WORKSPACE_FILES", name });
+      forgetWorkspaceName(name);
+    }
+    const activeGone =
+      deletedNames.includes(activeWsName) ||
+      (workspace?.name != null && deletedNames.includes(workspace.name));
+    if (!activeGone) return;
+
+    dispatch({ type: "SET_WORKSPACE", workspace: null });
+    persistSkip.current = true;
+    if (fallback) {
+      void handleSelectWorkspace(fallback);
+    } else {
+      activeNameRef.current = "";
+      setActiveWsName("");
+      applySources(emptyWorkspaceSources());
+    }
+  };
+
+  const handleExportWorkspace = async (name: string) => {
+    try {
+      if (name !== activeWsName) {
+        await handleSelectWorkspace(name);
+      }
+      const ws = await apiClient.getWorkspace(name);
+      abandonPendingWorkspaceSave();
+      dispatch({ type: "SET_WORKSPACE", workspace: ws });
+      markWorkspaceSaved(ws);
+      rememberWorkspaceName(name);
+      dispatch({ type: "SET_SCREEN", screen: "bench" });
+      dispatch({ type: "SET_SHOW_EXPORT", show: true });
+    } catch (err: unknown) {
+      setEngineErrors((prev) => [...prev, engineMessage(err)]);
+    }
   };
 
   // Build the workspace JSON candidate
@@ -905,10 +968,11 @@ export function SourcesScreen() {
     try {
       await apiClient.saveWorkspace(ws);
       markWorkspaceSaved(ws);
-      setWorkspacesList((prev) => [
-        ...prev.filter((w) => w.name !== ws.name),
-        ws,
-      ]);
+      try {
+        setSummaries(await apiClient.listWorkspaceSummaries());
+      } catch {
+        /* list refresh is best-effort after save */
+      }
     } catch (err: unknown) {
       setEngineErrors((prev) => [...prev, engineMessage(err)]);
     }
@@ -970,20 +1034,6 @@ export function SourcesScreen() {
     return "x";
   };
 
-  const fileCountFor = (name: string): number => {
-    const cached = filesByWorkspace[name];
-    if (cached) return cached.files.length;
-    if (name === activeWsName) return files.length;
-    const ws = workspacesList.find((w) => w.name === name);
-    if (!ws) return 0;
-    let n = 0;
-    if (ws.datasets.train.x.path) n += 1;
-    if (ws.datasets.train.y?.path) n += 1;
-    if (ws.datasets.test?.x?.path) n += 1;
-    n += ws.merges?.length ?? 0;
-    return n;
-  };
-
   const targetInfoText = (() => {
     if (buildResult.info.y) return buildResult.info.y;
     if (labelMode === "yfile" && !trainYFile) {
@@ -997,101 +1047,23 @@ export function SourcesScreen() {
 
   return (
     <div className="sources-layout" aria-label="Sources screen">
-      <aside className="sources-sidebar" aria-label="Workspaces">
-        <div className="sources-sidebar-title">Workspaces</div>
-        <div className="sources-sidebar-desc">
-          A workspace = which files make train and test, how the label joins, and
-          the ordered log of steps.
-        </div>
-
-        {listError ? (
-          <div className="engine-error-box" role="alert">
-            {listError}
-          </div>
-        ) : null}
-
-        {workspacesList.map((ws) => {
-          const isActive = ws.name === activeWsName;
-          const nFiles = fileCountFor(ws.name);
-          return (
-            <button
-              key={ws.name}
-              type="button"
-              className={`ws-item ${isActive ? "active" : ""}`}
-              onClick={() => void handleSelectWorkspace(ws.name)}
-              aria-current={isActive ? "true" : undefined}
-            >
-              <span className="ws-item-name">{ws.name}</span>
-              <span className="ws-item-meta">
-                {nFiles} file{nFiles === 1 ? "" : "s"} · {ws.steps.length} steps
-                {isActive ? " · open" : ""}
-              </span>
-            </button>
-          );
-        })}
-
-        {workspacesList.length === 0 && (
-          <>
-            <button
-              type="button"
-              className={`ws-item ${activeWsName === "churn" ? "active" : ""}`}
-              onClick={() => void handleSelectWorkspace("churn")}
-            >
-              <span className="ws-item-name">churn</span>
-              <span className="ws-item-meta">
-                {fileCountFor("churn")} files · 0 steps · open
-              </span>
-            </button>
-            <button
-              type="button"
-              className={`ws-item ${activeWsName === "parkinson" ? "active" : ""}`}
-              onClick={() => void handleSelectWorkspace("parkinson")}
-            >
-              <span className="ws-item-name">parkinson</span>
-              <span className="ws-item-meta">
-                {fileCountFor("parkinson")} files · 0 steps
-              </span>
-            </button>
-          </>
-        )}
-
-        {showNewWsInput ? (
-          <div className="new-ws-form">
-            <input
-              type="text"
-              className="new-ws-input"
-              placeholder="Workspace name"
-              value={newWsName}
-              onChange={(e) => setNewWsName(e.target.value)}
-              autoFocus
-            />
-            <div className="new-ws-actions">
-              <button
-                type="button"
-                className="new-ws-create"
-                onClick={() => void handleCreateWorkspace()}
-              >
-                Create
-              </button>
-              <button
-                type="button"
-                className="new-ws-cancel"
-                onClick={() => setShowNewWsInput(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="btn-new-ws"
-            onClick={() => setShowNewWsInput(true)}
-          >
-            + New workspace
-          </button>
-        )}
-      </aside>
+      <WorkspaceSidebar
+        summaries={summaries}
+        activeName={activeWsName}
+        listError={listError}
+        onSelect={(name) => void handleSelectWorkspace(name)}
+        onSummariesChange={setSummaries}
+        onCreated={handleCreateWorkspace}
+        onActiveRemoved={handleActiveRemoved}
+        onRenamed={handleWorkspaceRenamed}
+        onDuplicated={handleWorkspaceDuplicated}
+        onExport={(name) => void handleExportWorkspace(name)}
+        onError={(message) =>
+          setEngineErrors((prev) =>
+            prev.includes(message) ? prev : [...prev, message],
+          )
+        }
+      />
 
       <main className="sources-main">
         <div className="sources-header">
