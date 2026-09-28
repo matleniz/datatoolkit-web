@@ -559,6 +559,50 @@ export function stripNullParams(
   return out;
 }
 
+/**
+ * True when impute strategy=constant should send a numeric fill_value.
+ * Engine rejects string constants on numeric columns
+ * (`impute: string fill … on numeric column`).
+ */
+export function imputeConstantNeedsNumber(
+  params: Record<string, unknown>,
+  columns: { name: string; kind: ColumnKind }[],
+): boolean {
+  if (params.strategy !== "constant") return false;
+  const selected = params.columns;
+  if (!Array.isArray(selected) || selected.length === 0) return false;
+  const byName = new Map(columns.map((c) => [c.name, c.kind]));
+  const kinds: ColumnKind[] = [];
+  for (const name of selected) {
+    if (typeof name !== "string") return false;
+    const kind = byName.get(name);
+    if (kind === undefined) return false;
+    kinds.push(kind);
+  }
+  return kinds.every((k) => isNumericKind(k));
+}
+
+/**
+ * Coerce impute `fill_value` to a real number when the target columns are
+ * numeric; leave string constants alone for text/categorical columns (MAT-205).
+ */
+export function coerceImputeFillValue(
+  params: Record<string, unknown>,
+  columns: { name: string; kind: ColumnKind }[],
+): Record<string, unknown> {
+  if (!imputeConstantNeedsNumber(params, columns)) return params;
+  const fv = params.fill_value;
+  if (fv === null || fv === undefined || fv === "") return params;
+  if (typeof fv === "number" && !Number.isNaN(fv)) return params;
+  if (typeof fv === "string") {
+    const trimmed = fv.trim();
+    if (trimmed === "") return params;
+    const n = Number(trimmed);
+    if (!Number.isNaN(n)) return { ...params, fill_value: n };
+  }
+  return params;
+}
+
 export function filterColumnsByDtype(
   columns: { name: string; kind: ColumnKind }[],
   filter: EditorField["dtypeFilter"],

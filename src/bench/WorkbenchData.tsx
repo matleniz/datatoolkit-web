@@ -26,6 +26,7 @@ import { useAppDispatch, useAppState } from "../state/AppStore";
 import { buildDisplay, diffText, type DisplayFrame } from "./diff";
 import { resolveOp, toEngineParams } from "./presets";
 import {
+  coerceImputeFillValue,
   defaultParams,
   schemaFieldsGap,
   schemaToFields,
@@ -573,7 +574,12 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     if (!editor?.op || !isLatest) return null;
     if (schemaLoading || schemaError) return null;
     const engineOp = resolveOp(editor.op);
-    const params = stripNullParams(toEngineParams(editor.op, editor.params));
+    const params = stripNullParams(
+      coerceImputeFillValue(
+        toEngineParams(editor.op, editor.params),
+        columns,
+      ),
+    );
     const prev = workspace?.steps.length
       ? workspace.steps[workspace.steps.length - 1]!
       : null;
@@ -617,7 +623,9 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     ) {
       editorParams = { ...editorParams, variables: workspace.variables };
     }
-    const params = stripNullParams(toEngineParams(uiOp, editorParams));
+    const params = stripNullParams(
+      coerceImputeFillValue(toEngineParams(uiOp, editorParams), columns),
+    );
     const check = stepParamsValid(engineOp, params, schemaFields);
     if (!check.ok) return null;
     return { op: engineOp, target: editor.target, params };
