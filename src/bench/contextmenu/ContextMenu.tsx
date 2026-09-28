@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { isNumericKind, isTextKind, KIND_LABEL } from "../kinds";
@@ -10,14 +10,30 @@ export function ContextMenu() {
   const { ctx, selection, screen, targetColumn } = useAppState();
   const dispatch = useAppDispatch();
   const { columns, profiles, isLatest } = useWorkbenchData();
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!ctx) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") dispatch({ type: "CLOSE_CTX" });
+      if (e.key === "Escape") {
+        e.preventDefault();
+        dispatch({ type: "CLOSE_CTX" });
+      }
+    };
+    // Close on outside pointerdown without a blocking backdrop so the same
+    // click can still reach a grid header underneath.
+    const onPointerDown = (e: PointerEvent) => {
+      const menu = menuRef.current;
+      if (!menu) return;
+      if (menu.contains(e.target as Node)) return;
+      dispatch({ type: "CLOSE_CTX" });
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+    };
   }, [ctx, dispatch]);
 
   if (!ctx || screen !== "bench") return null;
@@ -29,6 +45,7 @@ export function ContextMenu() {
   const others = selection.columns.filter((x) => x !== col);
   const inMulti =
     selection.columns.includes(col) && selection.columns.length > 1;
+  const pr = profiles.get(col);
 
   const openEd = (
     op: string,
@@ -66,7 +83,6 @@ export function ContextMenu() {
         const i = a.indexOf(col);
         if (i >= 0 && a.length > 1) a.splice(i, 1);
         else if (i < 0) a.push(col);
-        // Toggle via pickCol add mode
         dispatch({ type: "CLEAR_SELECTION" });
         for (const name of a) {
           dispatch({ type: "PICK_COL", name, add: true });
@@ -122,7 +138,6 @@ export function ContextMenu() {
     });
   }
 
-  const pr = profiles.get(col);
   if (isTextKind(kind) && pr?.looks_like_dates) {
     items.push({
       kind: "item",
@@ -142,6 +157,20 @@ export function ContextMenu() {
         run: () => openEd("onehot", { column: col }),
       });
     }
+  }
+
+  // Text / bool / binary with missing → Impute (most_frequent), like inspector.
+  if (
+    (isTextKind(kind) || kind === "binary" || kind === "bool") &&
+    pr &&
+    pr.missing > 0
+  ) {
+    items.push({
+      kind: "item",
+      text: "Impute…",
+      run: () =>
+        openEd("impute", { column: col, strategy: "most_frequent" }),
+    });
   }
 
   items.push({
@@ -195,46 +224,35 @@ export function ContextMenu() {
   const y0 = Math.max(8, Math.min(ctx.y, 900 - hh - 8));
 
   return (
-    <>
-      <button
-        type="button"
-        className="ctx-backdrop"
-        aria-label="Close menu"
-        onClick={() => dispatch({ type: "CLOSE_CTX" })}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          dispatch({ type: "CLOSE_CTX" });
-        }}
-      />
-      <div
-        role="menu"
-        aria-label="Column menu"
-        className="ctx-menu"
-        style={{ left: Math.round(x0), top: Math.round(y0) }}
-      >
-        <div className="ctx-title">
-          {col} · {KIND_LABEL[kind] ?? kind}
-        </div>
-        {items.map((it, i) =>
-          it.kind === "sep" ? (
-            <div key={`sep-${i}`} className="ctx-sep" role="separator" />
-          ) : (
-            <button
-              key={it.text}
-              type="button"
-              role="menuitem"
-              className="ctx-item"
-              onClick={() => {
-                dispatch({ type: "CLOSE_CTX" });
-                it.run();
-              }}
-            >
-              <span>{it.text}</span>
-              {it.hint ? <span className="ctx-hint">{it.hint}</span> : null}
-            </button>
-          ),
-        )}
+    <div
+      ref={menuRef}
+      role="menu"
+      aria-label="Column menu"
+      className="ctx-menu"
+      style={{ left: Math.round(x0), top: Math.round(y0) }}
+    >
+      <div className="ctx-title">
+        {col} · {KIND_LABEL[kind] ?? kind}
       </div>
-    </>
+      {items.map((it, i) =>
+        it.kind === "sep" ? (
+          <div key={`sep-${i}`} className="ctx-sep" role="separator" />
+        ) : (
+          <button
+            key={it.text}
+            type="button"
+            role="menuitem"
+            className="ctx-item"
+            onClick={() => {
+              dispatch({ type: "CLOSE_CTX" });
+              it.run();
+            }}
+          >
+            <span>{it.text}</span>
+            {it.hint ? <span className="ctx-hint">{it.hint}</span> : null}
+          </button>
+        ),
+      )}
+    </div>
   );
 }

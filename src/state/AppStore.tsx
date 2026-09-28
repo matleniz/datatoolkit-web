@@ -9,7 +9,9 @@ import {
   type ReactNode,
 } from "react";
 
-import { apiClient } from "../api/client";
+import { apiClient, serializeWorkspace } from "../api/client";
+import type { Workspace } from "../api/types";
+import { rememberWorkspaceName } from "../bootstrap";
 import {
   appReducer,
   initialState,
@@ -19,6 +21,15 @@ import {
 
 const AppStateContext = createContext<AppState | null>(null);
 const AppDispatchContext = createContext<Dispatch<AppAction> | null>(null);
+
+/** Last workspace JSON successfully PUT (shared so screens that save
+ *  explicitly can skip the AppStore duplicate PUT). */
+let lastSavedWorkspaceJson: string | null = null;
+
+/** Call after an explicit saveWorkspace so AppStore skips a redundant PUT. */
+export function markWorkspaceSaved(ws: Workspace): void {
+  lastSavedWorkspaceJson = serializeWorkspace(ws);
+}
 
 declare global {
   interface Window {
@@ -47,7 +58,6 @@ export function AppProvider({
   });
 
   const saveGen = useRef(0);
-  const saveResolve = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     window.__DTK_DISPATCH__ = dispatch;
@@ -60,12 +70,20 @@ export function AppProvider({
 
   // Keep the engine workspace store in sync so analysis keys that use
   // `{kind:"dataset", workspace, role}` can resolve the named workspace.
+  // PUT only when the serialized JSON actually changed.
   useEffect(() => {
     const ws = state.workspace;
     if (!ws?.name || !ws.datasets.train.x.path) {
       window.__DTK_WORKSPACE_SAVED__ = Promise.resolve();
       return;
     }
+    rememberWorkspaceName(ws.name);
+    const serialized = serializeWorkspace(ws);
+    if (serialized === lastSavedWorkspaceJson) {
+      window.__DTK_WORKSPACE_SAVED__ = Promise.resolve();
+      return;
+    }
+
     const gen = ++saveGen.current;
     let settled = false;
     let resolveGate!: () => void;
@@ -75,16 +93,21 @@ export function AppProvider({
     const settle = () => {
       if (settled) return;
       settled = true;
-      saveResolve.current = null;
       resolveGate();
     };
     window.__DTK_WORKSPACE_SAVED__ = gate;
-    saveResolve.current = settle;
 
     const timer = window.setTimeout(() => {
       void (async () => {
+        if (serialized === lastSavedWorkspaceJson) {
+          settle();
+          return;
+        }
         try {
           await apiClient.saveWorkspace(ws);
+          if (gen === saveGen.current) {
+            lastSavedWorkspaceJson = serialized;
+          }
         } catch {
           /* Consumers surface engine errors on the next key/export call. */
         } finally {
@@ -95,10 +118,14 @@ export function AppProvider({
 
     return () => {
       window.clearTimeout(timer);
-      // Flush immediately on change so waiters never hang on a cancelled debounce.
+      if (serialized === lastSavedWorkspaceJson) {
+        settle();
+        return;
+      }
       void (async () => {
         try {
           await apiClient.saveWorkspace(ws);
+          lastSavedWorkspaceJson = serialized;
         } catch {
           /* ignore */
         } finally {

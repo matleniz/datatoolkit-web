@@ -37,14 +37,21 @@ export async function captureFlowScreenshot(
 
 /**
  * Wait until the workbench grid is ready for a screenshot:
- * ≥1 data row, no "Loading" text anywhere, raw pipeline shape not "—".
+ * ≥1 data row, grid not loading rows, raw pipeline shape not "—".
+ * Does not wait for Suggestions analysis (that can run after grid ready).
  */
 export async function waitForGridReady(page: Page): Promise<void> {
   await expect(page.getByLabel("Data grid")).toBeVisible({ timeout: 60_000 });
   await expect(page.locator(".grid-row").first()).toBeVisible({
     timeout: 60_000,
   });
-  await expect(page.getByText(/Loading/)).toHaveCount(0, { timeout: 60_000 });
+  await expect(page.locator(".grid-inline-loading")).toHaveCount(0, {
+    timeout: 60_000,
+  });
+  await expect(
+    page.locator(".grid-more", { hasText: /Loading rows/ }),
+  ).toHaveCount(0, { timeout: 60_000 });
+  await expect(page.getByText("Loading workspace…")).toHaveCount(0);
 
   const rawNode = page
     .locator(".pipeline-node")

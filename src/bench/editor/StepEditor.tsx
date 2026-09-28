@@ -1,5 +1,6 @@
 import type { ColumnKind, JsonValue } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
+import { formulaPlaceholder } from "./formulaPlaceholder";
 import { formatLearnedState } from "../format";
 import { isNumericKind } from "../kinds";
 import { resolveOp, toEngineParams } from "../presets";
@@ -557,7 +558,7 @@ function Field({
           aria-label="Expression"
           className="ed-input formula"
           value={expr}
-          placeholder="(monthly_spend - @spend_mean) / @spend_std"
+          placeholder={formulaPlaceholder(columns, variables)}
           onChange={(e) => set("expr", e.target.value)}
         />
         <span className="ed-help">Insert a column</span>

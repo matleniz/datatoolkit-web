@@ -7,9 +7,10 @@ import {
   useState,
   type ChangeEvent,
 } from "react";
+import { rememberWorkspaceName } from "../../bootstrap";
 import { apiClient } from "../../api/client";
 import type { EngineError, Workspace } from "../../api/types";
-import { useAppDispatch, useAppState } from "../../state/AppStore";
+import { useAppDispatch, useAppState, markWorkspaceSaved } from "../../state/AppStore";
 import {
   ALL_ROLES,
   buildWorkspaceJson,
@@ -326,8 +327,29 @@ export function SourcesScreen() {
     };
 
     try {
+      const listed = workspacesList.some((w) => w.name === name);
+      const onDisk =
+        listed ||
+        (await apiClient.listWorkspaces()).some((w) => w.name === name);
+      if (!onDisk) {
+        const empty: Workspace = {
+          name,
+          datasets: {
+            train: { x: { kind: "csv", path: "" } },
+          },
+          label: { mode: "order" },
+          merges: [],
+          variables: [],
+          steps: [],
+        };
+        dispatch({ type: "SET_WORKSPACE", workspace: empty });
+        rememberWorkspaceName(name);
+        await loadWorkspaceSources(name, null, cacheAfterSave);
+        return;
+      }
       const ws = await apiClient.getWorkspace(name);
       dispatch({ type: "SET_WORKSPACE", workspace: ws });
+      rememberWorkspaceName(name);
       await loadWorkspaceSources(name, ws, cacheAfterSave);
     } catch (err: unknown) {
       const empty: Workspace = {
@@ -574,6 +596,7 @@ export function SourcesScreen() {
     });
     try {
       await apiClient.saveWorkspace(ws);
+      markWorkspaceSaved(ws);
       setWorkspacesList((prev) => [
         ...prev.filter((w) => w.name !== ws.name),
         ws,

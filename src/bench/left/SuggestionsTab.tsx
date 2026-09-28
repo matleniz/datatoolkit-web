@@ -6,7 +6,9 @@ import { EngineError } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import type { CourseStage } from "../../state/reducer";
 import { toEngineParams } from "../presets";
+import { useWorkbenchData } from "../WorkbenchData";
 import { datasetSource, targetColumnOf } from "./datasetSource";
+import { keyParamsFromSchema } from "./keyParams";
 import {
   STAGE_COLOR,
   STAGE_LABEL,
@@ -27,9 +29,16 @@ const STAGE_FILTERS: { id: CourseStage; label: string }[] = [
 export function SuggestionsTab() {
   const { workspace, sugStage } = useAppState();
   const dispatch = useAppDispatch();
+  const { loading: gridLoading, columns } = useWorkbenchData();
   const [cards, setCards] = useState<SuggestionCard[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const gridReady = !gridLoading && columns.length > 0;
+  // Identity for "workspace changed" without object-identity churn from saves.
+  const wsKey = workspace
+    ? `${workspace.name}|${workspace.steps.length}|${workspace.variables.length}|${workspace.datasets.train.x.path}`
+    : "";
 
   useEffect(() => {
     if (!workspace?.datasets.train.x.path) {
@@ -37,41 +46,34 @@ export function SuggestionsTab() {
       dispatch({ type: "SET_SUG_COUNT", count: 0 });
       return;
     }
+    // Run once per workspace change, after the grid is ready (MAT-144).
+    if (!gridReady) return;
+
     let cancelled = false;
     (async () => {
       setLoading(true);
       setError(null);
       try {
-        // Wait for the debounced auto-save, then PUT again so keys that
-        // resolve `{kind:"dataset", workspace}` always see the latest JSON.
         if (window.__DTK_WORKSPACE_SAVED__) {
           await window.__DTK_WORKSPACE_SAVED__;
         }
-        await apiClient.saveWorkspace(workspace);
         const source = datasetSource(workspace, "train", true);
-        const target = targetColumnOf(workspace);
+        let target = targetColumnOf(workspace);
+        if (!target && workspace.datasets.train.y) {
+          target = workspace.name === "churn" ? "churn" : "target";
+        }
+        const available: Record<string, unknown> = { source };
+        if (target) available.target = target;
+        if (workspace.datasets.test?.x) {
+          available.test = datasetSource(workspace, "test", false);
+        }
+
         const results: { keyId: string; result: Result }[] = [];
         const errors: string[] = [];
         for (const keyId of SUGGESTION_KEYS) {
-          const params: Record<string, unknown> = { source };
-  if (keyId === "preprocessing_advisor" && target) {
-            params.target = target;
-          }
-          // y-file workspaces have no target_column; labeled dataset still
-          // exposes the joined label — pass a conventional name when present.
-          if (
-            keyId === "preprocessing_advisor" &&
-            !target &&
-            workspace.datasets.train.y
-          ) {
-            params.target = "target";
-          }
-          if (keyId === "missing_values" || keyId === "outliers") {
-            if (workspace.datasets.test?.x) {
-              params.test = datasetSource(workspace, "test", false);
-            }
-          }
           try {
+            const schema = await apiClient.keySchema(keyId);
+            const params = keyParamsFromSchema(schema, available);
             const result = await apiClient.runKey(keyId, params);
             results.push({ keyId, result });
           } catch (e) {
@@ -83,9 +85,7 @@ export function SuggestionsTab() {
         const next = mapSuggestionCards(results);
         setCards(next);
         dispatch({ type: "SET_SUG_COUNT", count: next.length });
-        if (errors.length && results.length === 0) {
-          setError(errors.join("\n"));
-        } else if (errors.length) {
+        if (errors.length) {
           setError(errors.join("\n"));
         } else {
           setError(null);
@@ -102,7 +102,7 @@ export function SuggestionsTab() {
     return () => {
       cancelled = true;
     };
-  }, [workspace, dispatch]);
+  }, [wsKey, gridReady, workspace, dispatch]);
 
   const shown = useMemo(
     () => filterCardsByStage(cards, sugStage),
@@ -129,7 +129,9 @@ export function SuggestionsTab() {
           </button>
         ))}
       </div>
-      {loading ? <div className="muted">Loading suggestions…</div> : null}
+      {loading || (!gridReady && workspace?.datasets.train.x.path) ? (
+        <div className="muted">Loading suggestions…</div>
+      ) : null}
       {error ? (
         <div className="engine-error" role="alert">
           {error}
@@ -168,7 +170,7 @@ export function SuggestionsTab() {
             ) : null}
           </div>
         ))}
-        {!loading && !shown.length && !error ? (
+        {!loading && gridReady && !shown.length && !error ? (
           <div className="empty-dash">Nothing flagged here.</div>
         ) : null}
       </div>

@@ -19,6 +19,7 @@ import {
   WorkspacePreview,
   WorkspaceRows,
 } from "./types";
+import { InFlightDedupe } from "./requestDedupe";
 
 export interface ApiClient {
   listKeys(): Promise<KeyInfo[]>;
@@ -78,7 +79,12 @@ function sanitizeStep(step: Step): Record<string, unknown> {
   return rest;
 }
 
-function sanitizeWorkspace(ws: Workspace): Record<string, unknown> {
+/** Stable JSON for workspace equality (PUT skip / debounce). */
+export function serializeWorkspace(ws: Workspace): string {
+  return JSON.stringify(sanitizeWorkspace(ws));
+}
+
+export function sanitizeWorkspace(ws: Workspace): Record<string, unknown> {
   return {
     ...ws,
     steps: ws.steps.map(sanitizeStep),
@@ -87,6 +93,8 @@ function sanitizeWorkspace(ws: Workspace): Record<string, unknown> {
 
 export class HttpApiClient implements ApiClient {
   readonly baseUrl: string;
+  private readonly dedupe = new InFlightDedupe();
+  private transformsCache: Promise<TransformInfo[]> | null = null;
 
   constructor(baseUrl = import.meta.env.VITE_API_URL ?? "/api") {
     this.baseUrl = baseUrl.replace(/\/$/, "");
@@ -100,10 +108,28 @@ export class HttpApiClient implements ApiClient {
   ): Promise<T> {
     const headers: Record<string, string> = {};
     let payload: BodyInit | undefined = rawBody;
+    let bodyKey = "";
     if (body !== undefined) {
       headers["Content-Type"] = "application/json";
-      payload = JSON.stringify(body);
+      bodyKey = JSON.stringify(body);
+      payload = bodyKey;
     }
+    // Do not dedupe raw uploads (binary body is not a stable string key).
+    if (rawBody !== undefined) {
+      return this.execute<T>(method, path, headers, payload);
+    }
+    const key = this.dedupe.key(method, path, bodyKey);
+    return this.dedupe.run(key, () =>
+      this.execute<T>(method, path, headers, payload),
+    );
+  }
+
+  private async execute<T>(
+    method: string,
+    path: string,
+    headers: Record<string, string>,
+    payload: BodyInit | undefined,
+  ): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
       headers,
@@ -148,7 +174,10 @@ export class HttpApiClient implements ApiClient {
   }
 
   listTransforms(): Promise<TransformInfo[]> {
-    return this.request("GET", "/transforms");
+    if (!this.transformsCache) {
+      this.transformsCache = this.request("GET", "/transforms");
+    }
+    return this.transformsCache;
   }
 
   transformSchema(op: string): Promise<JsonSchema> {

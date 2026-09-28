@@ -1,11 +1,31 @@
 /** Pure path helpers for the export manifest summary. */
 
+import type { Workspace } from "../../api/types";
+
 export function isAbsolutePath(p: string): boolean {
   return (
     p.startsWith("/") ||
     p.startsWith("\\\\") ||
     /^[A-Za-z]:[\\/]/.test(p)
   );
+}
+
+/**
+ * Default export out_dir: absolute path under the engine home when the
+ * workspace source lives in `$DTK_HOME/uploads/…`, else `/tmp/exports/<name>`.
+ * Derived only from workspace paths (no extra API round-trip).
+ */
+export function defaultExportOutDir(workspace: Workspace): string {
+  const src = workspace.datasets.train.x.path?.trim() ?? "";
+  if (isAbsolutePath(src)) {
+    const norm = src.replace(/\\/g, "/");
+    const idx = norm.lastIndexOf("/uploads/");
+    if (idx >= 0) {
+      const home = norm.slice(0, idx);
+      if (home) return `${home}/exports/${workspace.name}`;
+    }
+  }
+  return `/tmp/exports/${workspace.name}`;
 }
 
 /**

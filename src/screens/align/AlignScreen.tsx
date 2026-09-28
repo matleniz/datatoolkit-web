@@ -6,7 +6,7 @@ import type {
   Step,
   Workspace,
 } from "../../api/types";
-import { useAppDispatch, useAppState } from "../../state/AppStore";
+import { useAppDispatch, useAppState, markWorkspaceSaved } from "../../state/AppStore";
 import {
   computeRowFixes,
   countAlignStatuses,
@@ -150,6 +150,7 @@ export function AlignScreen() {
     if (workspace) {
       try {
         await apiClient.saveWorkspace(workspace);
+        markWorkspaceSaved(workspace);
         setSaveError(null);
       } catch (err: unknown) {
         const msg = (err as EngineError).message || String(err);

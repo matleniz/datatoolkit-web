@@ -1,4 +1,4 @@
-import { apiClient } from "./api/client";
+import { apiClient, serializeWorkspace } from "./api/client";
 import type { Workspace } from "./api/types";
 
 const FILES = [
@@ -8,17 +8,25 @@ const FILES = [
   "customers_extra.csv",
 ] as const;
 
-/**
- * Ensure the demo "churn" workspace exists: upload public fixtures to dtk-api
- * and PUT the workspace. Used until W1 Sources owns workspace creation.
- */
-export async function ensureChurnWorkspace(): Promise<Workspace> {
-  try {
-    return await apiClient.getWorkspace("churn");
-  } catch {
-    /* create below */
-  }
+export const LAST_WORKSPACE_KEY = "dtk.lastWorkspace";
 
+export function rememberWorkspaceName(name: string): void {
+  try {
+    localStorage.setItem(LAST_WORKSPACE_KEY, name);
+  } catch {
+    /* private mode / SSR */
+  }
+}
+
+export function rememberedWorkspaceName(): string | null {
+  try {
+    return localStorage.getItem(LAST_WORKSPACE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+async function createChurnWorkspace(): Promise<Workspace> {
   const paths: Record<string, string> = {};
   for (const name of FILES) {
     const res = await fetch(`/fixtures/${name}`);
@@ -56,5 +64,37 @@ export async function ensureChurnWorkspace(): Promise<Workspace> {
     variables: [],
     steps: [],
   };
-  return apiClient.saveWorkspace(ws);
+  const saved = await apiClient.saveWorkspace(ws);
+  rememberWorkspaceName(saved.name);
+  return saved;
 }
+
+/**
+ * Open the remembered workspace only if GET /workspaces lists it.
+ * Otherwise seed the demo "churn" workspace without probing a missing name
+ * (avoids GET /workspaces/churn → 404 on a fresh DTK_HOME).
+ */
+export async function loadInitialWorkspace(): Promise<Workspace | null> {
+  const list = await apiClient.listWorkspaces();
+  const names = new Set(list.map((w) => w.name));
+  const remembered = rememberedWorkspaceName();
+  if (remembered && names.has(remembered)) {
+    return apiClient.getWorkspace(remembered);
+  }
+  if (names.has("churn")) {
+    return apiClient.getWorkspace("churn");
+  }
+  // Fresh store: create demo churn via upload + PUT (no GET 404).
+  return createChurnWorkspace();
+}
+
+/** @deprecated Prefer loadInitialWorkspace — kept for callers that need churn. */
+export async function ensureChurnWorkspace(): Promise<Workspace> {
+  const list = await apiClient.listWorkspaces();
+  if (list.some((w) => w.name === "churn")) {
+    return apiClient.getWorkspace("churn");
+  }
+  return createChurnWorkspace();
+}
+
+export { serializeWorkspace };

@@ -1,10 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
-import { apiClient } from "../../api/client";
-import type { ColumnProfile, WorkspaceRow } from "../../api/types";
-import { EngineError } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
-import { effectiveVersion } from "../version";
+import { useWorkbenchData } from "../WorkbenchData";
 import {
   VARIABLE_STATS,
   computeStat,
@@ -16,12 +13,14 @@ function chipClass(on: boolean): string {
   return on ? "chip on" : "chip";
 }
 
+/**
+ * Variables tab — uses WorkbenchData profiles/rows (no extra profiles or
+ * limit=5000 rows fetch on open).
+ */
 export function VariablesTab() {
-  const { workspace, editor, viewVersion } = useAppState();
+  const { workspace, editor } = useAppState();
   const dispatch = useAppDispatch();
-  const [profiles, setProfiles] = useState<ColumnProfile[]>([]);
-  const [rows, setRows] = useState<WorkspaceRow[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const { profiles, rows, loading } = useWorkbenchData();
   const [nvName, setNvName] = useState("");
   const [nvStat, setNvStat] = useState<VariableStat>("median");
   const [nvColumn, setNvColumn] = useState<string | null>(null);
@@ -29,40 +28,14 @@ export function VariablesTab() {
   const vars = workspace?.variables ?? [];
   const edFormula = editor?.op === "formula";
 
-  useEffect(() => {
-    if (!workspace?.datasets.train.x.path) {
-      setProfiles([]);
-      setRows([]);
-      return;
-    }
-    let cancelled = false;
-    const version = effectiveVersion(workspace, viewVersion);
-    (async () => {
-      try {
-        const [prof, wr] = await Promise.all([
-          apiClient.columnProfiles(workspace, "train", version),
-          apiClient.workspaceRows(workspace, "train", version, 0, 5000),
-        ]);
-        if (cancelled) return;
-        setProfiles(prof.columns);
-        setRows(wr.rows);
-        setError(null);
-      } catch (e) {
-        if (cancelled) return;
-        setError(e instanceof EngineError ? e.message : String(e));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [workspace, viewVersion]);
+  const profileList = useMemo(() => [...profiles.values()], [profiles]);
 
   const numericCols = useMemo(
     () =>
-      profiles
+      profileList
         .filter((c) => c.kind === "number" || c.kind === "binary")
         .map((c) => c.name),
-    [profiles],
+    [profileList],
   );
 
   const nvOk =
@@ -83,7 +56,9 @@ export function VariablesTab() {
         <span className="mono">@name</span> in a formula: the step freezes
         their train value, so test reuses the same number.
       </p>
-      {error ? <div className="engine-error" role="alert">{error}</div> : null}
+      {loading && !profileList.length ? (
+        <div className="muted">Loading…</div>
+      ) : null}
 
       <div className="var-list">
         {vars.map((v) => {
