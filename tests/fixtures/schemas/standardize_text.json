@@ -25,11 +25,17 @@
       "title": "Lower",
       "type": "boolean"
     },
+    "unify_separators": {
+      "default": false,
+      "description": "Turn '-', '_', '.' and repeated spaces into a single space (then strip), so 'site-a' / 'site_a' / 'Site  A' collapse together",
+      "title": "Unify Separators",
+      "type": "boolean"
+    },
     "mapping": {
       "additionalProperties": {
         "type": "string"
       },
-      "description": "Variant -> canonical value, matched after strip / lower",
+      "description": "Variant -> canonical value, matched after strip / lower / unify_separators",
       "title": "Mapping",
       "type": "object"
     }

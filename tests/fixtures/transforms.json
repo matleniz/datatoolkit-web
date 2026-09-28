@@ -60,6 +60,12 @@
     "needs_target": false
   },
   {
+    "op": "drop_high_missing",
+    "title": "Drop high-missing columns",
+    "description": "Drop columns whose train missing fraction exceeded the threshold",
+    "needs_target": false
+  },
+  {
     "op": "drop_low_variance",
     "title": "Drop low variance",
     "description": "Drop numeric columns whose train variance is at or below a threshold.",
@@ -183,6 +189,12 @@
     "op": "standardize_text",
     "title": "Standardize text",
     "description": "Strip / lowercase text columns and map variants to canonical values.",
+    "needs_target": false
+  },
+  {
+    "op": "to_numeric",
+    "title": "Parse numeric text",
+    "description": "Parse text numbers (currency symbols, thousands / decimal separators,",
     "needs_target": false
   }
 ]

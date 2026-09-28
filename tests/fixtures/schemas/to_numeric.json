@@ -1,0 +1,66 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Text columns to parse as numbers",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Columns",
+      "type": "array",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "decimal": {
+      "default": ".",
+      "description": "Decimal separator",
+      "enum": [
+        ".",
+        ","
+      ],
+      "title": "Decimal",
+      "type": "string"
+    },
+    "thousands": {
+      "anyOf": [
+        {
+          "enum": [
+            ",",
+            ".",
+            " "
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Thousands separator to drop (must differ from decimal)",
+      "title": "Thousands"
+    },
+    "percent": {
+      "default": false,
+      "description": "Divide by 100 when the value carries a '%' sign (else the sign is stripped without scaling)",
+      "title": "Percent",
+      "type": "boolean"
+    },
+    "errors": {
+      "default": "raise",
+      "description": "coerce: unparseable values become NaN; raise: they raise",
+      "enum": [
+        "coerce",
+        "raise"
+      ],
+      "title": "Errors",
+      "type": "string"
+    }
+  },
+  "required": [
+    "columns"
+  ],
+  "title": "ToNumericParams",
+  "type": "object"
+}

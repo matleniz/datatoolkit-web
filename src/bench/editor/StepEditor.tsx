@@ -43,7 +43,11 @@ const WHAT: Record<string, string> = {
   onehot:
     "One 0/1 column per train category. A test category never seen in train becomes all zeros.",
   standardize_text:
-    "Strips spaces and/or lowercases so spelling variants become one category.",
+    "Strips spaces and/or lowercases so spelling variants become one category. Optionally unify separators (- _ .) into spaces.",
+  to_numeric:
+    "Parses text numbers with currency symbols, thousands / decimal separators, and optional % into floats.",
+  drop_high_missing:
+    "Drops columns whose train missing fraction exceeds a threshold. The same columns are dropped on test.",
   formula:
     "Your own column from an expression over columns, numbers, functions and @variables.",
   drop_columns: "Removes columns from the frames the step applies to.",
@@ -125,6 +129,7 @@ export function StepEditor() {
                         "select_k_best",
                         "select_from_model",
                         "drop_missing_target",
+                        "drop_high_missing",
                         "drop_low_variance",
                         "drop_correlated",
                         "pca",
@@ -146,10 +151,17 @@ export function StepEditor() {
                         "parse_dates",
                         "standardize_text",
                         "replace_sentinels",
+                        "to_numeric",
                       ].includes(op)
                     ) {
                       preset.column = sel1;
                       if (op === "replace_sentinels") preset.values = [-999];
+                      if (op === "to_numeric" && pr?.currency_as_text) {
+                        const fmt = pr.currency_as_text;
+                        preset.decimal = fmt.decimal;
+                        preset.thousands = fmt.thousands;
+                        preset.percent = fmt.percent;
+                      }
                     }
                     // Seed ordinal from the active column even when kind is not
                     // yet "text" so + Step does not require a second chip click.
@@ -469,20 +481,32 @@ function Field({
   }
 
   if (field.widget === "enum") {
+    const values = field.enumValues ?? [];
+    const current = params[field.key];
     return (
       <div className="ed-field">
         <span className="ed-label">{field.label}</span>
         <div className="chip-row">
-          {(field.enumValues ?? []).map((o) => (
-            <button
-              key={o}
-              type="button"
-              className={params[field.key] === o ? "chip on" : "chip"}
-              onClick={() => set(field.key, o)}
-            >
-              {o}
-            </button>
-          ))}
+          {values.map((o) => {
+            const isNullOpt = o === "" || o === "__null__";
+            const value = isNullOpt ? null : o;
+            const on =
+              isNullOpt
+                ? current === null || current === undefined
+                : current === value;
+            const label =
+              isNullOpt ? "none" : o === " " ? "space" : o;
+            return (
+              <button
+                key={isNullOpt ? "__null__" : o}
+                type="button"
+                className={on ? "chip on" : "chip"}
+                onClick={() => set(field.key, value)}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
         {op === "drop_duplicates" && field.key === "keep" ? (
           <span className="ed-help">

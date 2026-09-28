@@ -107,6 +107,15 @@ function isNullOnlySchema(prop: JsonSchema): boolean {
   return false;
 }
 
+/** True when the unresolved schema accepts null (Optional / anyOf null). */
+function schemaPropAllowsNull(prop: JsonSchema): boolean {
+  if (isNullOnlySchema(prop)) return true;
+  if (Array.isArray(prop.type) && prop.type.includes("null")) return true;
+  const variants = prop.anyOf ?? prop.oneOf;
+  if (variants?.some((v) => isNullOnlySchema(v))) return true;
+  return false;
+}
+
 /**
  * Map GET /transforms/{op}/schema → editor field descriptors.
  * Special-cases engine object params (sentinels, categories, mapping, dtypes).
@@ -273,12 +282,17 @@ export function schemaToFields(schema: JsonSchema, op: string): EditorField[] {
       continue;
     }
     if (prop.enum && Array.isArray(prop.enum)) {
+      const rawHadNull = schemaPropAllowsNull(raw as JsonSchema);
+      const enumValues = prop.enum.map(String);
+      if (rawHadNull && !enumValues.includes("__null__")) {
+        enumValues.push("__null__");
+      }
       fields.push({
         key,
         label: prop.title ?? key,
         widget: "enum",
         required: required.has(key),
-        enumValues: prop.enum.map(String),
+        enumValues,
         description: prop.description,
       });
       continue;
@@ -383,7 +397,8 @@ export function defaultParams(
   if (op === "scale" && out.method === undefined) out.method = "standard";
   if (op === "standardize_text") {
     if (out.strip === undefined) out.strip = true;
-    if (out.lower === undefined) out.lower = true;
+    // Studio defaults to collapsing case (engine schema default is false).
+    out.lower = true;
   }
   if (op === "drop_duplicates") {
     if (out.keep === undefined) out.keep = "none";
@@ -434,6 +449,14 @@ export function defaultParams(
   if (op === "filter_rows") {
     if (out.conditions === undefined) out.conditions = [];
     if (out.combine === undefined) out.combine = "and";
+  }
+  if (op === "to_numeric") {
+    if (out.decimal === undefined) out.decimal = ".";
+    if (out.percent === undefined) out.percent = false;
+    if (out.errors === undefined) out.errors = "raise";
+  }
+  if (op === "drop_high_missing" && out.threshold === undefined) {
+    out.threshold = 0.5;
   }
   return out;
 }

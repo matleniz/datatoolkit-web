@@ -66,12 +66,13 @@ export const OP_STAGE: Record<string, StageId> = {
   parse_dates: "import",
   rename: "import",
   cast: "import",
-  to_numeric: "import",
   align_to_train: "import",
   drop_duplicates: "clean",
   replace_sentinels: "clean",
   standardize_text: "clean",
   map_value: "clean",
+  to_numeric: "clean",
+  drop_high_missing: "clean",
   impute: "clean",
   clip: "clean",
   ffill: "clean",
@@ -90,7 +91,6 @@ export const OP_STAGE: Record<string, StageId> = {
   group_agg: "transform",
   cyclical: "transform",
   drop_columns: "select",
-  drop_high_missing: "select",
   drop_low_variance: "select",
   drop_correlated: "select",
   select_k_best: "select",
@@ -119,6 +119,7 @@ export const FITTING_OPS = new Set([
   "drop_correlated",
   "align_to_train",
   "drop_missing_target",
+  "drop_high_missing",
   "group_agg",
 ]);
 
@@ -134,6 +135,8 @@ export function opTitle(op: string): string {
     impute: "Impute",
     onehot: "One-hot",
     standardize_text: "Standardize text",
+    to_numeric: "Parse numeric text",
+    drop_high_missing: "Drop high-missing columns",
     drop_columns: "Drop columns",
     drop_duplicates: "Drop duplicates",
     rename: "Rename",
@@ -205,8 +208,25 @@ export function stepSubLabel(
       const bits = [
         params.strip ? "strip" : "",
         params.lower ? "lower" : "",
+        params.unify_separators ? "unify separators" : "",
       ].filter(Boolean);
       return `${cols.join(", ")} · ${bits.join(" + ") || "no change"}`;
+    }
+    case "to_numeric": {
+      const cols = (params.columns as string[] | undefined) ?? [];
+      const bits = [
+        `dec ${String(params.decimal ?? ".")}`,
+        params.thousands != null && params.thousands !== ""
+          ? `thou ${String(params.thousands)}`
+          : "",
+        params.percent ? "%" : "",
+      ].filter(Boolean);
+      return `${cols.join(", ")} · ${bits.join(" · ")}`;
+    }
+    case "drop_high_missing": {
+      const thr = params.threshold ?? 0.5;
+      const tgt = params.target ? ` · keep ${String(params.target)}` : "";
+      return `>${String(thr)}${tgt}`;
     }
     case "clip": {
       const cols = (params.columns as string[] | undefined) ?? [];

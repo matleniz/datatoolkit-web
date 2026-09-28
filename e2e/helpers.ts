@@ -132,6 +132,58 @@ export function stationsPartialWorkspace(): Workspace {
   };
 }
 
+/** Chipotle-like prices with currency-as-text (MAT-160). */
+export function chipotlePricesWorkspace(): Workspace {
+  return {
+    name: "chipotle_prices",
+    datasets: {
+      train: {
+        x: { kind: "csv", path: join(fixturesDir, "chipotle_prices.csv") },
+      },
+    },
+    label: { mode: "order" },
+    merges: [],
+    variables: [],
+    steps: [],
+  };
+}
+
+/** Messy survey sites with hyphen/underscore/space variants (MAT-160). */
+export function messySurveyWorkspace(): Workspace {
+  return {
+    name: "messy_survey",
+    datasets: {
+      train: {
+        x: { kind: "csv", path: join(fixturesDir, "messy_survey.csv") },
+      },
+    },
+    label: { mode: "order" },
+    merges: [],
+    variables: [],
+    steps: [],
+  };
+}
+
+/** Train/test with a 70%-missing column for drop_high_missing (MAT-160). */
+export function highMissingWorkspace(): Workspace {
+  return {
+    name: "high_missing",
+    datasets: {
+      train: {
+        x: { kind: "csv", path: join(fixturesDir, "high_missing_train.csv") },
+        target_column: "target",
+      },
+      test: {
+        x: { kind: "csv", path: join(fixturesDir, "high_missing_test.csv") },
+      },
+    },
+    label: { mode: "order" },
+    merges: [],
+    variables: [],
+    steps: [],
+  };
+}
+
 /**
  * Adult-like train/test with trailing-dot income labels on test only
  * (MAT-155 item 6 / align_report value_mismatch).

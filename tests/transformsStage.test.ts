@@ -63,7 +63,7 @@ describe("transforms stage mapping and exclusion", () => {
     expect(FITTING_OPS.has("drop_missing_target")).toBe(true);
   });
 
-  it("every new op from MAT-150 has usable editor fields", () => {
+  it("every new op from MAT-150 / MAT-160 has usable editor fields", () => {
     const newOps = [
       "ffill",
       "impute_knn",
@@ -79,6 +79,8 @@ describe("transforms stage mapping and exclusion", () => {
       "select_from_model",
       "pca",
       "filter_rows",
+      "to_numeric",
+      "drop_high_missing",
     ];
 
     for (const op of newOps) {
@@ -109,6 +111,40 @@ describe("transforms stage mapping and exclusion", () => {
         ).toContain(f.widget);
       }
     }
+  });
+
+  it("to_numeric maps decimal/errors enums and nullable thousands", () => {
+    const schema = loadSchema("to_numeric");
+    const fields = schemaToFields(schema, "to_numeric");
+    expect(fields.find((f) => f.key === "columns")?.widget).toBe("columns");
+    expect(fields.find((f) => f.key === "decimal")?.enumValues).toEqual([
+      ".",
+      ",",
+    ]);
+    const thousands = fields.find((f) => f.key === "thousands");
+    expect(thousands?.widget).toBe("enum");
+    expect(thousands?.enumValues).toContain(",");
+    expect(thousands?.enumValues).toContain("__null__");
+    expect(fields.find((f) => f.key === "percent")?.widget).toBe("bool");
+  });
+
+  it("drop_high_missing is a fitting clean-stage op with threshold + target", () => {
+    expect(OP_STAGE.drop_high_missing).toBe("clean");
+    expect(OP_STAGE.to_numeric).toBe("clean");
+    expect(FITTING_OPS.has("drop_high_missing")).toBe(true);
+    const schema = loadSchema("drop_high_missing");
+    const fields = schemaToFields(schema, "drop_high_missing");
+    expect(fields.find((f) => f.key === "threshold")?.widget).toBe("number");
+    expect(fields.find((f) => f.key === "target")?.widget).toBe("column");
+    expect(fields.find((f) => f.key === "exclude")?.widget).toBe("columns");
+  });
+
+  it("standardize_text schema exposes unify_separators", () => {
+    const schema = loadSchema("standardize_text");
+    const fields = schemaToFields(schema, "standardize_text");
+    expect(fields.find((f) => f.key === "unify_separators")?.widget).toBe(
+      "bool",
+    );
   });
 
   it("filter_rows maps conditions to conditions widget and combine to enum", () => {

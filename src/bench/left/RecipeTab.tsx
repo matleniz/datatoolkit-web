@@ -8,6 +8,8 @@ const OP_STAGE: Record<string, keyof typeof STAGE_COLOR> = {
   drop_duplicates: "clean",
   replace_sentinels: "clean",
   standardize_text: "clean",
+  to_numeric: "clean",
+  drop_high_missing: "clean",
   impute: "clean",
   clip: "clean",
   drop_columns: "select",
@@ -25,6 +27,8 @@ const OP_TITLE: Record<string, string> = {
   drop_duplicates: "Drop duplicates",
   replace_sentinels: "Replace sentinels",
   standardize_text: "Standardize text",
+  to_numeric: "Parse numeric text",
+  drop_high_missing: "Drop high-missing columns",
   impute: "Impute",
   clip: "Clip",
   drop_columns: "Drop columns",
@@ -43,6 +47,7 @@ const FIT_OPS = new Set([
   "clip",
   "formula",
   "log1p",
+  "drop_high_missing",
 ]);
 
 function subLabel(op: string, params: Record<string, unknown>): string {

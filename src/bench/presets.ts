@@ -40,7 +40,8 @@ export function toEngineParams(
     op === "clip" ||
     op === "log1p" ||
     op === "parse_dates" ||
-    op === "standardize_text"
+    op === "standardize_text" ||
+    op === "to_numeric"
   ) {
     if (p.columns) return p;
     if (typeof p.column === "string") {

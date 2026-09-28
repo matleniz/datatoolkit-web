@@ -301,6 +301,12 @@ export interface ColumnProfile {
   variants: Variants | null;
   looks_like_dates: boolean;
   numbers_as_text: boolean;
+  /** Detected currency / money format, or null when not currency-as-text. */
+  currency_as_text: {
+    decimal: "." | ",";
+    thousands: "," | "." | " " | null;
+    percent: boolean;
+  } | null;
   skewed: boolean;
 }
 
