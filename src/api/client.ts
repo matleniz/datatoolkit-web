@@ -151,11 +151,12 @@ export class HttpApiClient implements ApiClient {
     }
     if (!res.ok) {
       if (isErrorBody(data)) {
-        throw new EngineError(data.type, data.message);
+        throw new EngineError(data.type, data.message, res.status);
       }
       throw new EngineError(
         "HttpError",
         `HTTP ${res.status} ${res.statusText}`.trim(),
+        res.status,
       );
     }
     return data as T;

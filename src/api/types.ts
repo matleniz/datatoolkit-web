@@ -367,11 +367,14 @@ export interface ErrorBody {
 
 export class EngineError extends Error {
   readonly type: string;
+  /** HTTP status when thrown from the API client; unset for local throws. */
+  readonly status: number | null;
 
-  constructor(type: string, message: string) {
+  constructor(type: string, message: string, status: number | null = null) {
     super(message);
     this.name = "EngineError";
     this.type = type;
+    this.status = status;
   }
 }
 
