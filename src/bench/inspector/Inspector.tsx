@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 import type { ColumnKind, JsonValue } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { colAlerts, profileBars } from "../alerts";
+import { chartPrefillFromSelection } from "../dock/chartPrefill";
 import {
   fmt,
   fmtPreview,
@@ -14,6 +15,17 @@ import { isNumericKind, isTextKind, KIND_LABEL } from "../kinds";
 import { toEngineParams } from "../presets";
 import { useWorkbenchData } from "../WorkbenchData";
 import { buildValueGroups } from "./valueGroups";
+
+function openChart(
+  dispatch: ReturnType<typeof useAppDispatch>,
+  cols: { name: string; kind: ColumnKind | string }[],
+) {
+  dispatch({
+    type: "SET_CHART_DRAFT",
+    draft: chartPrefillFromSelection(cols),
+  });
+  dispatch({ type: "OPEN_TOOL", id: "chart" });
+}
 
 /** W2 — column / row / cell inspector (318px). */
 export function Inspector() {
@@ -225,6 +237,19 @@ export function Inspector() {
               () => dispatch({ type: "OPEN_TOOL", id: "corr" }),
               { tool: true },
             )}
+            {btn(
+              "Chart…",
+              () =>
+                openChart(
+                  dispatch,
+                  selCols.map((name) => {
+                    const k =
+                      columns.find((x) => x.name === name)?.kind ?? "text";
+                    return { name, kind: k };
+                  }),
+                ),
+              { tool: true },
+            )}
           </Group>
           <Group label="Transform">
             {numSel.length === 2
@@ -331,6 +356,11 @@ export function Inspector() {
           dispatch({ type: "SET_DIST_BY", by });
           dispatch({ type: "OPEN_TOOL", id: "dist" });
         },
+        { tool: true },
+      ),
+      btn(
+        "Chart…",
+        () => openChart(dispatch, [{ name: c1, kind: k1 }]),
         { tool: true },
       ),
       btn(

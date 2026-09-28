@@ -6,7 +6,14 @@ import type { Result } from "../../api/types";
  * Generic Result renderer (metrics / tables / plotly figures).
  * plotly.js-dist-min is loaded lazily only when a figure is present.
  */
-export function ResultView({ result }: { result: Result }) {
+export function ResultView({
+  result,
+  showModeBar = false,
+}: {
+  result: Result;
+  /** Chart tool: Plotly toolbar for PNG / SVG export (MAT-172). */
+  showModeBar?: boolean;
+}) {
   return (
     <div className="result-view">
       {Object.keys(result.metrics).length > 0 ? (
@@ -47,7 +54,12 @@ export function ResultView({ result }: { result: Result }) {
         </div>
       ))}
       {result.figures.map((f, i) => (
-        <PlotlyFigure key={`${f.title}-${i}`} title={f.title} plotly={f.plotly} />
+        <PlotlyFigure
+          key={`${f.title}-${i}`}
+          title={f.title}
+          plotly={f.plotly}
+          showModeBar={showModeBar}
+        />
       ))}
       {result.text ? <pre className="result-text">{result.text}</pre> : null}
     </div>
@@ -57,9 +69,11 @@ export function ResultView({ result }: { result: Result }) {
 function PlotlyFigure({
   title,
   plotly,
+  showModeBar,
 }: {
   title: string;
   plotly: Record<string, unknown>;
+  showModeBar: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -72,14 +86,21 @@ function PlotlyFigure({
       const layout = {
         ...((plotly.layout as object) ?? {}),
         margin: { t: 28, r: 12, b: 32, l: 40 },
-        height: 220,
+        height: showModeBar ? 280 : 220,
         paper_bgcolor: "transparent",
         plot_bgcolor: "transparent",
         font: { size: 10, family: "IBM Plex Sans, sans-serif" },
       };
       await Plotly.newPlot(ref.current, data, layout, {
-        displayModeBar: false,
+        displayModeBar: showModeBar,
+        displaylogo: false,
         responsive: true,
+        modeBarButtonsToRemove: showModeBar
+          ? ["lasso2d", "select2d", "autoScale2d"]
+          : undefined,
+        toImageButtonOptions: showModeBar
+          ? { format: "png", filename: title || "chart" }
+          : undefined,
       });
     })().catch(() => {
       /* figure render is best-effort */
@@ -87,7 +108,7 @@ function PlotlyFigure({
     return () => {
       cancelled = true;
     };
-  }, [plotly]);
+  }, [plotly, showModeBar, title]);
 
   return (
     <div className="result-figure">

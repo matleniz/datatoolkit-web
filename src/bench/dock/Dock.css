@@ -427,3 +427,76 @@
   font-size: 12px;
   line-height: 1.4;
 }
+
+/* ---- Chart builder (MAT-172) ---- */
+.chart-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 2px 0;
+}
+
+.chart-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: flex-end;
+}
+
+.chart-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--dtk-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.chart-field select,
+.chart-field input[type="number"],
+.chart-field input[type="text"],
+.chart-save-name input {
+  height: 24px;
+  min-width: 96px;
+  max-width: 160px;
+  border: 1px solid var(--dtk-border-strong);
+  border-radius: 5px;
+  background: var(--dtk-bg);
+  color: var(--dtk-ink);
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 0 6px;
+}
+
+.chart-check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--dtk-ink);
+  height: 24px;
+  margin-bottom: 1px;
+}
+
+.chart-saved-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+  padding-top: 4px;
+  border-top: 1px solid var(--dtk-hairline);
+}
+
+.chart-save-name {
+  flex: 1;
+  min-width: 140px;
+}
+
+.chart-save-name input {
+  max-width: none;
+  width: 100%;
+}
+

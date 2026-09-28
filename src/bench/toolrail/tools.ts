@@ -65,6 +65,13 @@ export const TOOLS: ToolDef[] = [
     ariaLabel: "Feature selection",
     title: "Feature selection · feature_selection",
   },
+  {
+    id: "chart",
+    label: "Chart",
+    key: "chart",
+    ariaLabel: "Chart",
+    title: "Chart · chart",
+  },
 ];
 
 export const DOCK_SIZES = {

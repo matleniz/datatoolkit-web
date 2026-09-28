@@ -91,8 +91,11 @@ export function serializeWorkspace(ws: Workspace): string {
 }
 
 export function sanitizeWorkspace(ws: Workspace): Record<string, unknown> {
+  // Strip front-only fields the engine Workspace model forbids (MAT-172 charts
+  // until MAT-185; Step.align is front-only pipeline ordering).
+  const { charts: _charts, ...rest } = ws;
   return {
-    ...ws,
+    ...rest,
     steps: ws.steps.map(sanitizeStep),
   };
 }

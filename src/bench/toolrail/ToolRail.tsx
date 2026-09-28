@@ -64,6 +64,17 @@ function ToolIcon({ id }: { id: ToolId }) {
           <path d="M3 4h14l-5.5 6.5v5l-3 1.5v-6.5L3 4z" />
         </svg>
       );
+    case "chart":
+      return (
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 16.5V4.5M3 16.5h14" />
+          <path d="M6 12l3-3 2.5 2.5L15 6" />
+          <circle cx="6" cy="12" r="1.2" fill="currentColor" stroke="none" />
+          <circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none" />
+          <circle cx="11.5" cy="11.5" r="1.2" fill="currentColor" stroke="none" />
+          <circle cx="15" cy="6" r="1.2" fill="currentColor" stroke="none" />
+        </svg>
+      );
   }
 }
 
