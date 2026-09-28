@@ -240,20 +240,56 @@
 }
 
 .align-item-text {
-  flex-grow: 1;
+  flex: 1 1 0;
+  min-width: 0;
   font-family: var(--dtk-font-mono);
   font-size: 12px;
   color: var(--dtk-ink);
-  word-break: break-all;
+  /* Prefer wrap at spaces / " · "; break mid-token only if one token exceeds width */
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.align-item-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  line-height: 1.4;
+}
+
+.align-item-op {
+  font-weight: 600;
+}
+
+/* Force details onto a second line while keeping DOM text as
+   "op · summary · target" for getByText / screen readers. */
+.align-item-break {
+  flex-basis: 100%;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.align-item-sep {
+  /* Visually swallowed by the line break; kept in the text flow. */
+  font-size: 0;
+  line-height: 0;
+}
+
+.align-item-details {
+  color: var(--dtk-ink);
 }
 
 .btn-remove-item {
+  flex-shrink: 0;
+  align-self: center;
   border: none;
   background: none;
   color: #a3242c;
   font-size: 12px;
   cursor: pointer;
   padding: 2px 4px;
+  white-space: nowrap;
 }
 
 .btn-remove-item:hover {

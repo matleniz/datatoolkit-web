@@ -11,6 +11,7 @@ import {
   computeRowFixes,
   countAlignStatuses,
   formatAlignmentStep,
+  formatStepSummary,
   formatMean,
   formatSample,
   getStatusBadgeInfo,
@@ -365,9 +366,19 @@ export function AlignScreen() {
         {alignmentStepsWithIndices.length > 0 ? (
           alignmentStepsWithIndices.map(({ st, i }) => (
             <div key={i} className="align-item-box">
-              <span className="align-item-text">
-                {formatAlignmentStep(st)}
-              </span>
+              <div
+                className="align-item-text align-item-step"
+                title={formatAlignmentStep(st)}
+              >
+                <span className="align-item-op">{st.op}</span>
+                <span className="align-item-sep" aria-hidden="true">
+                  {" · "}
+                </span>
+                <span className="align-item-break" aria-hidden="true" />
+                <span className="align-item-details">
+                  {formatStepSummary(st)} · {st.target}
+                </span>
+              </div>
               <button
                 type="button"
                 className="btn-remove-item"
