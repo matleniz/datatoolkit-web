@@ -37,6 +37,7 @@ import {
   rowsPageSize,
   WIDE_COL_THRESHOLD,
 } from "./grid/columnWindow";
+import { preferKnownColumns } from "./profileColumns";
 import {
   effectiveVersion,
   latestVersion,
@@ -255,22 +256,46 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
         // When `columns` is supported by the engine, we profile the viewport
         // first then fill the rest; today's engine ignores the filter and
         // returns every column in one shot (no second round-trip).
-        const prefer = visibleColsRef.current;
+        // Intersect with the just-fetched rows schema so a dropped / renamed
+        // viewport column (or other role) does not 422 the scoped call.
+        const prefer = preferKnownColumns(
+          visibleColsRef.current,
+          rowsRes.columns.map((c) => c.name),
+        );
         const wide = rowsRes.columns.length >= WIDE_COL_THRESHOLD;
         void (async () => {
           try {
             const firstCols =
               wide && prefer.length > 0 ? prefer : null;
-            const firstRaw = await apiClient.columnProfiles(
-              ws,
-              role,
-              ver,
-              firstCols,
-            );
+            let firstRaw: Awaited<
+              ReturnType<typeof apiClient.columnProfiles>
+            >;
+            let scopedOk = false;
+            if (firstCols) {
+              try {
+                firstRaw = await apiClient.columnProfiles(
+                  ws,
+                  role,
+                  ver,
+                  firstCols,
+                );
+                scopedOk = true;
+              } catch (e) {
+                // Residual stale names (or race): fall back to unscoped
+                // instead of SET_BENCH_ERROR when the engine rejects unknowns.
+                if (!(e instanceof EngineError) || e.status !== 422) {
+                  throw e;
+                }
+                firstRaw = await apiClient.columnProfiles(ws, role, ver);
+              }
+            } else {
+              firstRaw = await apiClient.columnProfiles(ws, role, ver);
+            }
             if (gen !== fetchGen.current) return;
             const first = normalizeProfiles(firstRaw);
             setProfiles(new Map(first.columns.map((p) => [p.name, p])));
             if (
+              scopedOk &&
               firstCols &&
               first.columns.length < rowsRes.columns.length
             ) {

@@ -102,6 +102,65 @@ test.describe("MAT-152 wide datasets", () => {
     await captureFlowScreenshot(page, "mat152-wide", "01-ready.png");
   });
 
+  test("drop a scrolled-into-view column: grid and profiles recover without error", async ({
+    page,
+  }) => {
+    // Exercises eng-profile-cols 422 path: viewport names can be stale after
+    // drop_columns; front must intersect / fall back instead of SET_BENCH_ERROR.
+    test.setTimeout(180_000);
+    clearFlowScreenshots("mat152-drop-stale");
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    await loadWorkspace(page, wideWorkspace());
+    await waitForGridReady(page);
+
+    const grid = page.getByLabel("Data grid");
+    // Scroll so f050 is in the horizontal window (number cols ≈ 130px).
+    await grid.evaluate((el) => {
+      el.scrollLeft = 50 * 130;
+    });
+    await expect(page.locator(".grid-th", { hasText: "f050" })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await page.evaluate(() => {
+      const d = window.__DTK_DISPATCH__!;
+      d({ type: "CLEAR_SELECTION" });
+      d({ type: "PICK_COL", name: "f050" });
+      d({ type: "OPEN_CTX", col: "f050", x: 400, y: 280 });
+    });
+    await page.getByRole("menuitem", { name: "Drop column…" }).click();
+    await expect(page.getByLabel("Step editor")).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(
+      page.getByRole("status").filter({ hasText: /Live preview/i }),
+    ).toBeVisible({ timeout: 60_000 });
+    const apply = page
+      .getByRole("status")
+      .filter({ hasText: /Live preview/i })
+      .getByRole("button", { name: "Apply step" });
+    await expect(apply).toBeEnabled({ timeout: 60_000 });
+    await apply.click({ timeout: 15_000 });
+    await expect(page.getByLabel("Step editor")).toHaveCount(0, {
+      timeout: 60_000,
+    });
+    await waitForGridReady(page);
+
+    // No profile 422 / bench error banner.
+    await expect(page.locator(".error-banner")).toHaveCount(0);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+
+    // Schema lost the dropped column; profiles still paint on remaining headers.
+    await expect(grid).toHaveAttribute("data-col-window", /\/319$/);
+    await expect(page.locator(".th-bars").first()).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page.locator(".grid-th", { hasText: "f050" })).toHaveCount(0);
+
+    await captureFlowScreenshot(page, "mat152-drop-stale", "01-after-drop.png");
+  });
+
   test("Ames-like: impute, scale, one-hot, then Export", async ({ page }) => {
     test.setTimeout(240_000);
     clearFlowScreenshots("mat152-ames");
