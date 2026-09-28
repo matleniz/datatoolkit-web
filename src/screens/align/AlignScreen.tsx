@@ -6,6 +6,7 @@ import type {
   Step,
   Workspace,
 } from "../../api/types";
+import { E2E_FIXTURES_DIR } from "../../e2eFixtures";
 import { useAppDispatch, useAppState, markWorkspaceSaved } from "../../state/AppStore";
 import {
   alignRowNeedsDecision,
@@ -19,6 +20,9 @@ import {
   type AlignFixAction,
 } from "./alignLogic";
 import "./align.css";
+
+/** Offline / null-workspace churn fallback — this checkout's e2e fixtures (MAT-201). */
+const FIXTURE_BASE = E2E_FIXTURES_DIR;
 
 export function AlignScreen() {
   const { workspace } = useAppState();
@@ -38,17 +42,17 @@ export function AlignScreen() {
           train: {
             x: {
               kind: "csv",
-              path: "/home/matleniz/wt-datatoolkit-web/w1-sources-align/e2e/fixtures/churn_train.csv",
+              path: `${FIXTURE_BASE}/churn_train.csv`,
             },
             y: {
               kind: "csv",
-              path: "/home/matleniz/wt-datatoolkit-web/w1-sources-align/e2e/fixtures/churn_labels.csv",
+              path: `${FIXTURE_BASE}/churn_labels.csv`,
             },
           },
           test: {
             x: {
               kind: "csv",
-              path: "/home/matleniz/wt-datatoolkit-web/w1-sources-align/e2e/fixtures/churn_test.csv",
+              path: `${FIXTURE_BASE}/churn_test.csv`,
             },
           },
         },
