@@ -897,6 +897,17 @@
   font-size: 12px;
 }
 
+.ed-select {
+  height: 32px;
+  padding: 0 6px;
+  border: 1px solid #d6d3ca;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #2e2b26;
+  font-family: var(--dtk-font-ui);
+  font-size: 12px;
+}
+
 .ed-input.formula {
   height: 34px;
   border-color: #8a5a9e;

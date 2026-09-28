@@ -1,0 +1,59 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "group": {
+      "description": "Group-by column",
+      "title": "Group",
+      "type": "string",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "column"
+    },
+    "value": {
+      "description": "Numeric column to aggregate",
+      "title": "Value",
+      "type": "string",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "column"
+    },
+    "aggs": {
+      "description": "Aggregations (column '<value>_<agg>_by_<group>')",
+      "items": {
+        "enum": [
+          "mean",
+          "std",
+          "count",
+          "median"
+        ],
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Aggs",
+      "type": "array"
+    },
+    "target": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Declared target column; aggregating it is refused (target leak)",
+      "title": "Target",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "column"
+    }
+  },
+  "required": [
+    "group",
+    "value",
+    "aggs"
+  ],
+  "title": "GroupAggParams",
+  "type": "object"
+}

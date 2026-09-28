@@ -1,0 +1,25 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "mapping": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Old column name -> new column name",
+      "minProperties": 1,
+      "title": "Mapping",
+      "type": "object"
+    },
+    "missing_ok": {
+      "default": false,
+      "description": "Ignore old names absent from the frame",
+      "title": "Missing Ok",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "mapping"
+  ],
+  "title": "RenameParams",
+  "type": "object"
+}

@@ -40,6 +40,9 @@ export function formatLearnedState(state: Record<string, JsonValue>): string {
   if (!state || Object.keys(state).length === 0) {
     return "Not fitted: nothing is learned on train";
   }
+  if ("dropped" in state) {
+    return `${state.dropped} rows dropped on train`;
+  }
   if ("fill" in state && state.fill && typeof state.fill === "object") {
     const fill = state.fill as Record<string, JsonValue>;
     return Object.entries(fill)

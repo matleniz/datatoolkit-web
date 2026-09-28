@@ -1,0 +1,35 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "sentinels": {
+      "additionalProperties": {
+        "items": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "type": "array"
+      },
+      "description": "Column -> values to turn into NaN (e.g. -999)",
+      "minProperties": 1,
+      "title": "Sentinels",
+      "type": "object"
+    }
+  },
+  "required": [
+    "sentinels"
+  ],
+  "title": "ReplaceSentinelsParams",
+  "type": "object"
+}

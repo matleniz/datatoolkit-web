@@ -1,0 +1,42 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Text columns to normalize",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Columns",
+      "type": "array",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "strip": {
+      "default": true,
+      "description": "Strip surrounding whitespace",
+      "title": "Strip",
+      "type": "boolean"
+    },
+    "lower": {
+      "default": false,
+      "description": "Lowercase",
+      "title": "Lower",
+      "type": "boolean"
+    },
+    "mapping": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Variant -> canonical value, matched after strip / lower",
+      "title": "Mapping",
+      "type": "object"
+    }
+  },
+  "required": [
+    "columns"
+  ],
+  "title": "StandardizeTextParams",
+  "type": "object"
+}

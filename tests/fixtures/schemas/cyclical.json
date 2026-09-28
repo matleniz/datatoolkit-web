@@ -1,0 +1,25 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "column": {
+      "description": "Numeric column holding the cyclic value",
+      "title": "Column",
+      "type": "string",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "column"
+    },
+    "period": {
+      "description": "Cycle length (24 hour, 7 dow, 12 month)",
+      "exclusiveMinimum": 0,
+      "title": "Period",
+      "type": "number"
+    }
+  },
+  "required": [
+    "column",
+    "period"
+  ],
+  "title": "CyclicalParams",
+  "type": "object"
+}

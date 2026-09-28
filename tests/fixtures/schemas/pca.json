@@ -1,0 +1,76 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "n_components": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "default": 0.95,
+      "description": "Components kept: an int, or a variance fraction in (0, 1) (smallest number reaching it)",
+      "gt": 0,
+      "title": "N Components"
+    },
+    "columns": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Candidate numeric columns; default every numeric column but the target",
+      "title": "Columns",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "standardize": {
+      "default": true,
+      "description": "Standardize the inputs with train mean / std first. PCA needs scaled inputs (variance has units): turn off only after a scale step",
+      "title": "Standardize",
+      "type": "boolean"
+    },
+    "whiten": {
+      "default": false,
+      "description": "Rescale components to unit variance",
+      "title": "Whiten",
+      "type": "boolean"
+    },
+    "target": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Target column: never a candidate",
+      "title": "Target",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "column"
+    },
+    "prefix": {
+      "default": "pc",
+      "description": "Output names: pc1..pcN",
+      "minLength": 1,
+      "title": "Prefix",
+      "type": "string"
+    }
+  },
+  "title": "PcaParams",
+  "type": "object"
+}

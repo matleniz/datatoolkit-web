@@ -13,7 +13,8 @@ export type ToolId =
   | "missing"
   | "outliers"
   | "target"
-  | "drift";
+  | "drift"
+  | "feature_selection";
 
 /** Course stage ids used by the Suggestions filter (prototype STAGES). */
 export type CourseStage =

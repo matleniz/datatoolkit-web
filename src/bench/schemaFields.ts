@@ -5,6 +5,9 @@ export type FieldWidget =
   | "columns"
   | "column"
   | "enum"
+  | "enum_list"
+  | "number_list"
+  | "string_list"
   | "bool"
   | "number"
   | "text"
@@ -14,6 +17,7 @@ export type FieldWidget =
   | "dtypes"
   | "formula"
   | "variables"
+  | "conditions"
   | "object";
 
 export interface EditorField {
@@ -195,6 +199,35 @@ export function schemaToFields(schema: JsonSchema, op: string): EditorField[] {
       });
       continue;
     }
+    if (key === "conditions") {
+      const condSchema =
+        (schema.$defs?.Condition as JsonSchema | undefined) ??
+        (prop.items as JsonSchema | undefined);
+      const opEnum =
+        ((condSchema?.properties?.op as JsonSchema | undefined)?.enum as
+          | string[]
+          | undefined) ?? [
+          "eq",
+          "ne",
+          "gt",
+          "ge",
+          "lt",
+          "le",
+          "isin",
+          "notin",
+          "isna",
+          "notna",
+        ];
+      fields.push({
+        key,
+        label: prop.title ?? "Conditions",
+        widget: "conditions",
+        required: required.has(key),
+        enumValues: opEnum,
+        description: prop.description,
+      });
+      continue;
+    }
 
     const widgetHint = prop["x-dtk-widget"];
     const dtypeHint = prop["x-dtk-dtype"];
@@ -269,6 +302,39 @@ export function schemaToFields(schema: JsonSchema, op: string): EditorField[] {
       continue;
     }
     if (prop.type === "array") {
+      const items = prop.items as JsonSchema | undefined;
+      const resolvedItems = items ? resolveSchemaProp(items) : undefined;
+      if (resolvedItems?.enum && Array.isArray(resolvedItems.enum)) {
+        fields.push({
+          key,
+          label: prop.title ?? key,
+          widget: "enum_list",
+          required: required.has(key),
+          enumValues: resolvedItems.enum.map(String),
+          description: prop.description,
+        });
+        continue;
+      }
+      if (resolvedItems?.type === "number" || resolvedItems?.type === "integer") {
+        fields.push({
+          key,
+          label: prop.title ?? key,
+          widget: "number_list",
+          required: required.has(key),
+          description: prop.description,
+        });
+        continue;
+      }
+      if (resolvedItems?.type === "string" && !widgetHint) {
+        fields.push({
+          key,
+          label: prop.title ?? key,
+          widget: "string_list",
+          required: required.has(key),
+          description: prop.description,
+        });
+        continue;
+      }
       fields.push({
         key,
         label: prop.title ?? key,
@@ -318,6 +384,44 @@ export function defaultParams(
   if (op === "cast" && out.dtypes === undefined) out.dtypes = {};
   if (op === "formula") {
     if (out.variables === undefined) out.variables = [];
+  }
+  if (op === "bin") {
+    if (out.mode === undefined) out.mode = "qcut";
+    if (out.q === undefined) out.q = 5;
+  }
+  if (op === "cyclical" && out.period === undefined) out.period = 24;
+  if (op === "group_agg" && out.aggs === undefined) out.aggs = ["mean"];
+  if (op === "datetime_parts" && out.parts === undefined) {
+    out.parts = ["hour", "dayofweek", "month"];
+  }
+  if (op === "impute_knn") {
+    if (out.n_neighbors === undefined) out.n_neighbors = 5;
+    if (out.weights === undefined) out.weights = "uniform";
+  }
+  if (op === "impute_iterative") {
+    if (out.max_iter === undefined) out.max_iter = 10;
+    if (out.random_state === undefined) out.random_state = 0;
+  }
+  if (op === "select_k_best") {
+    if (out.score === undefined) out.score = "mutual_info";
+    if (out.k === undefined && out.percentile === undefined) out.k = 5;
+  }
+  if (op === "select_from_model") {
+    if (out.model === undefined) out.model = "tree";
+  }
+  if (op === "pca") {
+    if (out.n_components === undefined) out.n_components = 0.95;
+    if (out.standardize === undefined) out.standardize = true;
+  }
+  if (op === "drop_low_variance" && out.threshold === undefined) {
+    out.threshold = 0.0;
+  }
+  if (op === "drop_correlated" && out.threshold === undefined) {
+    out.threshold = 0.95;
+  }
+  if (op === "filter_rows") {
+    if (out.conditions === undefined) out.conditions = [];
+    if (out.combine === undefined) out.combine = "and";
   }
   return out;
 }
@@ -388,6 +492,33 @@ export function stepParamsValid(
   if (op === "formula") {
     if (!String(params.name ?? "").trim() || !String(params.expr ?? "").trim()) {
       return { ok: false, missing: "Name and expression are required" };
+    }
+  }
+  if (op === "interactions") {
+    const cols = params.columns as unknown[] | null | undefined;
+    if (!cols || !Array.isArray(cols) || cols.length < 2) {
+      return { ok: false, missing: "Pick at least 2 columns to combine" };
+    }
+  }
+  if (op === "filter_rows") {
+    const conds = params.conditions as
+      | Array<{ column?: string; op?: string; value?: unknown }>
+      | undefined;
+    if (!conds || !Array.isArray(conds) || conds.length === 0) {
+      return { ok: false, missing: "Add at least one condition" };
+    }
+    for (const c of conds) {
+      if (!c.column) {
+        return { ok: false, missing: "Select a column for each condition" };
+      }
+      if (!c.op) {
+        return { ok: false, missing: "Select an operator for each condition" };
+      }
+      if (c.op !== "isna" && c.op !== "notna") {
+        if (c.value === undefined || c.value === null || c.value === "") {
+          return { ok: false, missing: `Value required for condition on ${c.column}` };
+        }
+      }
     }
   }
   return { ok: true };

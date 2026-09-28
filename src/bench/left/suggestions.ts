@@ -8,6 +8,7 @@ export const SUGGESTION_KEYS = [
   "missing_values",
   "outliers",
   "inconsistencies",
+  "feature_selection",
 ] as const;
 
 export type SuggestionKeyId = (typeof SUGGESTION_KEYS)[number];
@@ -17,6 +18,8 @@ export const CATEGORY_TO_STAGE: Record<string, Exclude<CourseStage, "all">> = {
   rows: "clean",
   leak: "select",
   drop: "select",
+  select: "select",
+  feature_selection: "select",
   sentinels: "clean",
   consistency: "clean",
   type: "import",
@@ -91,8 +94,8 @@ function cardsFromStepsTable(
   return table.records.map((rec, i) => {
     const step = stepFromRecord(rec);
     const column = asString(rec.column) || null;
-    const advice = asString(rec.advice) || asString(rec.detail);
-    const category = asString(rec.category) || keyId;
+    const advice = asString(rec.advice) || asString(rec.detail) || asString(rec.why);
+    const category = asString(rec.category) || (keyId === "feature_selection" ? "select" : keyId);
     const title =
       asString(rec.title) ||
       (column && column !== "(rows)"

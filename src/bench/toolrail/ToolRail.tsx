@@ -58,6 +58,12 @@ function ToolIcon({ id }: { id: ToolId }) {
           <path d="M3 7h12l-3-3M17 13H5l3 3" />
         </svg>
       );
+    case "feature_selection":
+      return (
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 4h14l-5.5 6.5v5l-3 1.5v-6.5L3 4z" />
+        </svg>
+      );
   }
 }
 

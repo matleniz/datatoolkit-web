@@ -1,0 +1,87 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "column": {
+      "description": "Numeric column to bin",
+      "title": "Column",
+      "type": "string",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "column"
+    },
+    "mode": {
+      "description": "cut: explicit edges; qcut: quantile edges fitted on train",
+      "enum": [
+        "cut",
+        "qcut"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "edges": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "cut only: increasing bin edges",
+      "title": "Edges"
+    },
+    "q": {
+      "anyOf": [
+        {
+          "minimum": 2,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "qcut only: number of bins",
+      "title": "Q"
+    },
+    "labels": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Bin labels (default: integer bin codes)",
+      "title": "Labels"
+    },
+    "name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Output column (default '<column>_bin')",
+      "title": "Name"
+    }
+  },
+  "required": [
+    "column",
+    "mode"
+  ],
+  "title": "BinParams",
+  "type": "object"
+}

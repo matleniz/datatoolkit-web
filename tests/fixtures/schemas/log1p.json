@@ -1,0 +1,22 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Non-negative, right-skewed numeric columns",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Columns",
+      "type": "array",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    }
+  },
+  "required": [
+    "columns"
+  ],
+  "title": "Log1pParams",
+  "type": "object"
+}

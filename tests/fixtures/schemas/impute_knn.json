@@ -1,0 +1,39 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Numeric columns, used both as neighbor features and filled. Distances are raw: scale the features first",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Columns",
+      "type": "array",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "n_neighbors": {
+      "default": 5,
+      "description": "Neighbors averaged",
+      "minimum": 1,
+      "title": "N Neighbors",
+      "type": "integer"
+    },
+    "weights": {
+      "default": "uniform",
+      "description": "Neighbor weighting",
+      "enum": [
+        "uniform",
+        "distance"
+      ],
+      "title": "Weights",
+      "type": "string"
+    }
+  },
+  "required": [
+    "columns"
+  ],
+  "title": "ImputeKnnParams",
+  "type": "object"
+}

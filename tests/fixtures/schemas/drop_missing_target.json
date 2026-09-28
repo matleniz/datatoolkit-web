@@ -1,0 +1,18 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "target": {
+      "description": "Target column; rows missing it are dropped",
+      "title": "Target",
+      "type": "string",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "column"
+    }
+  },
+  "required": [
+    "target"
+  ],
+  "title": "DropMissingTargetParams",
+  "type": "object"
+}

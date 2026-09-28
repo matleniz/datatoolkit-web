@@ -1,0 +1,70 @@
+{
+  "$defs": {
+    "Condition": {
+      "additionalProperties": false,
+      "properties": {
+        "column": {
+          "description": "Column the condition tests",
+          "title": "Column",
+          "type": "string",
+          "x-dtk-dtype": "any",
+          "x-dtk-source": "step",
+          "x-dtk-widget": "column"
+        },
+        "op": {
+          "enum": [
+            "eq",
+            "ne",
+            "gt",
+            "ge",
+            "lt",
+            "le",
+            "isin",
+            "notin",
+            "isna",
+            "notna"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "value": {
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "column",
+        "op"
+      ],
+      "title": "Condition",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "conditions": {
+      "description": "Conditions (column, op, value) on rows to KEEP",
+      "items": {
+        "$ref": "#/$defs/Condition"
+      },
+      "minItems": 1,
+      "title": "Conditions",
+      "type": "array"
+    },
+    "combine": {
+      "default": "and",
+      "description": "How conditions combine",
+      "enum": [
+        "and",
+        "or"
+      ],
+      "title": "Combine",
+      "type": "string"
+    }
+  },
+  "required": [
+    "conditions"
+  ],
+  "title": "FilterRowsParams",
+  "type": "object"
+}

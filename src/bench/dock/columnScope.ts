@@ -9,6 +9,7 @@ export const SCOPEABLE_TOOLS = new Set<ToolId>([
   "missing",
   "target",
   "corr",
+  "feature_selection",
 ]);
 
 export function schemaHasColumns(schema: JsonSchema): boolean {

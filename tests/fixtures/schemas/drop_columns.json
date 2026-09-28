@@ -1,0 +1,28 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Columns to drop",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Columns",
+      "type": "array",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "missing_ok": {
+      "default": false,
+      "description": "Ignore listed columns absent from the frame",
+      "title": "Missing Ok",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "columns"
+  ],
+  "title": "DropColumnsParams",
+  "type": "object"
+}

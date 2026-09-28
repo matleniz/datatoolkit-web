@@ -86,7 +86,12 @@ function topBars(
 }
 
 /** Engine keys that declare a `columns` param (or always run unscoped). */
-const ENGINE_TOOLS = new Set<ToolId>(["outliers", "target", "drift"]);
+const ENGINE_TOOLS = new Set<ToolId>([
+  "outliers",
+  "target",
+  "drift",
+  "feature_selection",
+]);
 const COMPARE_STATS = ["mean", "median", "std", "min", "max"] as const;
 
 function ScopeToggle({
@@ -264,7 +269,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           // Fall through to engine run (full Result — no front filtering).
         }
 
-        if (id === "target") {
+        if (id === "target" || id === "feature_selection") {
           if (!target) {
             setMsg(
               "No target yet: set it on the Sources screen, or right-click a column → Set as target.",
@@ -280,7 +285,8 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         const runEngine =
           (id === "outliers" && scopeAll) ||
           id === "target" ||
-          id === "drift";
+          id === "drift" ||
+          id === "feature_selection";
         if (runEngine && ENGINE_TOOLS.has(id)) {
           const source = datasetSource(workspace, role, role === "train");
           const available: Record<string, unknown> = { source };
@@ -294,7 +300,16 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           setHasColumnsParam(hasCols);
           if (hasCols) {
             const cols = engineColumnsParam(selCols, scopeAll);
-            if (cols) available.columns = cols;
+            if (cols) {
+              const usable =
+                id === "feature_selection"
+                  ? cols.filter((c) => {
+                      const p = profColumns.find((pc) => pc.name === c);
+                      return p && isNumericKind(p.kind) && c !== target;
+                    })
+                  : cols;
+              if (usable.length > 0) available.columns = usable;
+            }
           }
           const params = keyParamsFromSchema(schema, available);
           const r = await apiClient.runKey(def.key, params);
@@ -302,7 +317,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           setResult(r);
           if (id === "outliers") {
             setBound("all numeric columns · key outliers");
-          } else if (id === "target" && hasCols) {
+          } else if ((id === "target" || id === "feature_selection") && hasCols) {
             const cols = engineColumnsParam(selCols, scopeAll);
             setBound(
               cols

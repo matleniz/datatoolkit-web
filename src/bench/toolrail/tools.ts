@@ -58,6 +58,13 @@ export const TOOLS: ToolDef[] = [
     ariaLabel: "Train versus test",
     title: "Train vs test · train_test_check",
   },
+  {
+    id: "feature_selection",
+    label: "Feature selection",
+    key: "feature_selection",
+    ariaLabel: "Feature selection",
+    title: "Feature selection · feature_selection",
+  },
 ];
 
 export const DOCK_SIZES = {

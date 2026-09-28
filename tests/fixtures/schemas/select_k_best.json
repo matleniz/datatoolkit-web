@@ -1,0 +1,94 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "target": {
+      "description": "Target column (read at fit only)",
+      "title": "Target",
+      "type": "string",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "column"
+    },
+    "score": {
+      "default": "mutual_info",
+      "description": "mutual_info (any dependence) | f_test (linear: ANOVA F / f_regression)",
+      "enum": [
+        "mutual_info",
+        "f_test"
+      ],
+      "title": "Score",
+      "type": "string"
+    },
+    "k": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Keep the k best (capped at the candidates)",
+      "title": "K"
+    },
+    "percentile": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Or keep this % of the candidates (rounded up)",
+      "title": "Percentile"
+    },
+    "task": {
+      "default": "auto",
+      "description": "auto | classification | regression",
+      "enum": [
+        "auto",
+        "classification",
+        "regression"
+      ],
+      "title": "Task",
+      "type": "string"
+    },
+    "columns": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Candidate numeric columns; default every numeric column but the target",
+      "title": "Columns",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "random_state": {
+      "default": 0,
+      "description": "Mutual information seed",
+      "title": "Random State",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "target"
+  ],
+  "title": "SelectKBestParams",
+  "type": "object"
+}
