@@ -105,6 +105,43 @@ export function stepStage(op: string, align?: boolean): StageId {
   return OP_STAGE[op] ?? "transform";
 }
 
+/** Human title for an op (pipeline node / preview banner). */
+export function opTitle(op: string): string {
+  const map: Record<string, string> = {
+    replace_sentinels: "Replace sentinels",
+    impute: "Impute",
+    onehot: "One-hot",
+    standardize_text: "Standardize text",
+    drop_columns: "Drop columns",
+    drop_duplicates: "Drop duplicates",
+    rename: "Rename",
+    cast: "Cast type",
+    clip: "Clip",
+    scale: "Scale",
+    ordinal: "Ordinal",
+    formula: "Formula",
+    log1p: "log1p",
+    parse_dates: "Parse dates",
+    datetime_parts: "Date parts",
+    derive: "Derive",
+    map_value: "Map a value",
+  };
+  return map[op] ?? op;
+}
+
+/**
+ * Human summary for the live-preview banner / pending node:
+ * "Impute · age · median".
+ */
+export function stepSummary(
+  op: string,
+  params: Record<string, unknown>,
+): string {
+  const sub = stepSubLabel(op, params);
+  const title = opTitle(op);
+  return sub ? `${title} · ${sub}` : title;
+}
+
 /** Short sub-label for a step (pipeline / recipe). */
 export function stepSubLabel(
   op: string,

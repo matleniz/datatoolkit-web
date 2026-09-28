@@ -5,6 +5,7 @@ import type { Result } from "../../api/types";
 import { EngineError } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import type { CourseStage } from "../../state/reducer";
+import { toEngineParams } from "../presets";
 import { datasetSource, targetColumnOf } from "./datasetSource";
 import {
   STAGE_COLOR,
@@ -53,8 +54,17 @@ export function SuggestionsTab() {
         const errors: string[] = [];
         for (const keyId of SUGGESTION_KEYS) {
           const params: Record<string, unknown> = { source };
-          if (keyId === "preprocessing_advisor" && target) {
+  if (keyId === "preprocessing_advisor" && target) {
             params.target = target;
+          }
+          // y-file workspaces have no target_column; labeled dataset still
+          // exposes the joined label — pass a conventional name when present.
+          if (
+            keyId === "preprocessing_advisor" &&
+            !target &&
+            workspace.datasets.train.y
+          ) {
+            params.target = "target";
           }
           if (keyId === "missing_values" || keyId === "outliers") {
             if (workspace.datasets.test?.x) {
@@ -148,7 +158,7 @@ export function SuggestionsTab() {
                   dispatch({
                     type: "OPEN_EDITOR",
                     op: cd.step!.op,
-                    params: cd.step!.params,
+                    params: toEngineParams(cd.step!.op, cd.step!.params),
                     target: cd.step!.target,
                   });
                 }}

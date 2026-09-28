@@ -202,6 +202,26 @@ describe("toEngineParams", () => {
     ).toEqual({ sentinels: { age: [-999] } });
   });
 
+  it("converts column/values even when empty sentinels {} is present", () => {
+    expect(
+      toEngineParams("replace_sentinels", {
+        sentinels: {},
+        column: "age",
+        values: [-999],
+      }),
+    ).toEqual({ sentinels: { age: [-999] } });
+  });
+
+  it("keeps a non-empty sentinels map", () => {
+    expect(
+      toEngineParams("replace_sentinels", {
+        sentinels: { age: [-999] },
+        column: "other",
+        values: [0],
+      }),
+    ).toEqual({ sentinels: { age: [-999] } });
+  });
+
   it("converts single column to columns array", () => {
     expect(toEngineParams("impute", { column: "age", strategy: "median" })).toEqual({
       columns: ["age"],

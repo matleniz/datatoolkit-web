@@ -1,6 +1,15 @@
 import { useAppDispatch, useAppState } from "../../state/AppStore";
-import { FITTING_OPS, STAGE_COLOR, STAGES, stepStage, stepSubLabel } from "../stages";
+import {
+  FITTING_OPS,
+  STAGE_COLOR,
+  STAGES,
+  opTitle,
+  stepStage,
+  stepSubLabel,
+  stepSummary,
+} from "../stages";
 import { useWorkbenchData } from "../WorkbenchData";
+import { rawNodeSubLabel } from "./rawNodeSubLabel";
 
 function Arrow({ dashed = false, accent = false }: { dashed?: boolean; accent?: boolean }) {
   return (
@@ -67,15 +76,7 @@ export function PipelineBar() {
     key: "raw",
     ver: "raw",
     title: "sources",
-    sub:
-      role === "train"
-        ? "train X + y + extra"
-        : `test X + extra${
-            workspace?.datasets.test?.x?.kind === "csv" &&
-            workspace.datasets.test.x.decimal === ","
-              ? ' · dec ","'
-              : ""
-          }`,
+    sub: workspace ? rawNodeSubLabel(workspace, role) : "—",
     shape: rawShape
       ? `${rawShape.rows} × ${rawShape.cols}`
       : "—",
@@ -127,7 +128,7 @@ export function PipelineBar() {
     nodes.push({
       key: `v${i + 1}`,
       ver: `v${i + 1}`,
-      title: titleFor(step.op),
+      title: opTitle(step.op),
       sub: err ? `fails: ${err}` : stepSubLabel(step.op, step.params),
       shape: err
         ? "—"
@@ -197,8 +198,12 @@ export function PipelineBar() {
                 </span>
                 <span className="pipeline-sub">{n.sub}</span>
                 <span className="pipeline-meta">
-                  <span>{n.shape}</span>
-                  <span className={n.deltaClass}>{n.delta}</span>
+                  <span className="pipeline-shape">{n.shape}</span>
+                  {n.delta ? (
+                    <span className={`pipeline-delta ${n.deltaClass}`}>
+                      {n.delta}
+                    </span>
+                  ) : null}
                   <span className="pipeline-badge">{n.badge}</span>
                 </span>
               </button>
@@ -232,8 +237,7 @@ export function PipelineBar() {
             <div className="pipeline-pending" aria-label="Pending step">
               <span className="pipeline-pending-kicker">Editing</span>
               <span className="pipeline-pending-title">
-                {titleFor(pendingStep.op)} ·{" "}
-                {stepSubLabel(pendingStep.op, pendingStep.params)}
+                {stepSummary(pendingStep.op, pendingStep.params)}
               </span>
               <span className="pipeline-pending-delta">{pendingDiffText}</span>
             </div>
@@ -265,26 +269,4 @@ export function PipelineBar() {
       </div>
     </section>
   );
-}
-
-function titleFor(op: string): string {
-  const map: Record<string, string> = {
-    replace_sentinels: "Replace sentinels",
-    impute: "Impute",
-    onehot: "One-hot",
-    standardize_text: "Standardize text",
-    drop_columns: "Drop columns",
-    drop_duplicates: "Drop duplicates",
-    rename: "Rename",
-    cast: "Cast type",
-    clip: "Clip",
-    scale: "Scale",
-    ordinal: "Ordinal",
-    formula: "Formula",
-    log1p: "log1p",
-    parse_dates: "Parse dates",
-    datetime_parts: "Date parts",
-    derive: "Derive",
-  };
-  return map[op] ?? op;
 }

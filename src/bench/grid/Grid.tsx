@@ -1,8 +1,11 @@
+import { useCallback, useRef } from "react";
+
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { colAlerts, isOutlierValue, missPct, profileBars } from "../alerts";
 import { cellTone } from "../diff";
 import { cellDisplay, fmt, nameDisplay } from "../format";
 import { colWidth, isNumericKind, KIND_BAR, KIND_LABEL } from "../kinds";
+import { stepSummary } from "../stages";
 import { useWorkbenchData } from "../WorkbenchData";
 
 /** W2 — data grid. */
@@ -19,6 +22,9 @@ export function Grid() {
     preview,
     applyPending,
     version,
+    loading,
+    hasMore,
+    loadMore,
   } = useWorkbenchData();
 
   const { workspace } = useAppState();
@@ -45,10 +51,23 @@ export function Grid() {
   const rowNum = new Map<number, number>();
   display.rows.forEach((r, i) => rowNum.set(r.rid, i + 1));
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const onScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || !hasMore) return;
+    const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (remaining < 240) loadMore();
+  }, [hasMore, loadMore]);
+
   return (
     <div className="grid-shell" data-owner="W2">
       <div className="grid-toolbar">
         <span className="grid-sel-text">{selText}</span>
+        {loading && display.rows.length > 0 ? (
+          <span className="grid-inline-loading" aria-live="polite">
+            Updating…
+          </span>
+        ) : null}
         <button
           type="button"
           className={selection.multi ? "chip on" : "chip"}
@@ -83,13 +102,9 @@ export function Grid() {
       {pendingStep && preview ? (
         <div className="banner preview-banner" role="status">
           <span className="banner-kicker">Live preview</span>
-          <code className="banner-code">
-            {JSON.stringify({
-              op: pendingStep.op,
-              target: pendingStep.target,
-              params: pendingStep.params,
-            })}
-          </code>
+          <span className="banner-code">
+            {stepSummary(pendingStep.op, pendingStep.params)}
+          </span>
           <span className="banner-delta">{pendingDiffText}</span>
           <div className="banner-spacer" />
           <button
@@ -135,7 +150,15 @@ export function Grid() {
         </div>
       ) : null}
 
-      <div className="grid" aria-label="Data grid">
+      <div
+        className="grid"
+        aria-label="Data grid"
+        ref={scrollRef}
+        onScroll={onScroll}
+      >
+        {loading && display.rows.length === 0 ? (
+          <div className="grid-more">Loading rows…</div>
+        ) : null}
         <div className="grid-inner" style={{ width: totalW, minWidth: "100%" }}>
           <div className="grid-header-row">
             <div className="grid-corner" />
@@ -348,6 +371,11 @@ export function Grid() {
         {total > display.rows.length ? (
           <div className="grid-more">
             Showing {display.rows.length} of {total} rows
+            {hasMore ? " · scroll for more" : ""}
+          </div>
+        ) : total > 0 ? (
+          <div className="grid-more">
+            {total} row{total === 1 ? "" : "s"}
           </div>
         ) : null}
       </div>

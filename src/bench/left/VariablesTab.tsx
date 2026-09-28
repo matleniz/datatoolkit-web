@@ -4,6 +4,7 @@ import { apiClient } from "../../api/client";
 import type { ColumnProfile, WorkspaceRow } from "../../api/types";
 import { EngineError } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
+import { effectiveVersion } from "../version";
 import {
   VARIABLE_STATS,
   computeStat,
@@ -35,7 +36,7 @@ export function VariablesTab() {
       return;
     }
     let cancelled = false;
-    const version = viewVersion ?? null;
+    const version = effectiveVersion(workspace, viewVersion);
     (async () => {
       try {
         const [prof, wr] = await Promise.all([

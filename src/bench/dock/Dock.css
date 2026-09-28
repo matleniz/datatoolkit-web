@@ -4,6 +4,7 @@
   padding: 4px 10px 10px;
   background: var(--dtk-bg);
   min-height: 0;
+  min-width: 0;
 }
 
 .dock-bottom {
@@ -12,6 +13,8 @@
 
 .dock-right {
   border-left: 1px solid var(--dtk-border);
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
 .dock-max {

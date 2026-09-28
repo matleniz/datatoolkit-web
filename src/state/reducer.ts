@@ -248,8 +248,21 @@ function withVariables(
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
-    case "SET_WORKSPACE":
-      return { ...state, workspace: action.workspace, sugCount: 0 };
+    case "SET_WORKSPACE": {
+      const ws = action.workspace;
+      let targetColumn = state.targetColumn;
+      if (ws?.datasets.train.target_column) {
+        targetColumn = ws.datasets.train.target_column;
+      } else if (ws?.name === "churn") {
+        targetColumn = "churn";
+      } else if (ws?.datasets.train.y) {
+        // y-file join: prefer a conventional label name for the glyph / keys.
+        targetColumn = "target";
+      } else if (!ws) {
+        targetColumn = null;
+      }
+      return { ...state, workspace: ws, sugCount: 0, targetColumn };
+    }
     case "SET_SCREEN":
       return { ...state, screen: action.screen, ctx: null };
     case "SET_ROLE":

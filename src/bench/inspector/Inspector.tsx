@@ -7,6 +7,7 @@ import { fmt, isNull } from "../format";
 import { isNumericKind, isTextKind, KIND_LABEL } from "../kinds";
 import { toEngineParams } from "../presets";
 import { useWorkbenchData } from "../WorkbenchData";
+import { buildValueGroups } from "./valueGroups";
 
 /** W2 — column / row / cell inspector (318px). */
 export function Inspector() {
@@ -373,13 +374,12 @@ export function Inspector() {
 
     const groups =
       isTextKind(k1) && pr?.variants
-        ? // Engine gives counts, not the from/to spellings — show variants summary.
-          [
-            {
-              to: "normalized",
-              from: `${pr.variants.raw} → ${pr.variants.normalized}`,
-            },
-          ]
+        ? buildValueGroups({
+            topValues: pr.top_values,
+            distinct: pr.distinct,
+            rows,
+            column: c1,
+          })
         : [];
 
     return (

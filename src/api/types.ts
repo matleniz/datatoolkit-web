@@ -199,6 +199,14 @@ export interface ExportRequest {
   overwrite?: boolean;
 }
 
+export interface ExportOutputEntry {
+  path: string;
+  rows?: number;
+  columns?: string[];
+  sha256?: string;
+  [key: string]: unknown;
+}
+
 export interface ExportManifest {
   generator: string;
   manifest_version: number | string;
@@ -208,7 +216,8 @@ export interface ExportManifest {
   sources: Record<string, unknown>[];
   label: LabelJoin;
   steps: Record<string, unknown>[];
-  outputs: Record<string, unknown>[];
+  /** Engine returns a map role → output meta (not an array). */
+  outputs: Record<string, ExportOutputEntry> | ExportOutputEntry[];
   [key: string]: unknown;
 }
 
