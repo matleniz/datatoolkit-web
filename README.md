@@ -36,9 +36,9 @@ Open http://127.0.0.1:5173. Override the API base with `VITE_API_URL`
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Vitest (unit) |
-| `npm run e2e` | Playwright (starts `dtk-api` if on PATH, else Vite only) |
+| `npm run e2e` | Playwright e2e suite with headless `dtk-api` + Vite |
 
-`fleet gate` = lint + typecheck + test.
+`fleet gate` = `npm run lint && npm run typecheck && npm test && npm run e2e`.
 
 ## Styling
 
@@ -50,10 +50,11 @@ modules — see `src/theme/README.md`. No CSS framework.
 
 | Stream | Owns | Notes |
 |---|---|---|
-| **W0** (this) | scaffold, `src/api/`, `src/state/`, `src/theme/`, `App` shell, test harness | Done first |
+| **W0** | scaffold, `src/api/`, `src/state/`, `src/theme/`, `App` shell, test harness | Done first |
 | **W1** | `src/screens/sources/`, `src/screens/align/` | Sources + train/test alignment |
 | **W2** | `src/bench/pipeline`, `grid`, `inspector`, `editor`, `contextmenu` | Workbench core |
 | **W3** | `src/bench/left`, `dock`, `export`, `toolrail` | Side panels + tools |
+| **T1** (this) | `e2e/`, `playwright.config.ts`, flows 1–7 + screenshots | Linear MAT-136 |
 
 Workbench layout (prototype sizes): pipeline **96px**, left **280px**,
 inspector **318px**, tool rail **56px**.
