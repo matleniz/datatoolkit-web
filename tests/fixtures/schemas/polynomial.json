@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Numeric columns to expand",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10,
+      "minItems": 1,
+      "title": "Columns",
+      "type": "array",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "degree": {
+      "default": 2,
+      "description": "Polynomial degree",
+      "maximum": 5,
+      "minimum": 1,
+      "title": "Degree",
+      "type": "integer"
+    },
+    "interaction_only": {
+      "default": false,
+      "description": "Only cross-products of distinct columns (no powers)",
+      "title": "Interaction Only",
+      "type": "boolean"
+    },
+    "include_bias": {
+      "default": false,
+      "description": "Add a constant column of ones",
+      "title": "Include Bias",
+      "type": "boolean"
+    },
+    "max_output_columns": {
+      "default": 100,
+      "description": "Refuse if the expansion would produce more columns than this",
+      "minimum": 1,
+      "title": "Max Output Columns",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "columns"
+  ],
+  "title": "PolynomialParams",
+  "type": "object"
+}

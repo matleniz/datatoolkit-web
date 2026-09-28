@@ -1,0 +1,38 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Numeric columns to transform in place",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Columns",
+      "type": "array",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "method": {
+      "default": "yeo-johnson",
+      "description": "yeo-johnson: any real values; box-cox: strictly positive only",
+      "enum": [
+        "yeo-johnson",
+        "box-cox"
+      ],
+      "title": "Method",
+      "type": "string"
+    },
+    "standardize": {
+      "default": true,
+      "description": "Zero-mean / unit-variance after the power map",
+      "title": "Standardize",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "columns"
+  ],
+  "title": "PowerTransformParams",
+  "type": "object"
+}

@@ -1041,6 +1041,55 @@
   color: #123d5b;
 }
 
+.tiny-chip.on {
+  border-color: #8a5a9e;
+  background: #f3eaf7;
+  color: #6a3f7d;
+}
+
+.formula-input-wrap {
+  position: relative;
+}
+
+.formula-suggest {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: #ffffff;
+  border: 1px solid #dcd9d0;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(40, 36, 28, 0.12);
+  max-height: 160px;
+  overflow: auto;
+}
+
+.formula-suggest-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  font-family: var(--dtk-font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.formula-suggest-item.on,
+.formula-suggest-item:hover {
+  background: #f0ebe3;
+}
+
+.formula-palette .tiny-chip {
+  max-width: 100%;
+}
+
 .formula-status {
   font-size: 12px;
 }

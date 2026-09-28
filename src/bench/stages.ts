@@ -88,6 +88,10 @@ export const OP_STAGE: Record<string, StageId> = {
   derive: "transform",
   bin: "transform",
   interactions: "transform",
+  polynomial: "transform",
+  power_transform: "transform",
+  quantile_transform: "transform",
+  spline: "transform",
   group_agg: "transform",
   cyclical: "transform",
   drop_columns: "select",
@@ -121,6 +125,10 @@ export const FITTING_OPS = new Set([
   "drop_missing_target",
   "drop_high_missing",
   "group_agg",
+  "polynomial",
+  "power_transform",
+  "quantile_transform",
+  "spline",
 ]);
 
 export function stepStage(op: string, align?: boolean): StageId {
@@ -157,6 +165,10 @@ export function opTitle(op: string): string {
     filter_rows: "Filter rows",
     bin: "Bin column",
     interactions: "Interactions",
+    polynomial: "Polynomial features",
+    power_transform: "Power transform",
+    quantile_transform: "Quantile transform",
+    spline: "Spline features",
     group_agg: "Group aggregate",
     cyclical: "Cyclical encoding",
     drop_low_variance: "Drop low variance",
@@ -315,6 +327,22 @@ export function stepSubLabel(
     case "interactions": {
       const cols = (params.columns as string[] | undefined) ?? [];
       return cols.join(" × ");
+    }
+    case "polynomial": {
+      const cols = (params.columns as string[] | undefined) ?? [];
+      return `${cols.join(", ")} · deg ${String(params.degree ?? 2)}`;
+    }
+    case "power_transform": {
+      const cols = (params.columns as string[] | undefined) ?? [];
+      return `${cols.join(", ")} · ${String(params.method ?? "yeo-johnson")}`;
+    }
+    case "quantile_transform": {
+      const cols = (params.columns as string[] | undefined) ?? [];
+      return `${cols.join(", ")} · ${String(params.output_distribution ?? "uniform")}`;
+    }
+    case "spline": {
+      const cols = (params.columns as string[] | undefined) ?? [];
+      return `${cols.join(", ")} · knots ${String(params.n_knots ?? 5)}`;
     }
     case "group_agg":
       return `${String(params.value ?? "")} by ${String(params.group ?? "")}`;

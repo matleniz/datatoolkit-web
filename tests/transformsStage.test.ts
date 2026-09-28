@@ -67,7 +67,7 @@ describe("transforms stage mapping and exclusion", () => {
     expect(FITTING_OPS.has("drop_missing_target")).toBe(true);
   });
 
-  it("every new op from MAT-150 / MAT-160 has usable editor fields", () => {
+  it("every new op from MAT-150 / MAT-160 / MAT-173 has usable editor fields", () => {
     const newOps = [
       "ffill",
       "impute_knn",
@@ -75,6 +75,10 @@ describe("transforms stage mapping and exclusion", () => {
       "drop_missing_target",
       "bin",
       "interactions",
+      "polynomial",
+      "power_transform",
+      "quantile_transform",
+      "spline",
       "group_agg",
       "cyclical",
       "drop_low_variance",

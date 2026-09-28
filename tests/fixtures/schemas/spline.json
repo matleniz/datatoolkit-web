@@ -1,0 +1,61 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Numeric columns to expand into spline bases",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10,
+      "minItems": 1,
+      "title": "Columns",
+      "type": "array",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "n_knots": {
+      "default": 5,
+      "description": "Number of knots per column",
+      "minimum": 2,
+      "title": "N Knots",
+      "type": "integer"
+    },
+    "degree": {
+      "default": 3,
+      "description": "B-spline degree",
+      "maximum": 5,
+      "minimum": 0,
+      "title": "Degree",
+      "type": "integer"
+    },
+    "knots": {
+      "default": "quantile",
+      "description": "Place knots evenly or on train quantiles",
+      "enum": [
+        "uniform",
+        "quantile"
+      ],
+      "title": "Knots",
+      "type": "string"
+    },
+    "include_bias": {
+      "default": true,
+      "description": "Keep the constant basis function per column",
+      "title": "Include Bias",
+      "type": "boolean"
+    },
+    "max_output_columns": {
+      "default": 100,
+      "description": "Refuse if the expansion would produce more columns than this",
+      "minimum": 1,
+      "title": "Max Output Columns",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "columns"
+  ],
+  "title": "SplineParams",
+  "type": "object"
+}
