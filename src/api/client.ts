@@ -92,7 +92,7 @@ export function serializeWorkspace(ws: Workspace): string {
   return JSON.stringify(sanitizeWorkspace(ws));
 }
 
-export function sanitizeWorkspace(ws: Workspace): Record<string, unknown> {
+function sanitizeWorkspace(ws: Workspace): Record<string, unknown> {
   // Strip front-only fields the engine Workspace model forbids (MAT-172 charts
   // until MAT-185; Step.align is front-only pipeline ordering).
   const { charts: _charts, ...rest } = ws;
@@ -102,7 +102,7 @@ export function sanitizeWorkspace(ws: Workspace): Record<string, unknown> {
   };
 }
 
-export class HttpApiClient implements ApiClient {
+class HttpApiClient implements ApiClient {
   readonly baseUrl: string;
   private readonly dedupe = new InFlightDedupe();
   private transformsCache: Promise<TransformInfo[]> | null = null;

@@ -14,7 +14,7 @@ export const SUGGESTION_KEYS = [
 export type SuggestionKeyId = (typeof SUGGESTION_KEYS)[number];
 
 /** Map advisor / finding categories onto prototype course stages. */
-export const CATEGORY_TO_STAGE: Record<string, Exclude<CourseStage, "all">> = {
+const CATEGORY_TO_STAGE: Record<string, Exclude<CourseStage, "all">> = {
   rows: "clean",
   leak: "select",
   drop: "select",
