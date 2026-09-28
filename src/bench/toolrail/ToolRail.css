@@ -8,6 +8,8 @@
   padding-top: 12px;
   background: var(--dtk-surface);
   border-left: 1px solid var(--dtk-border);
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .tool-rail-label {

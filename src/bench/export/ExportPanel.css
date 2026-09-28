@@ -92,7 +92,9 @@
 .export-outputs {
   font-size: 11px;
   line-height: 1.6;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .export-side label {
