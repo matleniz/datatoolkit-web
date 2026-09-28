@@ -1,15 +1,32 @@
 import type {
   CsvSource,
   Datasets,
+  ExcelSource,
   FileSourceSpec,
+  JsonSource,
   LabelJoin,
   MergeSpec,
+  ParquetSource,
   Result,
   Step,
   Workspace,
 } from "../../api/types";
 
 export type FileRole = "trainX" | "trainY" | "testX" | "merge" | "ignore";
+
+/** One row from file_inspect's `sheets` table (Excel). */
+export interface SheetInfo {
+  sheet: string;
+  rows: number;
+  cols: number;
+  suggested_header: number;
+}
+
+/** One row from file_inspect's `record_paths` table (enveloped JSON). */
+export interface RecordPathInfo {
+  record_path: string;
+  records: number;
+}
 
 export interface SourceFileItem {
   id: string;
@@ -20,6 +37,10 @@ export interface SourceFileItem {
   spec: FileSourceSpec;
   rowCount?: number;
   isGuessed?: boolean;
+  /** Excel sheet list from file_inspect (for the sheet picker). */
+  sheets?: SheetInfo[];
+  /** JSON record_path candidates from file_inspect. */
+  recordPaths?: RecordPathInfo[];
 }
 
 /** Front-only Sources UI state kept per workspace name. */
@@ -335,102 +356,222 @@ export function buildWorkspaceJson(
   };
 }
 
+const FILE_KINDS = new Set(["csv", "parquet", "excel", "json"]);
+
 export interface FileInspectMapped {
-  /** SourceSpec ready to pass to source_columns / workspace load. */
-  spec: FileSourceSpec;
+  /** SourceSpec ready to pass to source_columns / workspace load. Null on error. */
+  spec: FileSourceSpec | null;
   /** 0-based pandas `header` from load_spec (not 1-based header_line). */
   header: number | null;
   /** Human-readable detected line for the Files table. */
   detected: string;
+  /** Set when load_spec is missing or not a usable file source kind. */
+  error?: string;
+  sheets?: SheetInfo[];
+  recordPaths?: RecordPathInfo[];
+}
+
+function parseSheetsTable(result: Result): SheetInfo[] | undefined {
+  const table = result.tables?.find((t) => t.title === "sheets");
+  if (!table?.records?.length) return undefined;
+  const out: SheetInfo[] = [];
+  for (const rec of table.records) {
+    if (typeof rec.sheet !== "string" && typeof rec.sheet !== "number") continue;
+    out.push({
+      sheet: String(rec.sheet),
+      rows: typeof rec.rows === "number" ? rec.rows : 0,
+      cols: typeof rec.cols === "number" ? rec.cols : 0,
+      suggested_header:
+        typeof rec.suggested_header === "number" ? rec.suggested_header : 0,
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function parseRecordPathsTable(result: Result): RecordPathInfo[] | undefined {
+  const table = result.tables?.find((t) => t.title === "record_paths");
+  if (!table?.records?.length) return undefined;
+  const out: RecordPathInfo[] = [];
+  for (const rec of table.records) {
+    if (typeof rec.record_path !== "string") continue;
+    out.push({
+      record_path: rec.record_path,
+      records: typeof rec.records === "number" ? rec.records : 0,
+    });
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 /**
  * Map a file_inspect Result to load_spec + detected summary.
- * Prefer `load_spec.header` (and Excel `suggested_header`) over `header_line`
- * which is a 1-based file line number. Shape must be supplied separately
- * (engine does not put row counts in file_inspect metrics).
+ * Requires `metrics.load_spec` with a file source `kind` — never falls back
+ * silently to csv. Shape must be supplied separately (engine does not put
+ * row counts in file_inspect metrics).
  */
 export function mapFileInspect(
   result: Result,
   shape?: [number, number] | null,
 ): FileInspectMapped {
   const metrics = result.metrics ?? {};
-  let spec: FileSourceSpec = { kind: "csv", path: "" };
+  const sheets = parseSheetsTable(result);
+  const recordPaths = parseRecordPathsTable(result);
 
-  if (typeof metrics.load_spec === "string" && metrics.load_spec) {
-    try {
-      const parsed = JSON.parse(metrics.load_spec) as FileSourceSpec;
-      if (parsed && typeof parsed === "object" && "kind" in parsed) {
-        spec = parsed;
-      }
-    } catch {
-      // keep default
-    }
+  const raw = metrics.load_spec;
+  if (typeof raw !== "string" || !raw) {
+    return {
+      spec: null,
+      header: null,
+      detected: "",
+      error:
+        "file_inspect did not return load_spec; cannot determine the source kind.",
+      sheets,
+      recordPaths,
+    };
   }
 
-  // Excel sheets table may carry suggested_header (0-based).
-  const sheets = result.tables?.find((t) => t.title === "sheets");
-  const firstSheet = sheets?.records?.[0];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {
+      spec: null,
+      header: null,
+      detected: "",
+      error: "file_inspect load_spec is not valid JSON.",
+      sheets,
+      recordPaths,
+    };
+  }
+
   if (
-    firstSheet &&
-    typeof firstSheet.suggested_header === "number" &&
-    (!("header" in spec) || (spec as CsvSource).header === undefined)
+    !parsed ||
+    typeof parsed !== "object" ||
+    !("kind" in parsed) ||
+    typeof (parsed as { kind: unknown }).kind !== "string" ||
+    !FILE_KINDS.has((parsed as { kind: string }).kind)
   ) {
-    (spec as CsvSource).header = firstSheet.suggested_header as number;
+    return {
+      spec: null,
+      header: null,
+      detected: "",
+      error: `file_inspect load_spec has unsupported kind ${JSON.stringify(
+        (parsed as { kind?: unknown })?.kind,
+      )}.`,
+      sheets,
+      recordPaths,
+    };
+  }
+
+  let spec = parsed as FileSourceSpec;
+
+  // Excel sheets table may carry suggested_header (0-based) when load_spec
+  // omitted header.
+  if (spec.kind === "excel" && sheets?.[0]) {
+    const first = sheets[0];
+    if (spec.header === undefined) {
+      spec = { ...spec, header: first.suggested_header };
+    }
   }
 
   let header: number | null = null;
   if (spec.kind === "csv" || spec.kind === "excel") {
-    const h = (spec as CsvSource).header;
+    const h = (spec as CsvSource | ExcelSource).header;
     header = h === undefined ? null : h;
   }
 
-  const detected = formatDetected(metrics, shape ?? null, header);
-  return { spec, header, detected };
+  const detected = formatDetectedFromSpec(spec, shape ?? null, metrics);
+  return { spec, header, detected, sheets, recordPaths };
+}
+
+/**
+ * Human-readable detected line from a FileSourceSpec (+ optional shape).
+ */
+export function formatDetectedFromSpec(
+  spec: FileSourceSpec,
+  shape?: [number, number] | null,
+  metrics?: Record<string, unknown>,
+): string {
+  const parts: string[] = [spec.kind];
+
+  if (spec.kind === "csv") {
+    const csv = spec as CsvSource;
+    const sep = csv.sep ?? (metrics ? String(metrics.delimiter ?? ",") : ",");
+    const delimRaw = String(sep);
+    const delim = delimRaw.replace(/^'|'$/g, "").replace(/'/g, '"') || ",";
+    parts.push(`sep ${delim.startsWith('"') ? delim : JSON.stringify(delim)}`);
+    parts.push(csv.encoding ?? String(metrics?.encoding_guess ?? "utf-8"));
+    parts.push(`header ${csv.header ?? 0}`);
+    if (csv.decimal === "," || metrics?.decimal_guess === ",") {
+      parts.push('decimal ","');
+    }
+  } else if (spec.kind === "excel") {
+    const excel = spec as ExcelSource;
+    parts.push(`sheet ${JSON.stringify(String(excel.sheet ?? 0))}`);
+    parts.push(`header ${excel.header ?? 0}`);
+  } else if (spec.kind === "json") {
+    const json = spec as JsonSource;
+    if (json.lines) parts.push("lines");
+    if (json.record_path) {
+      parts.push(`record_path ${JSON.stringify(json.record_path)}`);
+    }
+  } else if (spec.kind === "parquet") {
+    const pq = spec as ParquetSource;
+    if (pq.columns?.length) {
+      parts.push(`columns ${pq.columns.length}`);
+    }
+  }
+
+  if (shape && shape[0] !== undefined && shape[1] !== undefined) {
+    parts.push(`${shape[0]} × ${shape[1]}`);
+  }
+
+  return parts.join(" · ");
 }
 
 /**
  * Format detected specs from file_inspect key output.
- * `header` is the 0-based load_spec value when known; falls back to metrics
- * only when load_spec was missing.
+ * Prefer load_spec when present; otherwise csv-shaped metrics (legacy).
  */
 export function formatDetected(
   metrics: Record<string, unknown>,
   shape?: [number, number] | null,
   headerOverride?: number | null,
 ): string {
+  if (typeof metrics.load_spec === "string" && metrics.load_spec) {
+    try {
+      const parsed = JSON.parse(metrics.load_spec) as FileSourceSpec;
+      if (parsed && typeof parsed === "object" && "kind" in parsed) {
+        const withHeader =
+          headerOverride !== undefined &&
+          headerOverride !== null &&
+          (parsed.kind === "csv" || parsed.kind === "excel")
+            ? { ...parsed, header: headerOverride }
+            : parsed;
+        return formatDetectedFromSpec(withHeader, shape, metrics);
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
   const parts: string[] = ["csv"];
   const delimRaw = String(metrics.delimiter ?? ",");
-  // Engine may send repr("','") or "," — normalise for display.
   const delim = delimRaw.replace(/^'|'$/g, "").replace(/'/g, '"') || ",";
   parts.push(`sep ${delim.startsWith('"') ? delim : JSON.stringify(delim)}`);
-
-  const enc = String(metrics.encoding_guess ?? "utf-8");
-  parts.push(enc);
-
-  let header: number | string;
-  if (headerOverride !== undefined && headerOverride !== null) {
-    header = headerOverride;
-  } else if (typeof metrics.load_spec === "string") {
-    try {
-      const parsed = JSON.parse(metrics.load_spec) as { header?: number | null };
-      header = parsed.header ?? 0;
-    } catch {
-      header = 0;
-    }
-  } else {
-    header = 0;
-  }
-  parts.push(`header ${header}`);
-
+  parts.push(String(metrics.encoding_guess ?? "utf-8"));
+  parts.push(
+    `header ${
+      headerOverride !== undefined && headerOverride !== null
+        ? headerOverride
+        : 0
+    }`,
+  );
   if (shape && shape[0] !== undefined && shape[1] !== undefined) {
     parts.push(`${shape[0]} × ${shape[1]}`);
   }
-
   if (metrics.decimal_guess === ",") {
     parts.push('decimal "," seen');
   }
-
   return parts.join(" · ");
 }
 

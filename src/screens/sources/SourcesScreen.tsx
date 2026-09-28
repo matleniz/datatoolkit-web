@@ -9,7 +9,7 @@ import {
 } from "react";
 import { rememberWorkspaceName } from "../../bootstrap";
 import { apiClient } from "../../api/client";
-import type { EngineError, Workspace } from "../../api/types";
+import type { EngineError, FileSourceSpec, Workspace } from "../../api/types";
 import { useAppDispatch, useAppState, markWorkspaceSaved } from "../../state/AppStore";
 import {
   ALL_ROLES,
@@ -17,6 +17,7 @@ import {
   defaultChurnSources,
   emptyWorkspaceSources,
   extractFilesFromWorkspace,
+  formatDetectedFromSpec,
   getCommonColumns,
   guessFileRole,
   mapFileInspect,
@@ -27,6 +28,7 @@ import {
   type SourceFileItem,
   type WorkspaceSourcesState,
 } from "./sourcesLogic";
+import { SourceOptionsEditor } from "./SourceOptionsEditor";
 import "./sources.css";
 
 const FIXTURE_BASE =
@@ -68,24 +70,9 @@ async function enrichFileItem(item: SourceFileItem): Promise<SourceFileItem> {
     };
     const preview = await apiClient.previewWorkspace(mini, "train", 1);
     rowCount = preview.shape[0];
-    detected =
-      detected && detected.includes("×")
-        ? detected.replace(/\d+\s*×\s*\d+/, `${preview.shape[0]} × ${preview.shape[1]}`)
-        : mapFileInspect(
-            {
-              metrics: {
-                delimiter: "','",
-                encoding_guess: "utf-8",
-                load_spec: JSON.stringify(spec),
-              },
-              tables: [],
-              figures: [],
-              text: "",
-            },
-            preview.shape,
-          ).detected;
+    detected = formatDetectedFromSpec(spec, preview.shape);
   } catch {
-    /* keep existing rowCount / detected */
+    detected = formatDetectedFromSpec(spec, null);
   }
 
   return { ...item, cols, rowCount, detected, spec };
@@ -159,8 +146,13 @@ export function SourcesScreen() {
   const [engineErrors, setEngineErrors] = useState<string[]>([]);
   /** True while a workspace switch is still loading sources (MAT-149). */
   const [sourcesLoading, setSourcesLoading] = useState(false);
+  /** File ids with the Options panel open. */
+  const [optionsOpen, setOptionsOpen] = useState<Record<string, boolean>>({});
+  /** File ids currently re-previewing after an Options edit. */
+  const [optionsBusy, setOptionsBusy] = useState<Record<string, boolean>>({});
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const optionsGenRef = useRef<Record<string, number>>({});
   const persistSkip = useRef(true);
   const activeNameRef = useRef(activeWsName);
   activeNameRef.current = activeWsName;
@@ -542,7 +534,16 @@ export function SourcesScreen() {
       });
 
       const mapped = mapFileInspect(inspectRes);
-      const spec = mapped.spec.path
+      if (mapped.error || !mapped.spec) {
+        setEngineErrors((prev) => [
+          ...prev,
+          mapped.error ??
+            `Could not determine source kind for ${file.name}.`,
+        ]);
+        return;
+      }
+
+      const spec: FileSourceSpec = mapped.spec.path
         ? mapped.spec
         : { ...mapped.spec, path: uploadRes.path };
 
@@ -572,8 +573,18 @@ export function SourcesScreen() {
       }
 
       const remapped = mapFileInspect(inspectRes, shape);
+      if (remapped.error || !remapped.spec) {
+        setEngineErrors((prev) => [
+          ...prev,
+          remapped.error ??
+            `Could not determine source kind for ${file.name}.`,
+        ]);
+        return;
+      }
+
       const id = `f_${Date.now()}`;
       const guessedRole = guessFileRole(file.name, roles);
+      const finalSpec = remapped.spec.path ? remapped.spec : spec;
       const colCount = cols.length > 0 ? cols.length : (shape?.[1] ?? 0);
 
       const newItem: SourceFileItem = {
@@ -582,14 +593,24 @@ export function SourcesScreen() {
         path: uploadRes.path,
         cols,
         detected: remapped.detected,
-        spec: remapped.spec.path ? remapped.spec : spec,
+        spec: finalSpec,
         rowCount: shape?.[0],
         isGuessed: true,
+        sheets: remapped.sheets,
+        recordPaths: remapped.recordPaths,
       };
 
       setFiles((prev) => [...prev, newItem]);
       setRoles((prev) => ({ ...prev, [id]: guessedRole }));
       setGuessedMap((prev) => ({ ...prev, [id]: true }));
+      // Open Options for kinds that often need a manual pick / override.
+      if (
+        finalSpec.kind === "excel" ||
+        finalSpec.kind === "json" ||
+        finalSpec.kind === "csv"
+      ) {
+        setOptionsOpen((prev) => ({ ...prev, [id]: true }));
+      }
 
       if (colCount === 0 || file.size === 0) {
         setEngineErrors((prev) => [...prev, EMPTY_TRAIN_MESSAGE]);
@@ -599,6 +620,60 @@ export function SourcesScreen() {
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  };
+
+  const handleSpecOptionsChange = (
+    fileId: string,
+    nextSpec: FileSourceSpec,
+  ) => {
+    const gen = (optionsGenRef.current[fileId] ?? 0) + 1;
+    optionsGenRef.current[fileId] = gen;
+    setOptionsBusy((prev) => ({ ...prev, [fileId]: true }));
+
+    setFiles((prev) => {
+      const current = prev.find((f) => f.id === fileId);
+      if (!current) {
+        setOptionsBusy((b) => ({ ...b, [fileId]: false }));
+        return prev;
+      }
+
+      void (async () => {
+        try {
+          const enriched = await enrichFileItem({ ...current, spec: nextSpec });
+          if (optionsGenRef.current[fileId] !== gen) return;
+          setFiles((latest) =>
+            latest.map((f) =>
+              f.id === fileId
+                ? {
+                    ...f,
+                    spec: enriched.spec,
+                    cols: enriched.cols,
+                    rowCount: enriched.rowCount,
+                    detected: enriched.detected,
+                  }
+                : f,
+            ),
+          );
+        } catch (err: unknown) {
+          if (optionsGenRef.current[fileId] !== gen) return;
+          setEngineErrors((errs) => [...errs, engineMessage(err)]);
+        } finally {
+          if (optionsGenRef.current[fileId] === gen) {
+            setOptionsBusy((b) => ({ ...b, [fileId]: false }));
+          }
+        }
+      })();
+
+      return prev.map((f) =>
+        f.id === fileId
+          ? {
+              ...f,
+              spec: nextSpec,
+              detected: formatDetectedFromSpec(nextSpec, null),
+            }
+          : f,
+      );
+    });
   };
 
   const trainXFile = files.find((f) => roles[f.id] === "trainX");
@@ -861,48 +936,85 @@ export function SourcesScreen() {
           {files.map((fl) => {
             const currentRole = roles[fl.id] || "ignore";
             const isGuessed = guessedMap[fl.id];
+            const optsOpen = Boolean(optionsOpen[fl.id]);
+            const optsBusy = Boolean(optionsBusy[fl.id]);
 
             return (
-              <div key={fl.id} className="files-table-row">
-                <div className="file-info">
-                  <span className="file-name">{fl.name}</span>
-                  <span className="file-cols" title={fl.cols.join(", ")}>
-                    {fl.cols.join(", ")}
-                  </span>
+              <div key={fl.id} className="files-table-block">
+                <div className="files-table-row">
+                  <div className="file-info">
+                    <span className="file-name">{fl.name}</span>
+                    <span className="file-cols" title={fl.cols.join(", ")}>
+                      {fl.cols.join(", ")}
+                    </span>
+                  </div>
+
+                  <div className="file-detected">
+                    {fl.detected || formatDetectedFromSpec(fl.spec, null)}
+                    <button
+                      type="button"
+                      className={`btn-file-options ${optsOpen ? "on" : ""}`}
+                      aria-expanded={optsOpen}
+                      aria-controls={`options-${fl.id}`}
+                      onClick={() =>
+                        setOptionsOpen((prev) => ({
+                          ...prev,
+                          [fl.id]: !prev[fl.id],
+                        }))
+                      }
+                    >
+                      Options
+                    </button>
+                  </div>
+
+                  <div
+                    className="file-roles"
+                    role="group"
+                    aria-label={`Role for ${fl.name}`}
+                  >
+                    {ALL_ROLES.map((r) => {
+                      const isSelected = currentRole === r;
+                      return (
+                        <button
+                          key={r}
+                          type="button"
+                          className={`chip-role ${isSelected ? "on" : ""}`}
+                          aria-pressed={isSelected}
+                          onClick={() => handlePickRole(fl.id, r)}
+                        >
+                          {ROLE_LABELS[r]}
+                          {isSelected && isGuessed ? (
+                            <span
+                              className="chip-guess-dot"
+                              title="Guessed from file name"
+                            >
+                              (guess)
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                <div className="file-detected">
-                  {fl.detected || 'csv · sep "," · utf-8 · header 0'}
-                </div>
-
-                <div
-                  className="file-roles"
-                  role="group"
-                  aria-label={`Role for ${fl.name}`}
-                >
-                  {ALL_ROLES.map((r) => {
-                    const isSelected = currentRole === r;
-                    return (
-                      <button
-                        key={r}
-                        type="button"
-                        className={`chip-role ${isSelected ? "on" : ""}`}
-                        aria-pressed={isSelected}
-                        onClick={() => handlePickRole(fl.id, r)}
-                      >
-                        {ROLE_LABELS[r]}
-                        {isSelected && isGuessed ? (
-                          <span
-                            className="chip-guess-dot"
-                            title="Guessed from file name"
-                          >
-                            (guess)
-                          </span>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
+                {optsOpen ? (
+                  <div
+                    id={`options-${fl.id}`}
+                    className="file-options-panel"
+                    aria-label={`Load options for ${fl.name}`}
+                  >
+                    {optsBusy ? (
+                      <span className="file-options-busy">Updating preview…</span>
+                    ) : null}
+                    <SourceOptionsEditor
+                      file={fl}
+                      busy={optsBusy}
+                      onChange={(next) =>
+                        void handleSpecOptionsChange(fl.id, next)
+                      }
+                    />
+                  </div>
+                ) : null}
               </div>
             );
           })}
@@ -920,7 +1032,7 @@ export function SourcesScreen() {
               className="btn-add-file"
               style={{ display: "inline-flex", alignItems: "center" }}
             >
-              + Add a file (csv, parquet, excel, json, sql query)
+              + Add a file (csv, parquet, excel, json)
             </label>
           </div>
         </section>

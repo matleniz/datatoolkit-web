@@ -205,9 +205,10 @@ describe("mapFileInspect (Parkinson real Result fixture)", () => {
     expect(result.metrics.header_line).toBe(1);
 
     const mapped = mapFileInspect(result, [55603, 12]);
+    expect(mapped.error).toBeUndefined();
     expect(mapped.header).toBe(0);
-    expect(mapped.spec.kind).toBe("csv");
-    if (mapped.spec.kind === "csv") {
+    expect(mapped.spec?.kind).toBe("csv");
+    if (mapped.spec?.kind === "csv") {
       expect(mapped.spec.header).toBe(0);
       expect(mapped.spec.sep).toBe(",");
       expect(mapped.spec.encoding).toBe("utf-8");
@@ -216,5 +217,108 @@ describe("mapFileInspect (Parkinson real Result fixture)", () => {
     expect(mapped.detected).toContain("55603 × 12");
     expect(mapped.detected).not.toContain("header 1");
     expect(mapped.detected).not.toMatch(/\b0 × 12\b/);
+  });
+});
+
+describe("mapFileInspect non-csv load_spec", () => {
+  it("maps parquet load_spec without falling back to csv", () => {
+    const mapped = mapFileInspect(
+      {
+        metrics: {
+          load_spec: JSON.stringify({
+            kind: "parquet",
+            path: "/uploads/events.parquet",
+          }),
+        },
+        tables: [],
+        figures: [],
+        text: "",
+      },
+      [3, 4],
+    );
+    expect(mapped.error).toBeUndefined();
+    expect(mapped.spec?.kind).toBe("parquet");
+    expect(mapped.detected).toContain("parquet");
+    expect(mapped.detected).toContain("3 × 4");
+    expect(mapped.detected).not.toContain("csv");
+  });
+
+  it("maps excel load_spec and exposes sheets for the picker", () => {
+    const mapped = mapFileInspect(
+      {
+        metrics: {
+          load_spec: JSON.stringify({
+            kind: "excel",
+            path: "/uploads/store_c.xlsx",
+            sheet: "2024",
+            header: 0,
+          }),
+        },
+        tables: [
+          {
+            title: "sheets",
+            records: [
+              { sheet: "2024", rows: 3, cols: 3, suggested_header: 0 },
+              { sheet: "2025", rows: 6, cols: 3, suggested_header: 2 },
+            ],
+          },
+        ],
+        figures: [],
+        text: "",
+      },
+      [2, 3],
+    );
+    expect(mapped.spec?.kind).toBe("excel");
+    if (mapped.spec?.kind === "excel") {
+      expect(mapped.spec.sheet).toBe("2024");
+      expect(mapped.spec.header).toBe(0);
+    }
+    expect(mapped.sheets).toHaveLength(2);
+    expect(mapped.sheets?.[1]?.sheet).toBe("2025");
+    expect(mapped.detected).toContain("excel");
+    expect(mapped.detected).toContain('sheet "2024"');
+  });
+
+  it("maps json load_spec with lines and record_paths", () => {
+    const mapped = mapFileInspect(
+      {
+        metrics: {
+          load_spec: JSON.stringify({
+            kind: "json",
+            path: "/uploads/employees.json",
+            lines: false,
+            record_path: "employees",
+          }),
+        },
+        tables: [
+          {
+            title: "record_paths",
+            records: [{ record_path: "employees", records: 2 }],
+          },
+        ],
+        figures: [],
+        text: "",
+      },
+      [2, 3],
+    );
+    expect(mapped.spec?.kind).toBe("json");
+    if (mapped.spec?.kind === "json") {
+      expect(mapped.spec.record_path).toBe("employees");
+      expect(mapped.spec.lines).toBe(false);
+    }
+    expect(mapped.recordPaths?.[0]?.record_path).toBe("employees");
+    expect(mapped.detected).toContain("record_path");
+  });
+
+  it("errors instead of silently falling back to csv when load_spec is missing", () => {
+    const mapped = mapFileInspect({
+      metrics: { delimiter: "','", encoding_guess: "utf-8" },
+      tables: [],
+      figures: [],
+      text: "",
+    });
+    expect(mapped.spec).toBeNull();
+    expect(mapped.error).toMatch(/load_spec/);
+    expect(mapped.detected).toBe("");
   });
 });
