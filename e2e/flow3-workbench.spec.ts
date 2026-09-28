@@ -55,7 +55,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
     page.getByRole("main").getByText("Train / test alignment"),
   ).toBeVisible();
 
-  // Apply alignment fixes
+  // Apply alignment fixes (schema + city spelling near-matches; MAT-179)
   await page
     .getByRole("button", { name: 'Re-read test with decimal ","' })
     .click();
@@ -65,6 +65,10 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   await page
     .locator(".align-table-row", { hasText: "promo_code" })
     .getByRole("button", { name: "Drop from test" })
+    .click();
+  await page
+    .locator(".align-table-row", { hasText: "city" })
+    .getByRole("button", { name: "Map on test" })
     .click();
   await expect(page.getByText("0 to decide")).toBeVisible();
 

@@ -375,6 +375,11 @@ export interface AlignReportRow {
   pct_test_rows_unseen?: number | null;
   near_match_hint?: string | null;
   near_matches?: AlignNearMatch[] | null;
+  /**
+   * Engine severity for value_mismatch (MAT-179). When absent (older engines),
+   * the front derives it via isBlockingValueMismatch.
+   */
+  blocking?: boolean | null;
 }
 
 /** POST /workspace/align → { columns: [...] } */

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { AlignReportRow } from "../src/api/types";
 import {
+  alignRowNeedsDecision,
   computeRowFixes,
   countAlignStatuses,
   formatAlignmentStep,
+  isBlockingValueMismatch,
   isSimilarCandidate,
   stringSimilarityRatio,
 } from "../src/screens/align/alignLogic";
@@ -294,6 +296,54 @@ describe("alignLogic pure mapping", () => {
     ];
 
     expect(countAlignStatuses(rows)).toEqual({ ok: 1, fix: 3, info: 1 });
+  });
+
+  it("treats rare unseen categories without near_matches as informational", () => {
+    const rare: AlignReportRow = {
+      train: { name: "city", kind: "cat", samples: ["Paris"] },
+      test: { name: "city", kind: "cat", samples: ["Nice"] },
+      status: "value_mismatch",
+      numbers_as_text: false,
+      train_mean: null,
+      test_mean: null,
+      similar: [],
+      only_in_test: [{ value: "Nice", count: 1 }],
+      pct_test_rows_unseen: 33.33,
+      near_matches: [],
+    };
+    expect(isBlockingValueMismatch(rare)).toBe(false);
+    expect(alignRowNeedsDecision(rare)).toBe(false);
+    expect(countAlignStatuses([rare])).toEqual({ ok: 0, fix: 0, info: 1 });
+  });
+
+  it("keeps value_mismatch blocking when near_matches or high pct unseen", () => {
+    const near: AlignReportRow = {
+      train: { name: "city", kind: "cat", samples: ["Lyon"] },
+      test: { name: "city", kind: "cat", samples: ["Lyon "] },
+      status: "value_mismatch",
+      numbers_as_text: false,
+      train_mean: null,
+      test_mean: null,
+      similar: [],
+      only_in_test: [{ value: "Lyon ", count: 1 }],
+      pct_test_rows_unseen: 16.67,
+      near_matches: [{ test: "Lyon ", train: "Lyon" }],
+    };
+    expect(isBlockingValueMismatch(near)).toBe(true);
+    expect(alignRowNeedsDecision(near)).toBe(true);
+
+    const highPct: AlignReportRow = {
+      ...near,
+      near_matches: [],
+      pct_test_rows_unseen: 66.67,
+    };
+    expect(isBlockingValueMismatch(highPct)).toBe(true);
+
+    const engineSaysInfo: AlignReportRow = {
+      ...highPct,
+      blocking: false,
+    };
+    expect(isBlockingValueMismatch(engineSaysInfo)).toBe(false);
   });
 });
 

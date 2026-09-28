@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { captureFlowScreenshot, clearFlowScreenshots } from "./helpers";
 
-test("Flow 2: alignment (decimal fix, rename match, drop extra -> 0 to decide)", async ({
+test("Flow 2: alignment (decimal, rename, drop, city map -> 0 to decide)", async ({
   page,
 }) => {
   clearFlowScreenshots("2-alignment");
@@ -88,7 +88,15 @@ test("Flow 2: alignment (decimal fix, rename match, drop extra -> 0 to decide)",
     page.getByText("drop_columns · promo_code · test"),
   ).toBeVisible();
 
-  // 6. Verify resolved state: "0 to decide"
+  // 6. Resolve city spelling near-matches (Lyon␠ / lille). Leftover rare
+  // categories (Nice / nice) stay visible as value_mismatch but are not
+  // "to decide" once near_matches are cleared (MAT-179).
+  const cityRow = page.locator(".align-table-row", { hasText: "city" });
+  await expect(cityRow.getByText("value mismatch")).toBeVisible();
+  await cityRow.getByRole("button", { name: "Map on test" }).click();
+  await expect(page.getByText(/standardize_text · city · map/)).toBeVisible();
+
+  // 7. Verify resolved state: "0 to decide"
   await expect(
     page.getByText("Train and test have the same columns and types."),
   ).toBeVisible();
