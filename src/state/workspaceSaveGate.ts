@@ -1,4 +1,4 @@
-import { serializeWorkspace } from "../api/client";
+import { apiClient, serializeWorkspace } from "../api/client";
 import type { Workspace } from "../api/types";
 
 /**
@@ -145,4 +145,69 @@ export function resetWorkspaceSaveGateForTests(): void {
     ac.abort();
   }
   inflightAborts.clear();
+  saveChain = Promise.resolve();
+  committedWorkspace = null;
 }
+
+/** Workspace of the current React commit (set in a layout effect, before any
+ *  passive effect of the same commit runs) — MAT-175. */
+let committedWorkspace: Workspace | null = null;
+let saveChain: Promise<void> = Promise.resolve();
+
+export function setCommittedWorkspace(ws: Workspace | null): void {
+  committedWorkspace = ws;
+}
+
+export function saveable(ws: Workspace | null): ws is Workspace {
+  return !!ws?.name && !!ws.datasets.train.x.path;
+}
+
+/**
+ * Chain-queue a `commitWorkspaceSave` so PUTs run in order and the engine
+ * store always ends on the latest request. A newer commit for the same name
+ * supersedes an older queued one (its own save follows).
+ */
+function queueWorkspaceSave(
+  ws: Workspace,
+  epochAtStart: number = saveEpoch,
+): Promise<void> {
+  const serialized = serializeWorkspace(ws);
+  const run = saveChain.then(async () => {
+    if (
+      committedWorkspace &&
+      committedWorkspace.name === ws.name &&
+      serializeWorkspace(committedWorkspace) !== serialized
+    ) {
+      return;
+    }
+    await commitWorkspaceSave({
+      ws,
+      serialized,
+      epochAtStart,
+      isCurrent: (e) => e === saveEpoch,
+      save: (body, signal) => apiClient.saveWorkspace(body, signal),
+      remove: (name) => apiClient.deleteWorkspace(name),
+    });
+  });
+  saveChain = run;
+  return run;
+}
+
+/**
+ * Resolve once the engine store holds `ws` (MAT-175). Analysis keys read the
+ * named workspace from the store (`{kind:"dataset"}` sources), so every
+ * consumer awaits this before `run_key`. Unlike the debounced
+ * `__DTK_WORKSPACE_SAVED__` gate, it cannot observe the previous commit's
+ * (already resolved) promise: child effects run before the provider's.
+ * Honours the same tombstone / epoch rules as the debounced autosave.
+ */
+export function ensureWorkspaceSaved(ws: Workspace | null): Promise<void> {
+  if (!saveable(ws)) return Promise.resolve();
+  if (serializeWorkspace(ws) === lastSavedWorkspaceJson) {
+    return saveChain;
+  }
+  return queueWorkspaceSave(ws);
+}
+
+/** @internal AppStore's debounced-save effect reuses the same chain/queue. */
+export { queueWorkspaceSave };

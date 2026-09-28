@@ -32,6 +32,8 @@ export function Grid() {
     hasMore,
     loadMore,
     reportVisibleColumns,
+    identity,
+    rowsIdentity,
   } = useWorkbenchData();
 
   const { workspace } = useAppState();
@@ -190,6 +192,8 @@ export function Grid() {
       <div
         className="grid"
         aria-label="Data grid"
+        data-identity={rowsIdentity ?? ""}
+        data-identity-current={identity.key}
         data-col-window={`${windowed.start}:${windowed.end}/${display.cols.length}`}
         ref={scrollRef}
         onScroll={onScroll}

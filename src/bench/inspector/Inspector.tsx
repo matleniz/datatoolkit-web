@@ -31,7 +31,20 @@ function openChart(
 export function Inspector() {
   const { selection, targetColumn } = useAppState();
   const dispatch = useAppDispatch();
-  const { columns, rows, profiles, isLatest, display } = useWorkbenchData();
+  const {
+    columns,
+    rows,
+    profiles,
+    isLatest,
+    display,
+    identity,
+    profilesIdentity,
+  } = useWorkbenchData();
+  // MAT-175: which frame the stats come from (profiles lag rows briefly).
+  const identityAttrs = {
+    "data-identity": profilesIdentity ?? "",
+    "data-identity-current": identity.key,
+  };
 
   const openEd = (
     op: string,
@@ -110,7 +123,12 @@ export function Inspector() {
       }
     }
     return (
-      <aside className="inspector" aria-label="Inspector" data-owner="W2">
+      <aside
+        className="inspector"
+        aria-label="Inspector"
+        data-owner="W2"
+        {...identityAttrs}
+      >
         <div className="insp-scroll">
           <div className="insp-kicker">Cell · row {rid + 1}</div>
           <div className="insp-title">{col}</div>
@@ -167,7 +185,12 @@ export function Inspector() {
       };
     });
     return (
-      <aside className="inspector" aria-label="Inspector" data-owner="W2">
+      <aside
+        className="inspector"
+        aria-label="Inspector"
+        data-owner="W2"
+        {...identityAttrs}
+      >
         <div className="insp-scroll">
           <div className="insp-kicker">Row</div>
           <div className="insp-title">
@@ -218,7 +241,12 @@ export function Inspector() {
       return isNumericKind(k);
     });
     return (
-      <aside className="inspector" aria-label="Inspector" data-owner="W2">
+      <aside
+        className="inspector"
+        aria-label="Inspector"
+        data-owner="W2"
+        {...identityAttrs}
+      >
         <div className="insp-scroll">
           <div className="insp-kicker">{selCols.length} columns</div>
           <div className="insp-title">{selCols.join(", ")}</div>
@@ -474,7 +502,12 @@ export function Inspector() {
         : [];
 
     return (
-      <aside className="inspector" aria-label="Inspector" data-owner="W2">
+      <aside
+        className="inspector"
+        aria-label="Inspector"
+        data-owner="W2"
+        {...identityAttrs}
+      >
         <div className="insp-scroll">
           <div className="insp-kicker">Column</div>
           <div className="insp-title">{c1}</div>

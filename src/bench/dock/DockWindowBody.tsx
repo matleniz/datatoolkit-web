@@ -1,17 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { apiClient } from "../../api/client";
 import type { ColumnProfile, Result, WorkspaceRow } from "../../api/types";
 import { EngineError } from "../../api/types";
-import { useAppDispatch, useAppState } from "../../state/AppStore";
+import {
+  ensureWorkspaceSaved,
+  useAppDispatch,
+  useAppState,
+} from "../../state/AppStore";
 import type { ToolId } from "../../state/reducer";
-import { datasetSource, targetColumnOf } from "../left/datasetSource";
+import { identitySource, withRole } from "../dataIdentity";
+import { targetColumnOf } from "../left/datasetSource";
 import { keyParamsFromSchema } from "../left/keyParams";
 import { toolParamsKey } from "../left/keyTunable";
 import { computeStat, fmtStat } from "../left/stats";
 import { stripNullParams } from "../schemaFields";
 import { toolDef } from "../toolrail/tools";
-import { effectiveVersion } from "../version";
 import { useWorkbenchData } from "../WorkbenchData";
 import {
   SCOPEABLE_TOOLS,
@@ -24,6 +28,7 @@ import {
 } from "./columnScope";
 import { EMPTY_DATA_ROWS_MSG } from "../format";
 import { DockParamsPanel } from "./DockParamsPanel";
+import { IdentityStrip } from "./IdentityStrip";
 import { ResultView } from "./ResultView";
 
 function pearson(
@@ -115,6 +120,7 @@ type DockResultCacheEntry = {
   hasColumnsParam: boolean;
   corrCols: string[];
   error: string | null;
+  runParams: string | null;
 };
 const dockResultCache = new Map<string, DockResultCacheEntry>();
 
@@ -140,8 +146,7 @@ function ScopeToggle({
 }
 
 export function DockWindowBody({ id }: { id: ToolId }) {
-  const { workspace, selection, role, viewVersion, distBy, toolParams } =
-    useAppState();
+  const { workspace, selection, role, distBy, toolParams } = useAppState();
   const dispatch = useAppDispatch();
   const bench = useWorkbenchData();
   const [profiles, setProfiles] = useState<ColumnProfile[]>([]);
@@ -154,15 +159,17 @@ export function DockWindowBody({ id }: { id: ToolId }) {
   const [scopeAll, setScopeAll] = useState(false);
   const [hasColumnsParam, setHasColumnsParam] = useState(false);
   const [corrCols, setCorrCols] = useState<string[]>([]);
+  /** Params of the last run_key (source pinned to the identity) — e2e / debug. */
+  const [runParams, setRunParams] = useState<string | null>(null);
+  /** Identity of the data currently rendered (null while loading). */
+  const [shownIdentity, setShownIdentity] = useState<string | null>(null);
 
   const selCols = selection.columns;
   const focus = selCols[0] ?? selection.cell?.col ?? null;
   const target = workspace ? targetColumnOf(workspace) : null;
   const def = toolDef(id);
   const selKey = selCols.join(",");
-  const version = workspace
-    ? effectiveVersion(workspace, viewVersion)
-    : 0;
+  const identity = bench.identity;
   const showScopeToggle = SCOPEABLE_TOOLS.has(id);
   /** Split-by for Distribution: engine `by` (target / any column). */
   const splitBy = distBy && distBy !== focus ? distBy : null;
@@ -194,10 +201,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
   const dockCacheKey = useMemo(() => {
     if (!workspace?.datasets.train.x.path) return null;
     return [
-      workspace.name,
-      workspace.datasets.train.x.path,
-      version,
-      workspace.steps.length,
+      identity.key,
       id,
       debouncedParamsJson,
       selKey,
@@ -209,7 +213,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     ].join("\0");
   }, [
     workspace,
-    version,
+    identity.key,
     id,
     debouncedParamsJson,
     selKey,
@@ -243,6 +247,8 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         setHasColumnsParam(hit.hasColumnsParam);
         setCorrCols(hit.corrCols);
         setError(hit.error);
+        setRunParams(hit.runParams);
+        setShownIdentity(identity.key);
         setReady(true);
         return;
       }
@@ -257,22 +263,27 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     let cacheProfiles: ColumnProfile[] = [];
     let cacheRows: WorkspaceRow[] = [];
     let cacheError: string | null = null;
+    let cacheRunParams: string | null = null;
+    const idKey = identity.key;
 
     (async () => {
       setReady(false);
       setError(null);
       setMsg(null);
       setResult(null);
+      setRunParams(null);
+      setShownIdentity(null);
       try {
-        if (window.__DTK_WORKSPACE_SAVED__) {
-          await window.__DTK_WORKSPACE_SAVED__;
-        }
+        await ensureWorkspaceSaved(workspace);
+        if (cancelled) return;
         let profColumns: ColumnProfile[];
         let pageRows: WorkspaceRow[];
+        // Reuse the grid's frame only when it is exactly this identity
+        // (same version is not enough: a step's params may have changed).
         const canReuse =
-          !bench.loading &&
           bench.profiles.size > 0 &&
-          bench.version === version;
+          bench.profilesIdentity === idKey &&
+          bench.rowsIdentity === idKey;
         if (canReuse) {
           profColumns = [...bench.profiles.values()];
           pageRows = bench.rows;
@@ -280,12 +291,12 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           const prof = await apiClient.columnProfiles(
             workspace,
             role,
-            version,
+            identity.version,
           );
           const wr = await apiClient.workspaceRows(
             workspace,
             role,
-            version,
+            identity.version,
             0,
             500,
           );
@@ -399,14 +410,24 @@ export function DockWindowBody({ id }: { id: ToolId }) {
 
         const runEngine = ENGINE_TOOLS.has(id);
         if (runEngine) {
-          const source = datasetSource(workspace, role, role === "train");
           const available: Record<string, unknown> = {
-            source,
+            source: identitySource(identity),
             ...debouncedUserParams,
           };
-          if (target) available.target = target;
+          // train_test_check takes `train` + `test` (no `source`): without an
+          // explicit train it silently analysed the engine's demo CSV. It
+          // always compares train against test, whatever role is viewed.
+          available.train = identitySource(
+            withRole(workspace, identity, "train"),
+            false,
+          );
+          // The test frame is unlabeled: a target there is a KeyParamsError.
+          if (target && role === "train") available.target = target;
           if (workspace.datasets.test) {
-            available.test = datasetSource(workspace, "test", false);
+            available.test = identitySource(
+              withRole(workspace, identity, "test"),
+              false,
+            );
           }
           const schema = await apiClient.keySchema(def.key);
           if (cancelled) return;
@@ -461,6 +482,8 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           );
           const r = await apiClient.runKey(def.key, params);
           if (cancelled) return;
+          cacheRunParams = JSON.stringify(params);
+          setRunParams(cacheRunParams);
           cacheResult = r;
           setResult(r);
           if (id === "outliers") {
@@ -512,6 +535,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
       } finally {
         if (!cancelled) {
           setReady(true);
+          setShownIdentity(idKey);
           if (dockCacheKey) {
             dockResultCache.set(dockCacheKey, {
               profiles: cacheProfiles,
@@ -522,6 +546,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
               hasColumnsParam: cacheHasColumns,
               corrCols: cacheCorr,
               error: cacheError,
+              runParams: cacheRunParams,
             });
           }
         }
@@ -532,11 +557,11 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     };
   }, [
     workspace,
+    identity,
     selCols,
     selKey,
     focus,
     role,
-    version,
     id,
     target,
     def.key,
@@ -545,10 +570,10 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     debouncedParamsJson,
     debouncedUserParams,
     dockCacheKey,
-    bench.loading,
     bench.profiles,
     bench.rows,
-    bench.version,
+    bench.profilesIdentity,
+    bench.rowsIdentity,
   ]);
 
   const profileByName = useMemo(() => {
@@ -613,8 +638,27 @@ export function DockWindowBody({ id }: { id: ToolId }) {
       </div>
     ) : null;
 
+  // Every branch carries the identity it shows (MAT-175): `data-identity`
+  // is the frame the rendered numbers come from; the strip says which
+  // version that is, and flags a live edit that is not applied yet.
+  const wrap = (node: ReactNode) => (
+    <div
+      className="dock-identity-wrap"
+      data-identity={shownIdentity ?? ""}
+      data-identity-current={identity.key}
+      data-run-params={runParams ?? undefined}
+    >
+      <IdentityStrip
+        identity={identity}
+        shownIdentity={shownIdentity}
+        editing={!!bench.pendingStep}
+      />
+      {node}
+    </div>
+  );
+
   if (error) {
-    return (
+    return wrap(
       <div>
         {scopeBar}
         {paramsPanel}
@@ -625,7 +669,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     );
   }
   if (!ready) {
-    return (
+    return wrap(
       <div>
         {scopeBar}
         {paramsPanel}
@@ -640,7 +684,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
       bench.columns.length > 0 ||
       bench.display.cols.length > 0)
   ) {
-    return (
+    return wrap(
       <div data-empty-rows="1">
         {scopeBar}
         {paramsPanel}
@@ -656,7 +700,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         ? selectedNumericColumns(selCols, profiles)
         : [];
     const outliersCol = selNum.length === 1 ? selNum[0] : undefined;
-    return (
+    return wrap(
       <div
         data-scope-mode={scopeAll ? "all" : "selection"}
         {...(outliersCol
@@ -683,14 +727,14 @@ export function DockWindowBody({ id }: { id: ToolId }) {
   if (id === "compare") {
     const cs = selCols.filter((c) => profileByName.has(c)).slice(0, 6);
     if (cs.length < 2) {
-      return (
+      return wrap(
         <div className="dock-msg">
           Select two or more columns (shift-click headers, or right-click → Add
           to selection).
         </div>
       );
     }
-    return (
+    return wrap(
       <CompareNative
         cols={cs}
         profiles={profileByName}
@@ -703,7 +747,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
 
   if (id === "missing" && !result) {
     const useSelection = !scopeAll && selCols.length > 0;
-    return (
+    return wrap(
       <div
         data-scope-mode={useSelection ? "selection" : "all"}
         data-missing-cols={
@@ -728,7 +772,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     const outliersCol = selNum.length === 1 ? selNum[0] : undefined;
     const missingCols =
       id === "missing" && !scopeAll && selCols.length > 0 ? selCols : null;
-    return (
+    return wrap(
       <div
         data-scope-mode={scopeAll ? "all" : "selection"}
         data-engine-key={def.key}

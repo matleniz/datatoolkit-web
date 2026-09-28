@@ -3,13 +3,14 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useLayoutEffect,
   useReducer,
   useRef,
   type Dispatch,
   type ReactNode,
 } from "react";
 
-import { apiClient, serializeWorkspace } from "../api/client";
+import { serializeWorkspace } from "../api/client";
 import { rememberWorkspaceName } from "../bootstrap";
 import {
   appReducer,
@@ -18,13 +19,16 @@ import {
   type AppState,
 } from "./reducer";
 import {
-  commitWorkspaceSave,
   getLastSavedWorkspaceJson,
   getWorkspaceSaveEpoch,
+  queueWorkspaceSave,
+  saveable,
+  setCommittedWorkspace,
 } from "./workspaceSaveGate";
 
 export {
   abandonPendingWorkspaceSave,
+  ensureWorkspaceSaved,
   markWorkspaceSaved,
 } from "./workspaceSaveGate";
 
@@ -68,12 +72,17 @@ export function AppProvider({
     };
   }, [dispatch, state]);
 
+  useLayoutEffect(() => {
+    setCommittedWorkspace(state.workspace);
+  }, [state.workspace]);
+
   // Keep the engine workspace store in sync so analysis keys that use
-  // `{kind:"dataset", workspace, role}` can resolve the named workspace.
-  // PUT only when the serialized JSON actually changed.
+  // `{kind:"dataset", workspace, role, version}` can resolve the named
+  // workspace. PUT only when the serialized JSON actually changed; consumers
+  // that need the store now call `ensureWorkspaceSaved` (no debounce).
   useEffect(() => {
     const ws = state.workspace;
-    if (!ws?.name || !ws.datasets.train.x.path) {
+    if (!saveable(ws)) {
       window.__DTK_WORKSPACE_SAVED__ = Promise.resolve();
       return;
     }
@@ -98,37 +107,27 @@ export function AppProvider({
     };
     window.__DTK_WORKSPACE_SAVED__ = gate;
 
-    const isCurrent = (epoch: number) =>
-      gen === saveGen.current && epoch === getWorkspaceSaveEpoch();
-
-    const runSave = () =>
-      commitWorkspaceSave({
-        ws,
-        serialized,
-        epochAtStart,
-        isCurrent,
-        save: (body, signal) => apiClient.saveWorkspace(body, signal),
-        remove: (name) => apiClient.deleteWorkspace(name),
-      });
-
     const timer = window.setTimeout(() => {
-      void (async () => {
-        await runSave();
+      if (gen !== saveGen.current) {
         settle();
-      })();
+        return;
+      }
+      void queueWorkspaceSave(ws, epochAtStart).finally(settle);
     }, SAVE_DEBOUNCE_MS);
 
     return () => {
       window.clearTimeout(timer);
-      if (!isCurrent(epochAtStart) || serialized === getLastSavedWorkspaceJson()) {
+      if (
+        settled ||
+        serialized === getLastSavedWorkspaceJson() ||
+        epochAtStart !== getWorkspaceSaveEpoch()
+      ) {
         settle();
         return;
       }
-      void (async () => {
-        // Flush on cleanup unless delete/rename abandoned this generation.
-        await runSave();
-        settle();
-      })();
+      // Flush (MAT-149); queueWorkspaceSave skips it when a newer commit
+      // superseded it or a delete/rename abandoned it (MAT-171 / MAT-217).
+      void queueWorkspaceSave(ws, epochAtStart).finally(settle);
     };
   }, [state.workspace]);
 
