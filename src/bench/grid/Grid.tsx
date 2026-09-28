@@ -3,7 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { colAlerts, isOutlierValue, missPct, profileBars } from "../alerts";
 import { cellTone } from "../diff";
-import { cellDisplay, fmt, nameDisplay } from "../format";
+import {
+  cellDisplay,
+  EMPTY_DATA_ROWS_MSG,
+  fmtPreview,
+  nameDisplay,
+} from "../format";
 import { colWidth, isNumericKind, KIND_BAR, KIND_LABEL } from "../kinds";
 import { stepSummary } from "../stages";
 import { useWorkbenchData } from "../WorkbenchData";
@@ -191,6 +196,16 @@ export function Grid() {
       >
         {loading && display.rows.length === 0 ? (
           <div className="grid-more">Loading rows…</div>
+        ) : null}
+        {!loading && total === 0 && display.cols.length > 0 ? (
+          <div
+            className="grid-empty-state"
+            role="status"
+            data-empty-rows="1"
+            aria-label={EMPTY_DATA_ROWS_MSG}
+          >
+            {EMPTY_DATA_ROWS_MSG}
+          </div>
         ) : null}
         <div className="grid-inner" style={{ width: totalW, minWidth: "100%" }}>
           <div className="grid-header-row">
@@ -383,11 +398,11 @@ export function Grid() {
                     rowSelected: rsel,
                     colSelected: colSel,
                   });
-                  let tip = `${c.name} = ${fmt(v as never)}`;
+                  let tip = `${c.name} = ${fmtPreview(v as never)}`;
                   if (row.status === "removed" || c.status === "removed") {
                     tip += " (removed by this step)";
                   } else if (changed) {
-                    tip += ` (was ${fmt(row.prev[c.name] as never)})`;
+                    tip += ` (was ${fmtPreview(row.prev[c.name] as never)})`;
                   } else if (
                     isOutlierValue(profiles.get(c.name), v, c.kind)
                   ) {

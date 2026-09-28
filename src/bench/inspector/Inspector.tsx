@@ -1,9 +1,15 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import type { ColumnKind, JsonValue } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { colAlerts, profileBars } from "../alerts";
-import { fmt, isNull } from "../format";
+import {
+  fmt,
+  fmtPreview,
+  isNull,
+  TEXT_PREVIEW_CHARS,
+  truncateText,
+} from "../format";
 import { isNumericKind, isTextKind, KIND_LABEL } from "../kinds";
 import { toEngineParams } from "../presets";
 import { useWorkbenchData } from "../WorkbenchData";
@@ -70,10 +76,13 @@ export function Inspector() {
         ),
       );
     } else {
+      const label =
+        typeof cv === "string"
+          ? `“${fmtPreview(cv, 40)}”`
+          : fmtPreview(cv as JsonValue, 40);
       actions.push(
-        btn(
-          `Treat ${typeof cv === "string" ? `“${cv}”` : fmt(cv as JsonValue)} as missing…`,
-          () => openEd("replace_sentinels", { column: col, values: [cv] }),
+        btn(`Treat ${label} as missing…`, () =>
+          openEd("replace_sentinels", { column: col, values: [cv] }),
         ),
       );
       if (isTextKind(kind)) {
@@ -98,13 +107,13 @@ export function Inspector() {
           </div>
           <div className="insp-cell-box">
             <div className="ed-help">Current value</div>
-            <div className="insp-cell-value">
-              {isNull(cv)
-                ? "missing"
-                : typeof cv === "string"
-                  ? `“${cv}”`
-                  : fmt(cv as JsonValue)}
-            </div>
+            {isNull(cv) ? (
+              <div className="insp-cell-value">missing</div>
+            ) : typeof cv === "string" ? (
+              <TruncatedText value={cv} quoted />
+            ) : (
+              <div className="insp-cell-value">{fmt(cv as JsonValue)}</div>
+            )}
             <div className="ed-help">
               An edit is saved as a rule over every matching cell, not as a
               patch: it replays on test and on any new file.
@@ -137,8 +146,10 @@ export function Inspector() {
       return {
         k: c.name,
         v:
-          typeof v === "string" && v !== v.trim()
-            ? `“${v}”`
+          typeof v === "string"
+            ? v !== v.trim()
+              ? `“${fmtPreview(v)}”`
+              : fmtPreview(v)
             : fmt(v as JsonValue),
         bad,
       };
@@ -490,6 +501,45 @@ export function Inspector() {
   }
 
   return <EmptyInspector />;
+}
+
+/** Long cell text: truncate by default; expand into a capped scroll box. */
+function TruncatedText({
+  value,
+  quoted = false,
+}: {
+  value: string;
+  quoted?: boolean;
+}) {
+  const [showFull, setShowFull] = useState(false);
+  const { text, truncated } = truncateText(value, TEXT_PREVIEW_CHARS);
+  const display = showFull ? value : truncated ? `${text}…` : text;
+  const wrapped = quoted ? `“${display}”` : display;
+  return (
+    <div className="insp-cell-text">
+      <div
+        className={
+          showFull && truncated
+            ? "insp-cell-value insp-cell-value-full"
+            : "insp-cell-value"
+        }
+        data-truncated={truncated && !showFull ? "1" : "0"}
+        data-full-len={value.length}
+      >
+        {wrapped}
+      </div>
+      {truncated ? (
+        <button
+          type="button"
+          className="insp-show-full"
+          aria-expanded={showFull}
+          onClick={() => setShowFull((v) => !v)}
+        >
+          {showFull ? "Show less" : "Show full text"}
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 function EmptyInspector() {

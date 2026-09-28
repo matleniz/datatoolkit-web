@@ -691,6 +691,18 @@
   color: var(--dtk-muted);
 }
 
+.grid-empty-state {
+  margin: 24px 16px;
+  padding: 16px 18px;
+  max-width: 420px;
+  border: 1px dashed var(--dtk-border-strong);
+  border-radius: 8px;
+  background: var(--dtk-bg-subtle);
+  color: var(--dtk-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .dock {
   /* Base styles live in dock/Dock.css (W3). */
 }
@@ -1132,7 +1144,33 @@
   font-family: var(--dtk-font-mono);
   font-size: 16px;
   margin: 2px 0 8px;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.insp-cell-value-full {
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.insp-cell-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.insp-show-full {
+  align-self: flex-start;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--dtk-border-strong);
+  border-radius: 5px;
+  background: var(--dtk-surface);
+  font-size: 11px;
+  color: var(--dtk-accent);
 }
 
 .insp-stats {

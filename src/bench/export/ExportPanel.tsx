@@ -120,89 +120,95 @@ export function ExportPanel() {
         <pre className="export-code">{codeText}</pre>
       </div>
       <div className="export-side">
-        <div className="export-side-title">Outputs</div>
-        <div className="export-outputs mono muted">
-          train.parquet
-          <br />
-          test.parquet
-          <br />
-          manifest.json · steps, states, hashes
-        </div>
-        <div className="leak-line">{leakText}</div>
-        <label htmlFor="export-outdir">Output directory</label>
-        <input
-          id="export-outdir"
-          className="mono"
-          value={outDir}
-          onChange={(e) => setOutDir(e.target.value)}
-          aria-label="Output directory"
-        />
-        <button
-          type="button"
-          className="export-run-btn"
-          disabled={!workspace || busy || !outDir.trim()}
-          onClick={async () => {
-            if (!workspace) return;
-            setBusy(true);
-            setError(null);
-            setManifest(null);
-            setExportedOutDir(null);
-            const requested = outDir.trim();
-            try {
-              await apiClient.saveWorkspace(workspace);
-              const m = await apiClient.exportWorkspace(workspace.name, {
-                out_dir: requested,
-                overwrite: true,
-              });
-              setExportedOutDir(requested);
-              setManifest(m);
-            } catch (e) {
-              setError(e instanceof EngineError ? e.message : String(e));
+        <div
+          className="export-side-scroll"
+          data-export-scroll="1"
+          aria-label="Export outputs"
+        >
+          <div className="export-side-title">Outputs</div>
+          <div className="export-outputs mono muted">
+            train.parquet
+            <br />
+            test.parquet
+            <br />
+            manifest.json · steps, states, hashes
+          </div>
+          <div className="leak-line">{leakText}</div>
+          <label htmlFor="export-outdir">Output directory</label>
+          <input
+            id="export-outdir"
+            className="mono"
+            value={outDir}
+            onChange={(e) => setOutDir(e.target.value)}
+            aria-label="Output directory"
+          />
+          <button
+            type="button"
+            className="export-run-btn"
+            disabled={!workspace || busy || !outDir.trim()}
+            onClick={async () => {
+              if (!workspace) return;
+              setBusy(true);
+              setError(null);
               setManifest(null);
               setExportedOutDir(null);
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          Export parquet + manifest
-        </button>
-        {error ? (
-          <div className="engine-error" role="alert">
-            {error}
-          </div>
-        ) : null}
-        {manifest ? (
-          <div className="export-manifest" aria-label="Export manifest">
-            <div className="export-manifest-summary">
-              <div>
-                <strong>{(manifest.steps ?? []).length}</strong> step
-                {(manifest.steps ?? []).length === 1 ? "" : "s"}
-                {" · "}
-                <strong>{fittedInManifest}</strong> fitted
-              </div>
-              <ul className="export-manifest-paths">
-                {resolvedOutDir != null ? (
-                  <li className="mono">Output dir: {resolvedOutDir}</li>
-                ) : null}
-                {outs.map(({ role, entry }) => (
-                  <li key={role} className="mono">
-                    {role}: {entry.path}
-                    {typeof entry.rows === "number"
-                      ? ` · ${entry.rows} rows`
-                      : ""}
-                  </li>
-                ))}
-                {manifestFile != null ? (
-                  <li className="mono">manifest: {manifestFile}</li>
-                ) : null}
-              </ul>
+              const requested = outDir.trim();
+              try {
+                await apiClient.saveWorkspace(workspace);
+                const m = await apiClient.exportWorkspace(workspace.name, {
+                  out_dir: requested,
+                  overwrite: true,
+                });
+                setExportedOutDir(requested);
+                setManifest(m);
+              } catch (e) {
+                setError(e instanceof EngineError ? e.message : String(e));
+                setManifest(null);
+                setExportedOutDir(null);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Export parquet + manifest
+          </button>
+          {error ? (
+            <div className="engine-error" role="alert">
+              {error}
             </div>
-            <pre className="export-manifest-json">
-              {JSON.stringify(manifest, null, 2)}
-            </pre>
-          </div>
-        ) : null}
+          ) : null}
+          {manifest ? (
+            <div className="export-manifest" aria-label="Export manifest">
+              <div className="export-manifest-summary">
+                <div>
+                  <strong>{(manifest.steps ?? []).length}</strong> step
+                  {(manifest.steps ?? []).length === 1 ? "" : "s"}
+                  {" · "}
+                  <strong>{fittedInManifest}</strong> fitted
+                </div>
+                <ul className="export-manifest-paths">
+                  {resolvedOutDir != null ? (
+                    <li className="mono">Output dir: {resolvedOutDir}</li>
+                  ) : null}
+                  {outs.map(({ role, entry }) => (
+                    <li key={role} className="mono">
+                      {role}: {entry.path}
+                      {typeof entry.rows === "number"
+                        ? ` · ${entry.rows} rows`
+                        : ""}
+                    </li>
+                  ))}
+                  {manifestFile != null ? (
+                    <li className="mono">manifest: {manifestFile}</li>
+                  ) : null}
+                </ul>
+              </div>
+              <pre className="export-manifest-json">
+                {JSON.stringify(manifest, null, 2)}
+              </pre>
+            </div>
+          ) : null}
+        </div>
         <button
           type="button"
           className="export-close-btn"
