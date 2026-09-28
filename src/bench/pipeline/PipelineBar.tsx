@@ -1,6 +1,7 @@
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { FITTING_OPS, STAGE_COLOR, STAGES, stepStage, stepSubLabel } from "../stages";
 import { useWorkbenchData } from "../WorkbenchData";
+import { rawNodeSubLabel } from "./rawNodeSubLabel";
 
 function Arrow({ dashed = false, accent = false }: { dashed?: boolean; accent?: boolean }) {
   return (
@@ -67,15 +68,7 @@ export function PipelineBar() {
     key: "raw",
     ver: "raw",
     title: "sources",
-    sub:
-      role === "train"
-        ? "train X + y + extra"
-        : `test X + extra${
-            workspace?.datasets.test?.x?.kind === "csv" &&
-            workspace.datasets.test.x.decimal === ","
-              ? ' · dec ","'
-              : ""
-          }`,
+    sub: workspace ? rawNodeSubLabel(workspace, role) : "—",
     shape: rawShape
       ? `${rawShape.rows} × ${rawShape.cols}`
       : "—",

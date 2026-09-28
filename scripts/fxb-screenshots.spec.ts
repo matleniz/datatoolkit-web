@@ -147,6 +147,27 @@ test.describe("FX-B screenshots", () => {
     });
   });
 
+  test("6 raw node sub-label from workspace", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await goWorkbench(page);
+    const raw = page.locator(".pipeline-node").first();
+    await expect(raw.locator(".pipeline-sub")).toContainText("train X + y");
+    await expect(raw.locator(".pipeline-sub")).toContainText(
+      "customers_extra.csv",
+    );
+    await expect(raw.locator(".pipeline-sub")).not.toContainText("+ extra");
+    await page
+      .getByRole("group", { name: "Dataset shown" })
+      .getByRole("button", { name: "Test" })
+      .click();
+    await expect(raw.locator(".pipeline-sub")).toContainText("test X");
+    await expect(raw.locator(".pipeline-sub")).toContainText('dec ","');
+    await page.screenshot({
+      path: join(SHOT, "06-raw-sub-label.png"),
+      fullPage: false,
+    });
+  });
+
   test("5 parkinson grid loads with paging", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/");
