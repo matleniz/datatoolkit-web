@@ -113,6 +113,16 @@ export function ContextMenu() {
       dispatch({ type: "OPEN_TOOL", id: "dist" });
     },
   });
+  if (kind === "number") {
+    items.push({
+      kind: "item",
+      text: "Outliers",
+      run: () => {
+        dispatch({ type: "PICK_COL", name: col });
+        dispatch({ type: "OPEN_TOOL", id: "outliers" });
+      },
+    });
+  }
   items.push({ kind: "sep" });
 
   if (isNumericKind(kind) && kind === "number") {
