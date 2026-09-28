@@ -82,11 +82,16 @@ export interface AppState {
   targetColumn: string | null;
   /**
    * Optional split column for the Distribution dock (`column_distribution.by`).
-   * Null = no split (native histogram). Set by "Distribution by…" or the
-   * window's split-by control. The workspace target (incl. y-file join name)
-   * is the usual default when opening Distribution by….
+   * Null = no split. Set by "Distribution by…" or the window's split-by control.
+   * The workspace target (incl. y-file join name) is the usual default when
+   * opening Distribution by….
    */
   distBy: string | null;
+  /**
+   * Persisted analysis-key params for dock windows (MAT-174).
+   * Keys are `toolId` or `toolId::column` (see `toolParamsKey`).
+   */
+  toolParams: Record<string, Record<string, unknown>>;
   /** Last engine error message while replaying / previewing (verbatim). */
   benchError: string | null;
   /**
@@ -135,6 +140,7 @@ export const initialState: AppState = {
   /* W2 */
   targetColumn: "churn",
   distBy: null,
+  toolParams: {},
   benchError: null,
   filesByWorkspace: {},
 };
@@ -206,6 +212,13 @@ export type AppAction =
   /* W2 workbench-core */
   | { type: "SET_TARGET_COLUMN"; name: string | null }
   | { type: "SET_DIST_BY"; by: string | null }
+  | {
+      type: "SET_TOOL_PARAMS";
+      /** Storage key from `toolParamsKey` (`toolId` or `toolId::column`). */
+      key: string;
+      params: Record<string, unknown>;
+    }
+  | { type: "CLEAR_TOOL_PARAMS"; key: string }
   | { type: "SET_BENCH_ERROR"; message: string | null }
   | { type: "ADD_STEP"; step: Step }
   | { type: "REMOVE_STEP"; index: number };
@@ -575,6 +588,20 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, targetColumn: action.name };
     case "SET_DIST_BY":
       return { ...state, distBy: action.by };
+    case "SET_TOOL_PARAMS":
+      return {
+        ...state,
+        toolParams: {
+          ...state.toolParams,
+          [action.key]: action.params,
+        },
+      };
+    case "CLEAR_TOOL_PARAMS": {
+      if (!(action.key in state.toolParams)) return state;
+      const next = { ...state.toolParams };
+      delete next[action.key];
+      return { ...state, toolParams: next };
+    }
     case "SET_BENCH_ERROR":
       return { ...state, benchError: action.message };
     case "ADD_STEP": {

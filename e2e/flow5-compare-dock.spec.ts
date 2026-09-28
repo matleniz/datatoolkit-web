@@ -28,15 +28,20 @@ test("Flow 5: compare + correlation windows, drag reorder, dock right, maximize 
 
   // (c) Wait for real content, never screenshot a loading state
   await expect(
+    corrWindow.locator('[data-engine-key="correlations"]'),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(
     corrWindow.locator("[data-corr-size]"),
   ).toBeVisible({ timeout: 30_000 });
   const corrSize = Number(
     await corrWindow.locator("[data-corr-size]").getAttribute("data-corr-size"),
   );
   expect(corrSize).toBeGreaterThanOrEqual(4);
+  // Engine ResultView (matrix figure and/or high-pair tables)
   await expect(
-    corrWindow.locator("[data-corr-matrix] .matrix-cell"),
-  ).toHaveCount(corrSize * corrSize);
+    corrWindow.locator(".result-view").first(),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(corrWindow.locator("[data-dock-params='correlations']")).toBeVisible();
 
   // 3. Select columns age and sessions, then open Compare columns window
   await page.evaluate(() => {
