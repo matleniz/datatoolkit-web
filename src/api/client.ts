@@ -52,6 +52,8 @@ export interface ApiClient {
     workspace: Workspace,
     role: Role,
     version?: number | null,
+    /** Optional column filter — engine ignores until MAT-152 engine change. */
+    columns?: string[] | null,
   ): Promise<ColumnProfiles>;
   previewStep(
     workspace: Workspace,
@@ -251,12 +253,18 @@ export class HttpApiClient implements ApiClient {
     workspace: Workspace,
     role: Role,
     version: number | null = null,
+    columns: string[] | null = null,
   ): Promise<ColumnProfiles> {
-    return this.request("POST", "/workspace/profiles", {
+    const body: Record<string, unknown> = {
       workspace: sanitizeWorkspace(workspace),
       role,
       version,
-    });
+    };
+    // Prefer viewport columns first when the engine supports filtering.
+    if (columns && columns.length > 0) {
+      body.columns = columns;
+    }
+    return this.request("POST", "/workspace/profiles", body);
   }
 
   previewStep(

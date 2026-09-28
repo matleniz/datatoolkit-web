@@ -33,13 +33,16 @@ import {
   type EditorField,
 } from "./schemaFields";
 import {
+  PAGE_DEFAULT,
+  rowsPageSize,
+  WIDE_COL_THRESHOLD,
+} from "./grid/columnWindow";
+import {
   effectiveVersion,
   latestVersion,
   normalizeProfiles,
   shapesStructureKey,
 } from "./version";
-
-const PAGE = 500;
 
 export interface PipelineShape {
   rows: number;
@@ -70,6 +73,11 @@ export interface WorkbenchDataValue {
   loadMore: () => void;
   reload: () => void;
   applyPending: () => void;
+  /**
+   * Grid reports horizontally visible column names so profiles can prefer
+   * them first when the engine supports a `columns` filter (MAT-152).
+   */
+  reportVisibleColumns: (names: string[]) => void;
 }
 
 const WorkbenchDataContext = createContext<WorkbenchDataValue | null>(null);
@@ -111,6 +119,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [visibleColumnNames, setVisibleColumnNames] = useState<string[]>([]);
 
   const columnsRef = useRef(columns);
   columnsRef.current = columns;
@@ -118,11 +127,24 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
   rowsRef.current = rows;
   const shapesRef = useRef(shapes);
   shapesRef.current = shapes;
+  const visibleColsRef = useRef<string[]>([]);
+  visibleColsRef.current = visibleColumnNames;
   const fetchGen = useRef(0);
   const prevViewKeyRef = useRef<string | null>(null);
   const prevStructureRef = useRef<string | null>(null);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
+  const reportVisibleColumns = useCallback((names: string[]) => {
+    setVisibleColumnNames((prev) => {
+      if (
+        prev.length === names.length &&
+        prev.every((n, i) => n === names[i])
+      ) {
+        return prev;
+      }
+      return names;
+    });
+  }, []);
 
   const version = workspace ? effectiveVersion(workspace, viewVersion) : 0;
   const isLatest = workspace
@@ -211,17 +233,59 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       let rawShapeError: string | null = null;
 
       try {
-        const [rowsRes, profRaw] = await Promise.all([
-          apiClient.workspaceRows(ws, role, ver, 0, PAGE),
-          apiClient.columnProfiles(ws, role, ver),
-        ]);
+        // Peek column count so wide frames use a smaller first page (MAT-152).
+        // limit=1 still returns full column metadata without a 6MB body.
+        const peek = await apiClient.workspaceRows(ws, role, ver, 0, 1);
         if (gen !== fetchGen.current) return;
-        const profRes = normalizeProfiles(profRaw);
+        const page = rowsPageSize(peek.columns.length);
+        const rowsRes =
+          page <= 1
+            ? peek
+            : await apiClient.workspaceRows(ws, role, ver, 0, page);
+        if (gen !== fetchGen.current) return;
+
         setColumns(rowsRes.columns);
         setRows(rowsRes.rows);
         setTotal(rowsRes.total);
-        setProfiles(new Map(profRes.columns.map((p) => [p.name, p])));
         dispatch({ type: "SET_BENCH_ERROR", message: null });
+        // Unblock the grid as soon as rows arrive — do not wait on profiles.
+        if (gen === fetchGen.current) setLoading(false);
+
+        // Profiles in the background so the grid can paint first (MAT-152).
+        // When `columns` is supported by the engine, we profile the viewport
+        // first then fill the rest; today's engine ignores the filter and
+        // returns every column in one shot (no second round-trip).
+        const prefer = visibleColsRef.current;
+        const wide = rowsRes.columns.length >= WIDE_COL_THRESHOLD;
+        void (async () => {
+          try {
+            const firstCols =
+              wide && prefer.length > 0 ? prefer : null;
+            const firstRaw = await apiClient.columnProfiles(
+              ws,
+              role,
+              ver,
+              firstCols,
+            );
+            if (gen !== fetchGen.current) return;
+            const first = normalizeProfiles(firstRaw);
+            setProfiles(new Map(first.columns.map((p) => [p.name, p])));
+            if (
+              firstCols &&
+              first.columns.length < rowsRes.columns.length
+            ) {
+              const restRaw = await apiClient.columnProfiles(ws, role, ver);
+              if (gen !== fetchGen.current) return;
+              const rest = normalizeProfiles(restRaw);
+              setProfiles(new Map(rest.columns.map((p) => [p.name, p])));
+            }
+          } catch (e) {
+            if (gen !== fetchGen.current) return;
+            // Keep rows usable; surface profile failure without clearing grid.
+            const msg = e instanceof EngineError ? e.message : String(e);
+            dispatch({ type: "SET_BENCH_ERROR", message: msg });
+          }
+        })();
 
         if (needShapes) {
           const nextShapes: PipelineShape[] = new Array(n + 1);
@@ -292,7 +356,6 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
         if (needShapes && ver === 0) {
           rawShapeError = msg;
         }
-      } finally {
         if (gen === fetchGen.current) setLoading(false);
       }
 
@@ -311,6 +374,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     const ws = workspace;
     const offset = rowsRef.current.length;
     const ver = version;
+    const page = rowsPageSize(columnsRef.current.length);
     setLoadingMore(true);
     const gen = fetchGen.current;
     void (async () => {
@@ -320,7 +384,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
           role,
           ver,
           offset,
-          PAGE,
+          page,
         );
         if (gen !== fetchGen.current) return;
         setRows((prev) => {
@@ -457,7 +521,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
             role,
             withStep.steps.length,
             0,
-            PAGE,
+            rowsPageSize(columnsRef.current.length) || PAGE_DEFAULT,
           );
           if (cancelled) return;
           setNextRows(after.rows);
@@ -530,6 +594,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     loadMore,
     reload,
     applyPending,
+    reportVisibleColumns,
   };
 
   return (

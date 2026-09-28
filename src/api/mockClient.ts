@@ -365,11 +365,16 @@ export class MockApiClient implements ApiClient {
     _workspace: Workspace,
     role: Role,
     version: number | null = null,
+    columns: string[] | null = null,
   ): Promise<ColumnProfiles> {
     const frame = role === "train" ? TRAIN : TEST;
+    const names =
+      columns && columns.length > 0
+        ? frame.columns.filter((n) => columns.includes(n))
+        : frame.columns;
     return Promise.resolve({
       version: version ?? 0,
-      columns: frame.columns.map((name) => ({
+      columns: names.map((name) => ({
         name,
         kind: name.endsWith("_id")
           ? ("identifier" as const)
