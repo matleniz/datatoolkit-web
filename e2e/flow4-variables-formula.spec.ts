@@ -27,14 +27,15 @@ test("Flow 4: variables + formula (create @spend_median, formula step, syntax er
   await page.locator("#nv-name").fill("spend_median");
   await page.getByRole("button", { name: "Add variable" }).click();
 
-  // Assert variable appears with train calculated value
+  // Assert variable appears with train-fitted value from the engine
   await expect(page.getByText("@spend_median")).toBeVisible({
     timeout: 15_000,
   });
   const varCard = page.locator(".var-card", { hasText: "@spend_median" });
   await expect(varCard).toBeVisible();
-  const varValue = await varCard.locator(".var-value").innerText();
-  expect(Number(varValue)).toBeGreaterThan(0);
+  await expect(varCard.locator(".var-value")).toHaveText("38.75", {
+    timeout: 15_000,
+  });
 
   await waitForGridReady(page);
   await captureFlowScreenshot(
@@ -115,6 +116,9 @@ test("Flow 4: variables + formula (create @spend_median, formula step, syntax er
     .last();
   await expect(testFirstCell).toBeVisible();
   await expect(testFirstCell).toHaveText("2.25");
+
+  // Variable card still shows the train statistic (not the test median 26.75)
+  await expect(varCard.locator(".var-value")).toHaveText("38.75");
 
   await waitForGridReady(page);
   await captureFlowScreenshot(
