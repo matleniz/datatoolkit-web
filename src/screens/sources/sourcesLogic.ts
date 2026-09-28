@@ -41,6 +41,11 @@ export interface SourceFileItem {
   sheets?: SheetInfo[];
   /** JSON record_path candidates from file_inspect. */
   recordPaths?: RecordPathInfo[];
+  /**
+   * Engine / kind-mismatch error for this stored path (MAT-167).
+   * When set, Sources must not treat the file as a healthy empty train.
+   */
+  parseError?: string | null;
 }
 
 /** Front-only Sources UI state kept per workspace name. */

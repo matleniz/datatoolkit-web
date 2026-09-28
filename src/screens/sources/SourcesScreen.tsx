@@ -39,6 +39,11 @@ const FIXTURE_BASE =
 const EMPTY_TRAIN_MESSAGE =
   "This train file has no columns (empty or unreadable). Replace it before opening the workbench or checking alignment.";
 
+/** MAT-167: stored path unreadable or kind-mismatched (not a truly empty file). */
+function storedSourceFailedMessage(detail: string): string {
+  return `Stored train source failed to parse: ${detail}`;
+}
+
 function engineMessage(err: unknown): string {
   if (err && typeof err === "object" && "message" in err) {
     const msg = (err as EngineError).message;
@@ -47,17 +52,48 @@ function engineMessage(err: unknown): string {
   return String(err);
 }
 
+/**
+ * Refresh columns / shape for a stored file. Surfaces engine read errors and
+ * kind mismatches vs file_inspect (legacy workspaces saved as csv).
+ */
 async function enrichFileItem(item: SourceFileItem): Promise<SourceFileItem> {
   let cols = item.cols;
   let rowCount = item.rowCount;
   let detected = item.detected;
+  let sheets = item.sheets;
+  let recordPaths = item.recordPaths;
+  let parseError: string | null = null;
   const spec = item.spec;
+  const path = spec.path || item.path;
+
+  if (path) {
+    try {
+      const inspectRes = await apiClient.runKey("file_inspect", { path });
+      const mapped = mapFileInspect(inspectRes);
+      if (mapped.sheets) sheets = mapped.sheets;
+      if (mapped.recordPaths) recordPaths = mapped.recordPaths;
+      if (mapped.spec && mapped.spec.kind !== spec.kind) {
+        const jsonExtra =
+          mapped.spec.kind === "json" &&
+          "record_path" in mapped.spec &&
+          (mapped.spec as { record_path?: string }).record_path
+            ? ` (record_path ${JSON.stringify(
+                (mapped.spec as { record_path?: string }).record_path,
+              )})`
+            : "";
+        parseError = `saved as ${spec.kind} but file_inspect detects ${mapped.spec.kind}${jsonExtra}`;
+      }
+    } catch {
+      /* inspect is advisory when the stored spec still loads */
+    }
+  }
 
   try {
     const colList = await apiClient.sourceColumns(spec);
     cols = colList.map((c) => c.name);
-  } catch {
-    /* keep existing cols */
+  } catch (err: unknown) {
+    parseError = engineMessage(err);
+    cols = [];
   }
 
   try {
@@ -72,11 +108,21 @@ async function enrichFileItem(item: SourceFileItem): Promise<SourceFileItem> {
     const preview = await apiClient.previewWorkspace(mini, "train", 1);
     rowCount = preview.shape[0];
     detected = formatDetectedFromSpec(spec, preview.shape);
-  } catch {
+  } catch (err: unknown) {
+    if (!parseError) parseError = engineMessage(err);
     detected = formatDetectedFromSpec(spec, null);
   }
 
-  return { ...item, cols, rowCount, detected, spec };
+  return {
+    ...item,
+    cols,
+    rowCount,
+    detected,
+    spec,
+    sheets,
+    recordPaths,
+    parseError,
+  };
 }
 
 function sourcesFromWorkspace(ws: Workspace): WorkspaceSourcesState {
@@ -700,25 +746,104 @@ export function SourcesScreen() {
       ? trainPreviewShape[1]
       : (trainXFile?.cols.length ?? 0);
   const trainHasPath = Boolean(trainXFile?.spec.path);
-  const trainReady = trainHasPath && trainColumnCount > 0;
+  const trainParseError = trainXFile?.parseError?.trim() || null;
+  const trainReady =
+    trainHasPath && trainColumnCount > 0 && !trainParseError;
   const canNavigate = !sourcesLoading && trainReady;
+  const storedSourceHint = trainParseError
+    ? storedSourceFailedMessage(trainParseError)
+    : null;
   const emptyTrainHint =
-    !sourcesLoading && trainHasPath && trainColumnCount === 0
+    !sourcesLoading &&
+    trainHasPath &&
+    !trainParseError &&
+    trainColumnCount === 0
       ? EMPTY_TRAIN_MESSAGE
       : sourcesLoading
         ? "Loading workspace sources…"
         : null;
+  const navigateBlockReason = sourcesLoading
+    ? "Loading workspace sources…"
+    : storedSourceHint
+      ? storedSourceHint
+      : !trainReady
+        ? EMPTY_TRAIN_MESSAGE
+        : undefined;
+
+  const handleReinspectTrain = async () => {
+    if (!trainXFile?.spec.path && !trainXFile?.path) return;
+    const path = trainXFile.spec.path || trainXFile.path;
+    try {
+      const inspectRes = await apiClient.runKey("file_inspect", { path });
+      const mapped = mapFileInspect(inspectRes);
+      if (mapped.error || !mapped.spec) {
+        setEngineErrors((prev) => [
+          ...prev,
+          mapped.error ?? `file_inspect failed for ${trainXFile.name}.`,
+        ]);
+        return;
+      }
+      const nextSpec: FileSourceSpec = mapped.spec.path
+        ? mapped.spec
+        : { ...mapped.spec, path };
+      const enriched = await enrichFileItem({
+        ...trainXFile,
+        path,
+        spec: nextSpec,
+        sheets: mapped.sheets,
+        recordPaths: mapped.recordPaths,
+        detected: mapped.detected,
+        parseError: null,
+        cols: [],
+      });
+      setFiles((prev) =>
+        prev.map((f) => (f.id === trainXFile.id ? enriched : f)),
+      );
+      if (enriched.parseError) {
+        setEngineErrors((prev) => [
+          ...prev,
+          storedSourceFailedMessage(enriched.parseError!),
+        ]);
+      } else {
+        setEngineErrors((prev) =>
+          prev.filter(
+            (e) =>
+              !e.startsWith("Stored train source failed to parse:") &&
+              e !== EMPTY_TRAIN_MESSAGE,
+          ),
+        );
+      }
+    } catch (err: unknown) {
+      setEngineErrors((prev) => [...prev, engineMessage(err)]);
+    }
+  };
+
+  const handleReplaceTrainFile = () => {
+    if (trainXFile) {
+      setFiles((prev) => prev.filter((f) => f.id !== trainXFile.id));
+      setRoles((prev) => {
+        const next = { ...prev };
+        delete next[trainXFile.id];
+        return next;
+      });
+      setGuessedMap((prev) => {
+        const next = { ...prev };
+        delete next[trainXFile.id];
+        return next;
+      });
+    }
+    fileInputRef.current?.click();
+  };
 
   const handleSaveAndNavigate = async (screen: "align" | "bench") => {
     // Never PUT a workspace built from an unloaded / empty sources state (MAT-149).
     if (sourcesLoading) return;
     const trainPath = buildResult.workspace.datasets.train.x.path;
-    if (!trainPath || trainColumnCount === 0) {
-      setEngineErrors((prev) =>
-        prev.includes(EMPTY_TRAIN_MESSAGE)
-          ? prev
-          : [...prev, EMPTY_TRAIN_MESSAGE],
-      );
+    if (!trainPath || trainColumnCount === 0 || trainParseError) {
+      const msg = trainParseError
+        ? storedSourceFailedMessage(trainParseError)
+        : EMPTY_TRAIN_MESSAGE;
+      setEngineErrors((prev) => (prev.includes(msg) ? prev : [...prev, msg]));
       return;
     }
     const ws = buildResult.workspace;
@@ -1224,10 +1349,40 @@ export function SourcesScreen() {
               {err}
             </div>
           ))}
+          {storedSourceHint &&
+          !engineErrors.includes(storedSourceHint) ? (
+            <div
+              className="engine-error-box"
+              role="alert"
+              data-train-parse-error="1"
+            >
+              {storedSourceHint}
+            </div>
+          ) : null}
           {emptyTrainHint &&
           !engineErrors.includes(emptyTrainHint) ? (
             <div className="engine-error-box" role="status">
               {emptyTrainHint}
+            </div>
+          ) : null}
+          {storedSourceHint ? (
+            <div className="sources-recovery-actions" role="group">
+              <button
+                type="button"
+                className="btn-outline-action"
+                data-reinspect-train="1"
+                onClick={() => void handleReinspectTrain()}
+              >
+                Re-inspect
+              </button>
+              <button
+                type="button"
+                className="btn-outline-action"
+                data-replace-train="1"
+                onClick={handleReplaceTrainFile}
+              >
+                Replace file
+              </button>
             </div>
           ) : null}
         </section>
@@ -1237,13 +1392,7 @@ export function SourcesScreen() {
             type="button"
             className="btn-primary-action"
             disabled={!canNavigate}
-            title={
-              sourcesLoading
-                ? "Loading workspace sources…"
-                : !trainReady
-                  ? EMPTY_TRAIN_MESSAGE
-                  : undefined
-            }
+            title={navigateBlockReason}
             onClick={() => void handleSaveAndNavigate("align")}
           >
             Check train / test alignment →
@@ -1252,13 +1401,7 @@ export function SourcesScreen() {
             type="button"
             className="btn-secondary-action"
             disabled={!canNavigate}
-            title={
-              sourcesLoading
-                ? "Loading workspace sources…"
-                : !trainReady
-                  ? EMPTY_TRAIN_MESSAGE
-                  : undefined
-            }
+            title={navigateBlockReason}
             onClick={() => void handleSaveAndNavigate("bench")}
           >
             Open workbench
