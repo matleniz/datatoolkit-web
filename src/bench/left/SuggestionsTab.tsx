@@ -34,6 +34,8 @@ export function SuggestionsTab() {
   const [cards, setCards] = useState<SuggestionCard[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Per-card subset picks for duplicates "pass subset" cards (MAT-155). */
+  const [subsetPicks, setSubsetPicks] = useState<Record<string, string[]>>({});
 
   const gridReady = !gridLoading && columns.length > 0;
   // Identity for "workspace changed" without object-identity churn from saves.
@@ -179,7 +181,58 @@ export function SuggestionsTab() {
             </div>
             <div className="sug-title">{cd.title}</div>
             <div className="sug-detail">{cd.detail}</div>
-            {cd.step ? (
+            {cd.pickSubset ? (
+              <div className="sug-subset" data-sug-subset={cd.id}>
+                <div className="sug-subset-label muted">
+                  Pick identity columns (subset), then open Drop duplicates
+                </div>
+                <div className="chip-row" role="group" aria-label="Duplicate subset">
+                  {columns.map((c) => {
+                    const picked = subsetPicks[cd.id] ?? [];
+                    const on = picked.includes(c.name);
+                    return (
+                      <button
+                        key={c.name}
+                        type="button"
+                        className={on ? "small-chip on" : "small-chip"}
+                        aria-pressed={on}
+                        onClick={() => {
+                          setSubsetPicks((prev) => {
+                            const cur = prev[cd.id] ?? [];
+                            const next = on
+                              ? cur.filter((n) => n !== c.name)
+                              : [...cur, c.name];
+                            return { ...prev, [cd.id]: next };
+                          });
+                        }}
+                      >
+                        {c.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  className="open-editor-btn"
+                  disabled={(subsetPicks[cd.id] ?? []).length === 0}
+                  onClick={() => {
+                    const subset = subsetPicks[cd.id] ?? [];
+                    dispatch({
+                      type: "OPEN_EDITOR",
+                      op: "drop_duplicates",
+                      params: toEngineParams("drop_duplicates", {
+                        subset,
+                        keep: "none",
+                        sort_by: null,
+                      }),
+                      target: "train",
+                    });
+                  }}
+                >
+                  Open Drop duplicates →
+                </button>
+              </div>
+            ) : cd.step ? (
               <button
                 type="button"
                 className="open-editor-btn"

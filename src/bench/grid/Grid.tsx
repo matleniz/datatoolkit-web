@@ -231,6 +231,7 @@ export function Grid() {
                     .filter(Boolean)
                     .join(" ")}
                   style={{ width: colWidth(c.kind) }}
+                  aria-label={`${c.name}, ${KIND_LABEL[c.kind] ?? c.kind}`}
                   title={`${c.name} · ${KIND_LABEL[c.kind]} · ${pr?.distinct ?? "?"} distinct · ${pr?.missing ?? "?"} missing · right-click for actions`}
                   onClick={(e) =>
                     dispatch({
@@ -313,7 +314,7 @@ export function Grid() {
                   <span className="miss-bar">
                     <span style={{ width: `${miss}%` }} />
                   </span>
-                  <span className="th-alerts">
+                  <span className="th-alerts" aria-hidden="true">
                     {alerts.map((a) => (
                       <span key={a.text} className={`alert alert-${a.tone}`}>
                         {a.text}

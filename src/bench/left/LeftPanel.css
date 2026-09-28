@@ -239,6 +239,15 @@
   line-height: 1.4;
 }
 
+.sug-subset {
+  margin-top: 8px;
+}
+
+.sug-subset-label {
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
 .open-editor-btn {
   margin-top: 8px;
   height: 28px;

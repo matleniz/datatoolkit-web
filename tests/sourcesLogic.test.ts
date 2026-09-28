@@ -6,6 +6,7 @@ import {
   getCommonColumns,
   guessFileRole,
   mapFileInspect,
+  resultSchemaColumns,
   targetFromPreviewColumns,
   yLabelValueColumn,
   type SourceFileItem,
@@ -320,5 +321,36 @@ describe("mapFileInspect non-csv load_spec", () => {
     expect(mapped.spec).toBeNull();
     expect(mapped.error).toMatch(/load_spec/);
     expect(mapped.detected).toBe("");
+  });
+});
+
+describe("resultSchemaColumns (MAT-155 #5)", () => {
+  it("unions merge extras onto preview when a merge key is chosen", () => {
+    const cols = resultSchemaColumns({
+      previewColumns: ["user_id", "amount"],
+      trainXCols: ["user_id", "amount"],
+      yCols: [],
+      labelMode: "column",
+      mergeCols: ["user_id", "signup_country", "loyalty_tier"],
+      mergeKey: "user_id",
+    });
+    expect(cols).toEqual([
+      "user_id",
+      "amount",
+      "signup_country",
+      "loyalty_tier",
+    ]);
+  });
+
+  it("falls back to train+y+merge when preview is null", () => {
+    const cols = resultSchemaColumns({
+      previewColumns: null,
+      trainXCols: ["a", "b"],
+      yCols: ["label"],
+      labelMode: "yfile",
+      mergeCols: ["a", "extra"],
+      mergeKey: "a",
+    });
+    expect(cols).toEqual(["a", "b", "label", "extra"]);
   });
 });

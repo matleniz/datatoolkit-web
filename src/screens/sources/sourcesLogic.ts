@@ -762,3 +762,36 @@ export function defaultChurnSources(fixtureBase: string): WorkspaceSourcesState 
     mergeInTest: true,
   };
 }
+
+/** Columns shown on the Sources Result card (train X + y + merge extras). */
+export function resultSchemaColumns(input: {
+  previewColumns: string[] | null;
+  trainXCols: string[];
+  yCols: string[];
+  labelMode: "yfile" | "column";
+  mergeCols: string[];
+  mergeKey: string | null;
+}): string[] {
+  const mergeExtras = input.mergeKey
+    ? input.mergeCols.filter((c) => c !== input.mergeKey)
+    : [];
+  const yExtras =
+    input.labelMode === "yfile"
+      ? (() => {
+          const v = yLabelValueColumn(input.yCols);
+          return v && !input.trainXCols.includes(v) ? [v] : [];
+        })()
+      : [];
+
+  if (input.previewColumns && input.previewColumns.length > 0) {
+    // Prefer live preview order, but ensure merge extras appear as soon as a
+    // merge key is chosen (preview can lag or omit them briefly).
+    const seen = new Set(input.previewColumns);
+    const missing = mergeExtras.filter((c) => !seen.has(c));
+    return missing.length
+      ? [...input.previewColumns, ...missing]
+      : input.previewColumns.slice();
+  }
+
+  return [...input.trainXCols, ...yExtras, ...mergeExtras];
+}
