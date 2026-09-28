@@ -252,6 +252,39 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
         // Unblock the grid as soon as rows arrive — do not wait on profiles.
         if (gen === fetchGen.current) setLoading(false);
 
+        // MAT-167: legacy wrong-kind specs can "succeed" with 0 rows and
+        // garbage columns (nested JSON read as csv). Surface the mismatch
+        // instead of a silent empty grid; never block the empty-state paint.
+        if (rowsRes.total === 0 && rowsRes.columns.length > 0) {
+          const trainPath = ws.datasets.train.x.path;
+          const storedKind = ws.datasets.train.x.kind;
+          void (async () => {
+            try {
+              const inspect = await apiClient.runKey("file_inspect", {
+                path: trainPath,
+              });
+              const raw = inspect.metrics?.load_spec;
+              if (typeof raw !== "string" || !raw) return;
+              const parsed = JSON.parse(raw) as {
+                kind?: string;
+                record_path?: string;
+              };
+              if (!parsed.kind || parsed.kind === storedKind) return;
+              if (gen !== fetchGen.current) return;
+              const extra =
+                parsed.kind === "json" && parsed.record_path
+                  ? ` (record_path ${JSON.stringify(parsed.record_path)})`
+                  : "";
+              dispatch({
+                type: "SET_BENCH_ERROR",
+                message: `Stored train source failed to parse: saved as ${storedKind} but file_inspect detects ${parsed.kind}${extra}. Re-inspect the file on Sources.`,
+              });
+            } catch {
+              /* empty-state already visible */
+            }
+          })();
+        }
+
         // Profiles in the background so the grid can paint first (MAT-152).
         // When `columns` is supported by the engine, we profile the viewport
         // first then fill the rest; today's engine ignores the filter and

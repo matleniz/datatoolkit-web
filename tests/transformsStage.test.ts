@@ -5,7 +5,11 @@ import { execSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 import { OP_STAGE, EXCLUDED_OPS, FITTING_OPS } from "../src/bench/stages";
-import { schemaToFields } from "../src/bench/schemaFields";
+import {
+  defaultParams,
+  schemaToFields,
+  stepParamsValid,
+} from "../src/bench/schemaFields";
 import type { JsonSchema } from "../src/api/types";
 
 const fixturesDir = join(
@@ -174,6 +178,24 @@ describe("transforms stage mapping and exclusion", () => {
     const aggsField = fields.find((f) => f.key === "aggs");
     expect(aggsField?.widget).toBe("enum_list");
     expect(aggsField?.enumValues).toContain("mean");
+  });
+
+  it("group_agg defaultParams preselects mean for required Aggs (MAT-167)", () => {
+    const schema = loadSchema("group_agg");
+    const d = defaultParams(schema, "group_agg");
+    expect(d.aggs).toEqual(["mean"]);
+    const fields = schemaToFields(schema, "group_agg");
+    expect(
+      stepParamsValid(
+        "group_agg",
+        { group: "dept", value: "salary", aggs: d.aggs },
+        fields,
+      ).ok,
+    ).toBe(true);
+    expect(
+      stepParamsValid("group_agg", { group: "dept", value: "salary", aggs: [] }, fields)
+        .missing,
+    ).toMatch(/Aggs/);
   });
 
   it("ffill has sort_by column picker and columns picker", () => {

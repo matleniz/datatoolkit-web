@@ -417,9 +417,17 @@ export function defaultParams(
     if (out.q === undefined) out.q = 5;
   }
   if (op === "cyclical" && out.period === undefined) out.period = 24;
-  if (op === "group_agg" && out.aggs === undefined) out.aggs = ["mean"];
   if (op === "datetime_parts" && out.parts === undefined) {
     out.parts = ["hour", "dayofweek", "month"];
+  }
+  // Required enum_list fields: preselect mean when available, else the first value.
+  // Covers group_agg.aggs and any future required multi-enum (MAT-167).
+  for (const field of schemaToFields(schema, op)) {
+    if (field.widget !== "enum_list" || !field.required) continue;
+    if (out[field.key] !== undefined) continue;
+    const vals = field.enumValues ?? [];
+    if (vals.length === 0) continue;
+    out[field.key] = vals.includes("mean") ? ["mean"] : [vals[0]!];
   }
   if (op === "impute_knn") {
     if (out.n_neighbors === undefined) out.n_neighbors = 5;
@@ -489,6 +497,20 @@ export function filterColumnsByDtype(
   return columns.map((c) => c.name);
 }
 
+/** True when a required editor field has a usable value. */
+export function fieldValuePresent(v: unknown): boolean {
+  if (v === undefined || v === null || v === "") return false;
+  if (Array.isArray(v) && v.length === 0) return false;
+  if (
+    typeof v === "object" &&
+    !Array.isArray(v) &&
+    Object.keys(v as object).length === 0
+  ) {
+    return false;
+  }
+  return true;
+}
+
 /**
  * Basic validity: required fields present; drop_duplicates keep first/last needs sort_by.
  */
@@ -500,15 +522,19 @@ export function stepParamsValid(
   for (const f of fields) {
     if (f.whenStrategyConstant && params.strategy !== "constant") continue;
     if (!f.required) continue;
-    const v = params[f.key];
-    if (v === undefined || v === null || v === "") {
+    if (!fieldValuePresent(params[f.key])) {
+      if (Array.isArray(params[f.key]) && (params[f.key] as unknown[]).length === 0) {
+        return { ok: false, missing: `Pick at least one for ${f.label}` };
+      }
+      if (
+        typeof params[f.key] === "object" &&
+        params[f.key] !== null &&
+        !Array.isArray(params[f.key]) &&
+        Object.keys(params[f.key] as object).length === 0
+      ) {
+        return { ok: false, missing: `Configure ${f.label}` };
+      }
       return { ok: false, missing: `Missing ${f.label}` };
-    }
-    if (Array.isArray(v) && v.length === 0) {
-      return { ok: false, missing: `Pick at least one for ${f.label}` };
-    }
-    if (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0) {
-      return { ok: false, missing: `Configure ${f.label}` };
     }
   }
   if (op === "drop_duplicates") {

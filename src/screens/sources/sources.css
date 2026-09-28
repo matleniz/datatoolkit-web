@@ -520,6 +520,13 @@
   font-size: 12px;
 }
 
+.sources-recovery-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
 .sources-actions {
   display: flex;
   gap: 10px;

@@ -9,6 +9,7 @@ import { resolveOp, toEngineParams } from "../presets";
 import {
   filterColumnsByDtype,
   stepParamsValid,
+  fieldValuePresent,
   type EditorField,
 } from "../schemaFields";
 import {
@@ -418,6 +419,12 @@ function Field({
     });
   };
 
+  const missing =
+    field.required &&
+    !(field.whenStrategyConstant && params.strategy !== "constant") &&
+    !fieldValuePresent(params[field.key]);
+  const fieldClass = missing ? "ed-field ed-field-missing" : "ed-field";
+
   const eligible = filterColumnsByDtype(columns, field.dtypeFilter);
 
   if (field.widget === "columns" || field.widget === "column") {
@@ -429,8 +436,9 @@ function Field({
         : [];
     return (
       <div
-        className="ed-field"
+        className={fieldClass}
         data-ed-field={field.key}
+        data-ed-missing={missing ? "1" : undefined}
         data-ed-group={
           op === "drop_duplicates" &&
           (field.key === "subset" || field.key === "sort_by")
@@ -484,7 +492,11 @@ function Field({
     const values = field.enumValues ?? [];
     const current = params[field.key];
     return (
-      <div className="ed-field">
+      <div
+        className={fieldClass}
+        data-ed-field={field.key}
+        data-ed-missing={missing ? "1" : undefined}
+      >
         <span className="ed-label">{field.label}</span>
         <div className="chip-row">
           {values.map((o) => {
@@ -521,9 +533,13 @@ function Field({
   if (field.widget === "enum_list") {
     const current = (params[field.key] as string[] | null | undefined) ?? [];
     return (
-      <div className="ed-field">
+      <div
+        className={fieldClass}
+        data-ed-field={field.key}
+        data-ed-missing={missing ? "1" : undefined}
+      >
         <span className="ed-label">{field.label}</span>
-        <div className="chip-row">
+        <div className="chip-row" role="group" aria-label={field.label}>
           {(field.enumValues ?? []).map((o) => {
             const on = current.includes(o);
             return (
