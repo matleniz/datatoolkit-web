@@ -116,6 +116,22 @@ export function titanicWorkspace(): Workspace {
   };
 }
 
+/** Partial-duplicate stations without auto identity columns (MAT-155 #1). */
+export function stationsPartialWorkspace(): Workspace {
+  return {
+    name: "stations_partial",
+    datasets: {
+      train: {
+        x: { kind: "csv", path: join(fixturesDir, "stations_partial.csv") },
+      },
+    },
+    label: { mode: "order" },
+    merges: [],
+    variables: [],
+    steps: [],
+  };
+}
+
 /**
  * Adult-like train/test with trailing-dot income labels on test only
  * (MAT-155 item 6 / align_report value_mismatch).

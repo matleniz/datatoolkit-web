@@ -239,13 +239,25 @@ export function schemaToFields(schema: JsonSchema, op: string): EditorField[] {
           : undefined;
 
     if (widgetHint === "columns") {
+      // Drop duplicates: make Subset vs Sort by visually distinct (MAT-155).
+      let label = prop.title ?? key;
+      let description = prop.description;
+      if (op === "drop_duplicates" && key === "subset") {
+        label = "Subset (identity columns)";
+        description =
+          "Columns that define a duplicate row. Leave empty to match on all columns.";
+      } else if (op === "drop_duplicates" && key === "sort_by") {
+        label = "Sort by (keep first/last)";
+        description =
+          "Order rows before keeping first/last — not the same group as Subset. Required when keep is first or last.";
+      }
       fields.push({
         key,
-        label: prop.title ?? key,
+        label,
         widget: "columns",
         required: required.has(key),
         dtypeFilter,
-        description: prop.description,
+        description,
       });
       continue;
     }

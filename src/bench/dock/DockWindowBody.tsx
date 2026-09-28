@@ -87,6 +87,7 @@ function topBars(
 /** Engine keys that always run through run_key (dist joins when split-by is set). */
 const ENGINE_TOOLS = new Set<ToolId>([
   "outliers",
+  "missing",
   "target",
   "drift",
   "feature_selection",
@@ -247,11 +248,11 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           setBound(
             useSelection
               ? selCols.length === 1
-                ? `bound to ${selCols[0]}`
-                : `bound to selection · ${selCols.length} columns`
-              : `${role} · all columns`,
+                ? `bound to ${selCols[0]} · key missing_values`
+                : `bound to selection · ${selCols.length} columns · key missing_values`
+              : `${role} · all columns · key missing_values`,
           );
-          return;
+          // Fall through to engine run (columns=selection when scoped; MAT-155).
         }
 
         if (id === "outliers") {
@@ -289,6 +290,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
 
         const runEngine =
           id === "outliers" ||
+          id === "missing" ||
           runDistEngine ||
           id === "target" ||
           id === "drift" ||
@@ -308,6 +310,9 @@ export function DockWindowBody({ id }: { id: ToolId }) {
             if (id === "outliers") {
               const selNum = selectedNumericColumns(selCols, profColumns);
               const cols = scopeAll ? null : selNum;
+              if (cols && cols.length > 0) available.columns = cols;
+            } else if (id === "missing") {
+              const cols = engineColumnsParam(selCols, scopeAll);
               if (cols && cols.length > 0) available.columns = cols;
             } else if (id === "dist" && focus) {
               available.columns = [focus];
@@ -345,6 +350,15 @@ export function DockWindowBody({ id }: { id: ToolId }) {
                 `bound to selection · ${selNum.length} columns · key outliers`,
               );
             }
+          } else if (id === "missing") {
+            const useSelection = !scopeAll && selCols.length > 0;
+            setBound(
+              useSelection
+                ? selCols.length === 1
+                  ? `bound to ${selCols[0]} · key missing_values`
+                  : `bound to selection · ${selCols.length} columns · key missing_values`
+                : `all columns · key missing_values`,
+            );
           } else if (id === "dist" && focus && splitBy) {
             setBound(
               `bound to ${focus} · split by ${splitBy} · key column_distribution`,
@@ -568,44 +582,19 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     );
   }
 
-  if (id === "missing") {
+  if (id === "missing" && !result) {
+    // Waiting for engine missing_values (or empty selection message).
     const useSelection = !scopeAll && selCols.length > 0;
-    const shown = useSelection
-      ? profiles.filter((c) => selCols.includes(c.name))
-      : profiles;
     return (
       <div
         data-scope-mode={useSelection ? "selection" : "all"}
-        data-missing-cols={shown.map((c) => c.name).join(",")}
+        data-missing-cols={
+          useSelection ? selCols.join(",") : profiles.map((c) => c.name).join(",")
+        }
       >
         {scopeBar}
-        <div className="dock-bound muted">{bound}</div>
-        <div className="list-rows">
-          {shown.map((c) => {
-            const total = c.count + c.missing || 1;
-            const p = c.missing / total;
-            return (
-              <div key={c.name} className="list-row" data-col={c.name}>
-                <span className="list-name">{c.name}</span>
-                <span className="list-bar">
-                  <span
-                    style={{
-                      display: "block",
-                      height: 8,
-                      width: `${Math.round(p * 100)}%`,
-                      background: "#c2410c",
-                    }}
-                  />
-                </span>
-                <span className="list-val mono">
-                  {c.missing
-                    ? `${c.missing} · ${Math.round(p * 100)}%`
-                    : "—"}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+        {bound ? <div className="dock-bound muted">{bound}</div> : null}
+        <div className="dock-msg muted">Loading…</div>
       </div>
     );
   }
@@ -616,6 +605,8 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         ? selectedNumericColumns(selCols, profiles)
         : [];
     const outliersCol = selNum.length === 1 ? selNum[0] : undefined;
+    const missingCols =
+      id === "missing" && !scopeAll && selCols.length > 0 ? selCols : null;
     return (
       <div
         data-scope-mode={scopeAll ? "all" : "selection"}
@@ -631,6 +622,13 @@ export function DockWindowBody({ id }: { id: ToolId }) {
                 : selNum.length > 1
                   ? { "data-outliers-cols": selNum.join(",") }
                   : {}),
+            }
+          : {})}
+        {...(id === "missing"
+          ? {
+              "data-missing-cols":
+                missingCols?.join(",") ??
+                profiles.map((c) => c.name).join(","),
             }
           : {})}
         {...(id === "dist"

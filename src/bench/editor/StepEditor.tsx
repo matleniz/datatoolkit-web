@@ -3,7 +3,7 @@ import type { ColumnKind, JsonValue } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { formulaPlaceholder } from "./formulaPlaceholder";
 import { formatLearnedState } from "../format";
-import { isNumericKind, isTextKind } from "../kinds";
+import { isNumericKind } from "../kinds";
 import { targetColumnOf } from "../left/datasetSource";
 import { resolveOp, toEngineParams } from "../presets";
 import {
@@ -137,7 +137,6 @@ export function StepEditor() {
                   if (sel1) {
                     const pr = profiles.get(sel1);
                     const isNum = pr ? isNumericKind(pr.kind) : false;
-                    const isTxt = pr ? isTextKind(pr.kind) : false;
                     if (
                       [
                         "impute",
@@ -152,7 +151,9 @@ export function StepEditor() {
                       preset.column = sel1;
                       if (op === "replace_sentinels") preset.values = [-999];
                     }
-                    if (op === "ordinal" && isTxt) {
+                    // Seed ordinal from the active column even when kind is not
+                    // yet "text" so + Step does not require a second chip click.
+                    if (op === "ordinal") {
                       preset.column = sel1;
                     }
                     if ((op === "bin" || op === "cyclical") && isNum) {
@@ -335,10 +336,15 @@ export function StepEditor() {
       </div>
 
       {(previewError || (!paramsValid.ok && paramsValid.missing)) && (
-        <div className="ed-error" role="alert">
+        <div className="ed-error" role="alert" data-ed-disabled-reason="">
           {previewError || paramsValid.missing}
         </div>
       )}
+      {!canApply && !previewError && paramsValid.ok === false && paramsValid.missing ? (
+        <div className="ed-help" data-ed-apply-hint="">
+          Apply is disabled: {paramsValid.missing}
+        </div>
+      ) : null}
 
       <div className="ed-actions">
         <button
@@ -352,6 +358,13 @@ export function StepEditor() {
           type="button"
           className="btn-primary grow2"
           disabled={!canApply}
+          title={
+            !canApply
+              ? previewError ||
+                paramsValid.missing ||
+                (!isLatest ? "Go back to the latest version first." : "Complete the parameters")
+              : undefined
+          }
           onClick={applyPending}
         >
           Apply step
@@ -403,9 +416,25 @@ function Field({
         ? [String(params[field.key])]
         : [];
     return (
-      <div className="ed-field">
+      <div
+        className="ed-field"
+        data-ed-field={field.key}
+        data-ed-group={
+          op === "drop_duplicates" &&
+          (field.key === "subset" || field.key === "sort_by")
+            ? field.key
+            : undefined
+        }
+      >
         <span className="ed-label">{field.label}</span>
-        <div className="chip-row">
+        {field.description ? (
+          <span className="ed-help">{field.description}</span>
+        ) : null}
+        <div
+          className="chip-row"
+          role="group"
+          aria-label={field.label}
+        >
           {eligible.map((n) => {
             const on = current.includes(n);
             return (
@@ -413,6 +442,8 @@ function Field({
                 key={n}
                 type="button"
                 className={on ? "small-chip on" : "small-chip"}
+                aria-pressed={on}
+                aria-label={`${field.label}: ${n}`}
                 onClick={() => {
                   if (multi) {
                     const a = [...current];
@@ -843,10 +874,20 @@ function CategoriesField({
   const col = Object.keys(categories)[0] ?? "";
   const order = col ? categories[col]! : [];
   const textCols = columns.filter((c) => c.kind === "text");
-
-  // Seed order from top_values when column picked empty — left to caller via profiles.
+  const { selection } = useAppState();
   const { profiles } = useWorkbenchData();
 
+  // Seed from the active grid column when opened with empty categories (MAT-155 #4).
+  useEffect(() => {
+    if (col) return;
+    const active = selection.columns[0] ?? null;
+    if (!active) return;
+    const pr = profiles.get(active);
+    const seeded = pr?.top_values?.map((t) => t.value) ?? [];
+    onChange({ [active]: seeded });
+  }, [col, selection.columns, profiles, onChange]);
+
+  // Seed order from top_values when column is set but order is still empty.
   useEffect(() => {
     if (col && order.length === 0 && profiles.has(col)) {
       const pr = profiles.get(col);
@@ -860,7 +901,7 @@ function CategoriesField({
   const pickCol = (name: string) => {
     const pr = profiles.get(name);
     const seeded =
-      order.length > 0
+      order.length > 0 && col === name
         ? order
         : (pr?.top_values?.map((t) => t.value) ?? []);
     onChange({ [name]: seeded });
@@ -916,7 +957,11 @@ function CategoriesField({
         ))}
       </div>
       {!order.length ? (
-        <span className="ed-help">Pick a column first.</span>
+        <span className="ed-help">
+          {col
+            ? "No categories yet for this column."
+            : "Pick a column first."}
+        </span>
       ) : null}
     </div>
   );

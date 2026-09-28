@@ -24,6 +24,7 @@ import {
   ROLE_LABELS,
   targetFromPreviewColumns,
   yLabelValueColumn,
+  resultSchemaColumns,
   type FileRole,
   type SourceFileItem,
   type WorkspaceSourcesState,
@@ -688,6 +689,8 @@ export function SourcesScreen() {
     trainXFile && mergeFile
       ? getCommonColumns(trainXFile.cols, mergeFile.cols)
       : [];
+  /** Effective merge key: explicit pick, else first common column (matches build). */
+  const effectiveMergeKey = mergeKey ?? commonMergeCols[0] ?? null;
 
   const resolvedTarget =
     engineTarget ?? buildResult.targetLabel ?? null;
@@ -769,28 +772,26 @@ export function SourcesScreen() {
       : "—";
 
   // Prefer engine preview columns so Index from y is not duplicated and
-  // only the real label column appears as target.
-  const displayedCols =
-    previewColumns ??
-    (trainXFile
-      ? [
-          ...trainXFile.cols,
-          ...(trainYFile && labelMode === "yfile"
-            ? (() => {
-                const v = yLabelValueColumn(trainYFile.cols);
-                return v && !trainXFile.cols.includes(v) ? [v] : [];
-              })()
-            : []),
-          ...(mergeFile
-            ? mergeFile.cols.filter((c) => c !== mergeKey)
-            : []),
-        ]
-      : []);
+  // only the real label column appears as target. Always union merge extras
+  // once a merge key is chosen (MAT-155 item 5).
+  const displayedCols = resultSchemaColumns({
+    previewColumns,
+    trainXCols: trainXFile?.cols ?? [],
+    yCols: trainYFile?.cols ?? [],
+    labelMode,
+    mergeCols: mergeFile?.cols ?? [],
+    mergeKey: effectiveMergeKey,
+  });
 
   const originFor = (col: string): "x" | "y" | "merge" => {
     if (buildResult.originMap[col]) return buildResult.originMap[col]!;
     if (resolvedTarget && col === resolvedTarget) return "y";
-    if (mergeFile?.cols.includes(col) && col !== mergeKey) return "merge";
+    if (
+      mergeFile?.cols.includes(col) &&
+      col !== effectiveMergeKey
+    ) {
+      return "merge";
+    }
     return "x";
   };
 
