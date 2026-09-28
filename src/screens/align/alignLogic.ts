@@ -49,6 +49,26 @@ export function formatStepSummary(step: Step): string {
     }
   }
 
+  if (op === "standardize_text") {
+    const cols = Array.isArray(p.columns) ? (p.columns as string[]).join(", ") : "";
+    const mapping =
+      p.mapping && typeof p.mapping === "object"
+        ? (p.mapping as Record<string, string>)
+        : null;
+    if (mapping && Object.keys(mapping).length > 0) {
+      const pairs = Object.entries(mapping)
+        .slice(0, 3)
+        .map(([from, to]) => `${from} → ${to}`)
+        .join(", ");
+      const extra = Object.keys(mapping).length > 3 ? "…" : "";
+      return cols ? `${cols} · map ${pairs}${extra}` : `map ${pairs}${extra}`;
+    }
+    const bits = [p.strip ? "strip" : "", p.lower ? "lower" : ""].filter(
+      Boolean,
+    );
+    return `${cols} · ${bits.join(" + ") || "no change"}`;
+  }
+
   return JSON.stringify(p);
 }
 
@@ -268,8 +288,58 @@ export function computeRowFixes(
         align: true,
       },
     });
+  } else if (row.status === "value_mismatch") {
+    const colName = row.train?.name ?? row.test?.name ?? "";
+    // Details (only_in_test, pct, hint) are rendered by AlignScreen; keep note empty.
+    note = "";
+
+    const nearMatches = row.near_matches ?? [];
+    if (nearMatches.length > 0) {
+      const mapping: Record<string, string> = {};
+      for (const pair of nearMatches) {
+        mapping[pair.test] = pair.train;
+      }
+      actions.push({
+        id: `map_test_${colName}`,
+        label: "Map on test",
+        type: "add_step",
+        primary: true,
+        tip: "standardize_text mapping: test value → train value",
+        step: {
+          op: "standardize_text",
+          target: "test",
+          params: {
+            columns: [colName],
+            strip: false,
+            lower: false,
+            mapping,
+          },
+          align: true,
+        },
+      });
+    }
+
+    actions.push({
+      id: `standardize_text_test_${colName}`,
+      label: "Standardize text on test",
+      type: "add_step",
+      tip: "strip whitespace on test",
+      step: {
+        op: "standardize_text",
+        target: "test",
+        params: {
+          columns: [colName],
+          strip: true,
+          lower: false,
+        },
+        align: true,
+      },
+    });
   } else if (row.status === "label") {
     note = "Expected: test has no label.";
+  } else if (row.status !== "match") {
+    // Unknown / future statuses: never break the screen; show a generic note.
+    note = `Status “${row.status}”: no guided fix yet.`;
   }
 
   return { note, actions };
@@ -293,6 +363,7 @@ export function countAlignStatuses(rows: AlignReportRow[]): {
     } else if (r.status === "label") {
       info++;
     } else {
+      // type_mismatch, value_mismatch, missing/extra, and any unknown status
       fix++;
     }
   }
@@ -310,6 +381,8 @@ export function getStatusBadgeInfo(status: AlignStatus): {
       return { text: "match", color: "#1f5a2b", bg: "#e2f0e3" };
     case "type_mismatch":
       return { text: "type mismatch", color: "#8f3809", bg: "#fbe9dc" };
+    case "value_mismatch":
+      return { text: "value mismatch", color: "#8f3809", bg: "#fbe9dc" };
     case "missing_in_test":
       return { text: "missing in test", color: "#8f3809", bg: "#fbe9dc" };
     case "extra_in_test":
@@ -317,6 +390,7 @@ export function getStatusBadgeInfo(status: AlignStatus): {
     case "label":
       return { text: "label · train only", color: "#4f4390", bg: "#ece8f7" };
     default:
-      return { text: status, color: "#5b5850", bg: "#eeede8" };
+      // Unknown engine statuses: render generically, never throw.
+      return { text: String(status), color: "#5b5850", bg: "#eeede8" };
   }
 }

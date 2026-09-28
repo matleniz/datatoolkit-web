@@ -169,6 +169,39 @@
   color: var(--dtk-muted);
 }
 
+.align-value-mismatch {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.align-only-in-test {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--dtk-ink);
+}
+
+.align-only-in-test code {
+  font-family: var(--dtk-font-mono);
+  font-size: 11px;
+}
+
+.align-value-count {
+  color: var(--dtk-muted);
+  font-size: 11px;
+}
+
+.align-fix-hint {
+  font-size: 11px;
+  color: var(--dtk-muted);
+  line-height: 1.4;
+}
+
 .align-fix-actions {
   display: flex;
   gap: 4px;

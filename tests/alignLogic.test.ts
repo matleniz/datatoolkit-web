@@ -36,6 +36,20 @@ describe("alignLogic pure mapping", () => {
         align: true,
       }),
     ).toBe("cast · monthly_spend → float · test");
+
+    expect(
+      formatAlignmentStep({
+        op: "standardize_text",
+        target: "test",
+        params: {
+          columns: ["income"],
+          strip: false,
+          lower: false,
+          mapping: { "<=50K.": "<=50K", ">50K.": ">50K" },
+        },
+        align: true,
+      }),
+    ).toBe("standardize_text · income · map <=50K. → <=50K, >50K. → >50K · test");
   });
 
   it("handles type mismatch with numbers_as_text", () => {
@@ -139,6 +153,94 @@ describe("alignLogic pure mapping", () => {
     });
   });
 
+  it("handles value_mismatch with near_matches map + standardize_text", () => {
+    const row: AlignReportRow = {
+      train: { name: "income", kind: "cat", samples: ["<=50K", ">50K"] },
+      test: { name: "income", kind: "cat", samples: ["<=50K.", ">50K."] },
+      status: "value_mismatch",
+      numbers_as_text: false,
+      train_mean: null,
+      test_mean: null,
+      similar: [],
+      only_in_test: [
+        { value: "<=50K.", count: 12 },
+        { value: ">50K.", count: 4 },
+      ],
+      pct_test_rows_unseen: 100,
+      near_match_hint:
+        "near-match after strip/casefold/trailing punctuation: '<=50K.'→'<=50K', '>50K.'→'>50K'; try standardize_text or map on test",
+      near_matches: [
+        { test: "<=50K.", train: "<=50K" },
+        { test: ">50K.", train: ">50K" },
+      ],
+    };
+
+    const fixes = computeRowFixes(row, []);
+    expect(fixes.note).toBe("");
+    expect(fixes.actions).toHaveLength(2);
+
+    expect(fixes.actions[0]!.label).toBe("Map on test");
+    expect(fixes.actions[0]!.primary).toBe(true);
+    expect(fixes.actions[0]!.step).toEqual({
+      op: "standardize_text",
+      target: "test",
+      params: {
+        columns: ["income"],
+        strip: false,
+        lower: false,
+        mapping: { "<=50K.": "<=50K", ">50K.": ">50K" },
+      },
+      align: true,
+    });
+
+    expect(fixes.actions[1]!.label).toBe("Standardize text on test");
+    expect(fixes.actions[1]!.step).toEqual({
+      op: "standardize_text",
+      target: "test",
+      params: {
+        columns: ["income"],
+        strip: true,
+        lower: false,
+      },
+      align: true,
+    });
+  });
+
+  it("handles value_mismatch without near_matches (standardize only)", () => {
+    const row: AlignReportRow = {
+      train: { name: "city", kind: "cat", samples: ["Paris"] },
+      test: { name: "city", kind: "cat", samples: ["Narnia"] },
+      status: "value_mismatch",
+      numbers_as_text: false,
+      train_mean: null,
+      test_mean: null,
+      similar: [],
+      only_in_test: [{ value: "Narnia", count: 3 }],
+      pct_test_rows_unseen: 50,
+      near_match_hint: null,
+      near_matches: [],
+    };
+
+    const fixes = computeRowFixes(row, []);
+    expect(fixes.actions).toHaveLength(1);
+    expect(fixes.actions[0]!.label).toBe("Standardize text on test");
+  });
+
+  it("unknown status does not throw and offers no guided fix", () => {
+    const row: AlignReportRow = {
+      train: { name: "x", kind: "number", samples: [] },
+      test: { name: "x", kind: "number", samples: [] },
+      status: "future_status_xyz",
+      numbers_as_text: false,
+      train_mean: null,
+      test_mean: null,
+      similar: [],
+    };
+    const fixes = computeRowFixes(row, []);
+    expect(fixes.note).toContain("future_status_xyz");
+    expect(fixes.actions).toHaveLength(0);
+  });
+
   it("counts statuses correctly", () => {
     const rows: AlignReportRow[] = [
       {
@@ -160,6 +262,18 @@ describe("alignLogic pure mapping", () => {
         similar: [],
       },
       {
+        train: { name: "income", kind: "cat", samples: [] },
+        test: { name: "income", kind: "cat", samples: [] },
+        status: "value_mismatch",
+        numbers_as_text: false,
+        train_mean: null,
+        test_mean: null,
+        similar: [],
+        only_in_test: [{ value: "<=50K.", count: 1 }],
+        pct_test_rows_unseen: 100,
+        near_matches: [],
+      },
+      {
         train: { name: "churn", kind: "bool", samples: [] },
         test: null,
         status: "label",
@@ -168,9 +282,18 @@ describe("alignLogic pure mapping", () => {
         test_mean: null,
         similar: [],
       },
+      {
+        train: { name: "z", kind: "number", samples: [] },
+        test: { name: "z", kind: "number", samples: [] },
+        status: "weird_new_status",
+        numbers_as_text: false,
+        train_mean: null,
+        test_mean: null,
+        similar: [],
+      },
     ];
 
-    expect(countAlignStatuses(rows)).toEqual({ ok: 1, fix: 1, info: 1 });
+    expect(countAlignStatuses(rows)).toEqual({ ok: 1, fix: 3, info: 1 });
   });
 });
 

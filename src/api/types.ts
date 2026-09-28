@@ -338,10 +338,23 @@ export interface AlignSide {
 export type AlignStatus =
   | "match"
   | "type_mismatch"
+  | "value_mismatch"
   | "missing_in_test"
   | "extra_in_test"
   | "label"
   | string;
+
+/** Test-only category value with row count (align_report value_mismatch). */
+export interface AlignOnlyInTestValue {
+  value: string;
+  count: number;
+}
+
+/** Near-match pair for map-on-test (align_report value_mismatch). */
+export interface AlignNearMatch {
+  test: string;
+  train: string;
+}
 
 export interface AlignReportRow {
   train: AlignSide | null;
@@ -351,6 +364,11 @@ export interface AlignReportRow {
   train_mean: number | null;
   test_mean: number | null;
   similar: string[];
+  /** Present on value_mismatch; null / [] on other statuses. */
+  only_in_test?: AlignOnlyInTestValue[] | null;
+  pct_test_rows_unseen?: number | null;
+  near_match_hint?: string | null;
+  near_matches?: AlignNearMatch[] | null;
 }
 
 /** POST /workspace/align → { columns: [...] } */
