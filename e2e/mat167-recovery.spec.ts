@@ -77,8 +77,8 @@ async function putLegacyWorkspace(
 
 async function selectWorkspace(page: Page, name: string): Promise<void> {
   await page
-    .locator(".ws-item")
-    .filter({ has: page.locator(".ws-item-name", { hasText: new RegExp(`^${name}$`) }) })
+    .locator(`.ws-item[data-workspace="${name}"]`)
+    .locator(".ws-item-select")
     .click();
   await expect(page.getByText(`Sources of “${name}”`)).toBeVisible({
     timeout: 30_000,

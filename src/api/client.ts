@@ -18,6 +18,7 @@ import {
   Workspace,
   WorkspacePreview,
   WorkspaceRows,
+  WorkspaceSummary,
 } from "./types";
 import { InFlightDedupe } from "./requestDedupe";
 
@@ -30,9 +31,12 @@ export interface ApiClient {
   transformSchema(op: string): Promise<JsonSchema>;
 
   listWorkspaces(): Promise<Workspace[]>;
+  listWorkspaceSummaries(): Promise<WorkspaceSummary[]>;
   getWorkspace(name: string): Promise<Workspace>;
   saveWorkspace(ws: Workspace): Promise<Workspace>;
   deleteWorkspace(name: string): Promise<void>;
+  renameWorkspace(name: string, newName: string): Promise<Workspace>;
+  duplicateWorkspace(name: string, newName: string): Promise<Workspace>;
   exportWorkspace(name: string, body: ExportRequest): Promise<ExportManifest>;
 
   sourceColumns(spec: SourceSpec): Promise<SourceColumn[]>;
@@ -194,6 +198,10 @@ export class HttpApiClient implements ApiClient {
     return this.request("GET", "/workspaces");
   }
 
+  listWorkspaceSummaries(): Promise<WorkspaceSummary[]> {
+    return this.request("GET", "/workspaces/summaries");
+  }
+
   getWorkspace(name: string): Promise<Workspace> {
     return this.request("GET", `/workspaces/${encodeURIComponent(name)}`);
   }
@@ -208,6 +216,22 @@ export class HttpApiClient implements ApiClient {
 
   deleteWorkspace(name: string): Promise<void> {
     return this.request("DELETE", `/workspaces/${encodeURIComponent(name)}`);
+  }
+
+  renameWorkspace(name: string, newName: string): Promise<Workspace> {
+    return this.request(
+      "POST",
+      `/workspaces/${encodeURIComponent(name)}/rename`,
+      { new_name: newName },
+    );
+  }
+
+  duplicateWorkspace(name: string, newName: string): Promise<Workspace> {
+    return this.request(
+      "POST",
+      `/workspaces/${encodeURIComponent(name)}/duplicate`,
+      { new_name: newName },
+    );
   }
 
   exportWorkspace(name: string, body: ExportRequest): Promise<ExportManifest> {
