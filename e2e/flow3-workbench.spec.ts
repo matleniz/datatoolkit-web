@@ -180,15 +180,22 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   // 4. One-hot city with diff preview
   const cityHeader = page.locator(".grid-th", { hasText: "city" }).first();
 
-  // Inspect city: Value groups summarises spellings collapsed by strip+lower
-  // (engine exposes variant counts, not the canonical token list).
+  // Inspect city: Value groups — one row per canonical value with raw spellings
+  // (prototype: `paris ← "Paris"  "paris"  "PARIS "`).
   await cityHeader.click();
   const inspector = page.getByLabel("Inspector");
   await expect(inspector).toBeVisible();
   const valueGroups = inspector.locator(".insp-groups");
   await expect(valueGroups).toBeVisible();
   await expect(valueGroups).toContainText("identical once stripped + lowercased");
-  await expect(valueGroups).toContainText(/\d+\s*→\s*\d+/);
+  const parisRow = valueGroups.locator(".insp-group-row").filter({
+    has: page.locator(".mono", { hasText: /^paris$/ }),
+  });
+  await expect(parisRow).toBeVisible();
+  await expect(parisRow).toContainText('"Paris"');
+  await expect(parisRow).toContainText('"PARIS "');
+  // Old buggy summary was `normalized ← N → M` — no bare count arrow.
+  await expect(valueGroups).not.toContainText(/\d+\s*→\s*\d+/);
 
   await cityHeader.click({ button: "right" });
   await page.getByRole("menuitem", { name: /One-hot/ }).click();
