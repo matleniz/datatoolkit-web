@@ -446,6 +446,11 @@
   cursor: pointer;
 }
 
+.btn-primary-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .btn-secondary-action {
   height: 38px;
   padding: 0 18px;
@@ -456,6 +461,11 @@
   font-size: 13px;
   cursor: pointer;
   color: #1c1b18;
+}
+
+.btn-secondary-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .btn-outline-action {
