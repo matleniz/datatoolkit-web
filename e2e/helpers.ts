@@ -285,7 +285,7 @@ export async function openWorkbench(
 
   await expect(page.getByLabel("Workbench")).toBeVisible();
   await waitForGridReady(page);
-  await expect(page.locator(".grid-th", { hasText: "age" })).toBeVisible({
+  await expect(page.getByRole("button", { name: "age, number" })).toBeVisible({
     timeout: 30_000,
   });
   // Ensure suggestions have run and count is non-zero

@@ -44,10 +44,26 @@ function storedSourceFailedMessage(detail: string): string {
   return `Stored train source failed to parse: ${detail}`;
 }
 
+/** Display string for a file-level parseError (MAT-167 / MAT-169). */
+function trainParseErrorDisplay(detail: string): string {
+  // Kind-mismatch details from enrichFileItem start with "saved as ".
+  if (detail.startsWith("saved as ")) {
+    return storedSourceFailedMessage(detail);
+  }
+  // Engine errors already name their type — show verbatim (MAT-169 fresh upload).
+  if (/^[A-Za-z]+Error\b/.test(detail)) {
+    return detail;
+  }
+  return storedSourceFailedMessage(detail);
+}
+
 function engineMessage(err: unknown): string {
-  if (err && typeof err === "object" && "message" in err) {
-    const msg = (err as EngineError).message;
-    if (typeof msg === "string" && msg.length > 0) return msg;
+  if (err && typeof err === "object") {
+    const e = err as Partial<EngineError>;
+    const msg = typeof e.message === "string" ? e.message : "";
+    const typ = typeof e.type === "string" ? e.type : "";
+    if (typ && msg) return `${typ}: ${msg}`;
+    if (msg) return msg;
   }
   return String(err);
 }
@@ -595,11 +611,12 @@ export function SourcesScreen() {
         : { ...mapped.spec, path: uploadRes.path };
 
       let cols: string[] = [];
+      let parseError: string | null = null;
       try {
         const colList = await apiClient.sourceColumns(spec);
         cols = colList.map((c) => c.name);
       } catch (err: unknown) {
-        setEngineErrors((prev) => [...prev, engineMessage(err)]);
+        parseError = engineMessage(err);
       }
 
       let shape: [number, number] | null =
@@ -616,7 +633,7 @@ export function SourcesScreen() {
         const preview = await apiClient.previewWorkspace(mini, "train", 1);
         shape = preview.shape;
       } catch (err: unknown) {
-        setEngineErrors((prev) => [...prev, engineMessage(err)]);
+        if (!parseError) parseError = engineMessage(err);
       }
 
       const remapped = mapFileInspect(inspectRes, shape);
@@ -645,6 +662,9 @@ export function SourcesScreen() {
         isGuessed: true,
         sheets: remapped.sheets,
         recordPaths: remapped.recordPaths,
+        // 0-byte files stay on the MAT-154 empty-train path even if the
+        // engine also raises SourceError while reading them.
+        parseError: file.size === 0 ? null : parseError,
       };
 
       setFiles((prev) => [...prev, newItem]);
@@ -659,8 +679,14 @@ export function SourcesScreen() {
         setOptionsOpen((prev) => ({ ...prev, [id]: true }));
       }
 
-      if (colCount === 0 || file.size === 0) {
-        setEngineErrors((prev) => [...prev, EMPTY_TRAIN_MESSAGE]);
+      // Truly empty (0-byte) or 0-column without a parse error → MAT-154 copy.
+      // Unreadable non-empty files reuse the MAT-167 parse-error UI (MAT-169).
+      if (file.size === 0 || (!parseError && colCount === 0)) {
+        setEngineErrors((prev) =>
+          prev.includes(EMPTY_TRAIN_MESSAGE)
+            ? prev
+            : [...prev, EMPTY_TRAIN_MESSAGE],
+        );
       }
     } catch (err: unknown) {
       setEngineErrors((prev) => [...prev, engineMessage(err)]);
@@ -697,10 +723,29 @@ export function SourcesScreen() {
                     cols: enriched.cols,
                     rowCount: enriched.rowCount,
                     detected: enriched.detected,
+                    parseError: enriched.parseError,
                   }
                 : f,
             ),
           );
+          if (!enriched.parseError && enriched.cols.length > 0) {
+            setEngineErrors((prev) =>
+              prev.filter(
+                (e) =>
+                  !e.startsWith("Stored train source failed to parse:") &&
+                  e !== EMPTY_TRAIN_MESSAGE &&
+                  !(current.parseError && e === current.parseError),
+              ),
+            );
+          } else if (enriched.parseError) {
+            setEngineErrors((prev) =>
+              prev.filter(
+                (e) =>
+                  e !== EMPTY_TRAIN_MESSAGE &&
+                  !(current.parseError && e === current.parseError),
+              ),
+            );
+          }
         } catch (err: unknown) {
           if (optionsGenRef.current[fileId] !== gen) return;
           setEngineErrors((errs) => [...errs, engineMessage(err)]);
@@ -750,8 +795,8 @@ export function SourcesScreen() {
   const trainReady =
     trainHasPath && trainColumnCount > 0 && !trainParseError;
   const canNavigate = !sourcesLoading && trainReady;
-  const storedSourceHint = trainParseError
-    ? storedSourceFailedMessage(trainParseError)
+  const parseErrorHint = trainParseError
+    ? trainParseErrorDisplay(trainParseError)
     : null;
   const emptyTrainHint =
     !sourcesLoading &&
@@ -764,11 +809,16 @@ export function SourcesScreen() {
         : null;
   const navigateBlockReason = sourcesLoading
     ? "Loading workspace sources…"
-    : storedSourceHint
-      ? storedSourceHint
+    : parseErrorHint
+      ? parseErrorHint
       : !trainReady
         ? EMPTY_TRAIN_MESSAGE
         : undefined;
+
+  const openTrainOptions = () => {
+    if (!trainXFile) return;
+    setOptionsOpen((prev) => ({ ...prev, [trainXFile.id]: true }));
+  };
 
   const handleReinspectTrain = async () => {
     if (!trainXFile?.spec.path && !trainXFile?.path) return;
@@ -841,7 +891,7 @@ export function SourcesScreen() {
     const trainPath = buildResult.workspace.datasets.train.x.path;
     if (!trainPath || trainColumnCount === 0 || trainParseError) {
       const msg = trainParseError
-        ? storedSourceFailedMessage(trainParseError)
+        ? trainParseErrorDisplay(trainParseError)
         : EMPTY_TRAIN_MESSAGE;
       setEngineErrors((prev) => (prev.includes(msg) ? prev : [...prev, msg]));
       return;
@@ -1344,28 +1394,35 @@ export function SourcesScreen() {
             <span className="legend-merge">■ merged</span>
           </div>
 
-          {engineErrors.map((err, i) => (
-            <div key={i} className="engine-error-box" role="alert">
-              {err}
-            </div>
-          ))}
-          {storedSourceHint &&
-          !engineErrors.includes(storedSourceHint) ? (
+          {engineErrors
+            .filter(
+              (err) =>
+                err !== emptyTrainHint &&
+                err !== parseErrorHint &&
+                !(trainParseError && err === trainParseError),
+            )
+            .map((err, i) => (
+              <div key={i} className="engine-error-box" role="alert">
+                {err}
+              </div>
+            ))}
+          {parseErrorHint ? (
             <div
               className="engine-error-box"
               role="alert"
               data-train-parse-error="1"
             >
-              {storedSourceHint}
+              {parseErrorHint}
             </div>
           ) : null}
           {emptyTrainHint &&
+          emptyTrainHint !== parseErrorHint &&
           !engineErrors.includes(emptyTrainHint) ? (
             <div className="engine-error-box" role="status">
               {emptyTrainHint}
             </div>
           ) : null}
-          {storedSourceHint ? (
+          {parseErrorHint ? (
             <div className="sources-recovery-actions" role="group">
               <button
                 type="button"
@@ -1375,6 +1432,16 @@ export function SourcesScreen() {
               >
                 Re-inspect
               </button>
+              {trainXFile?.spec.kind === "csv" ? (
+                <button
+                  type="button"
+                  className="btn-outline-action"
+                  data-open-train-options="1"
+                  onClick={openTrainOptions}
+                >
+                  Options (on_bad_lines)
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn-outline-action"

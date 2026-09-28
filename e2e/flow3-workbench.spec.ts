@@ -72,7 +72,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   await page.getByRole("button", { name: "Open workbench →" }).click();
   await expect(page.getByLabel("Workbench")).toBeVisible();
   await waitForGridReady(page);
-  await expect(page.locator(".grid-th", { hasText: "age" })).toBeVisible({
+  await expect(page.getByRole("button", { name: "age, number" })).toBeVisible({
     timeout: 30_000,
   });
 
@@ -107,7 +107,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   await captureFlowScreenshot(page, "3-workbench", "01-grid.png");
 
   // 2. Right-click age -> Replace sentinels
-  const ageHeader = page.locator(".grid-th", { hasText: "age" }).first();
+  const ageHeader = page.getByRole("button", { name: "age, number" });
   await ageHeader.click({ button: "right" });
   await expect(page.getByRole("menu", { name: "Column menu" })).toBeVisible();
   await page.getByRole("menuitem", { name: /Replace sentinels/ }).click();

@@ -231,7 +231,9 @@ test.describe("MAT-152 wide datasets", () => {
     const exportBtn = page.getByRole("button", { name: "Export", exact: true });
     await expect(exportBtn).toBeVisible();
     await exportBtn.click({ timeout: 10_000 });
-    await expect(page.getByLabel("Export")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel("Export", { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
 
     const outDir = join(here, "screenshots", "mat152-ames", "export-out");
     await page.locator("#export-outdir").fill(outDir);

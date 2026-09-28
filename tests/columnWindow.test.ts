@@ -25,6 +25,16 @@ describe("columnWindow", () => {
     });
   });
 
+  it("mounts every column below the wide threshold (MAT-169)", () => {
+    const all = cols(13);
+    const w = columnWindow(all, 0, 400, 4);
+    expect(w.start).toBe(0);
+    expect(w.end).toBe(13);
+    expect(w.visible).toEqual(all);
+    expect(w.leftPad).toBe(0);
+    expect(w.rightPad).toBe(0);
+  });
+
   it("windows a wide header so only viewport columns mount", () => {
     // number kind → 130px; 800px viewport ≈ 6 cols + overscan 4 each side
     const all = cols(320);
@@ -49,6 +59,11 @@ describe("columnWindow", () => {
     const names = visibleColumnNames(cols(100), 0, 400, 1);
     expect(names[0]).toBe("c0");
     expect(names.length).toBeLessThan(20);
+  });
+
+  it("visibleColumnNames returns all names below the wide threshold", () => {
+    const names = visibleColumnNames(cols(13), 0, 200, 1);
+    expect(names).toHaveLength(13);
   });
 });
 

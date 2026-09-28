@@ -42,8 +42,10 @@ export interface SourceFileItem {
   /** JSON record_path candidates from file_inspect. */
   recordPaths?: RecordPathInfo[];
   /**
-   * Engine / kind-mismatch error for this stored path (MAT-167).
-   * When set, Sources must not treat the file as a healthy empty train.
+   * Engine / kind-mismatch error for this path (MAT-167 / MAT-169).
+   * Set on fresh upload when the engine cannot read the file, or on a stored
+   * workspace whose path is unreadable / kind-mismatched. When set, Sources
+   * must not treat the file as a healthy empty train.
    */
   parseError?: string | null;
 }
