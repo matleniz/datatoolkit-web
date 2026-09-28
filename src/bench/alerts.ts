@@ -24,6 +24,8 @@ export function colAlerts(profile: ColumnProfile | undefined): ColAlert[] {
   }
   if (profile.kind === "text" && profile.looks_like_dates) {
     A.push({ text: "text dates", tone: "info" });
+  } else if (profile.kind === "text" && profile.currency_as_text) {
+    A.push({ text: "currency as text", tone: "info" });
   } else if (profile.kind === "text" && profile.numbers_as_text) {
     A.push({ text: "numbers as text", tone: "info" });
   } else if (profile.kind === "text" && profile.variants) {

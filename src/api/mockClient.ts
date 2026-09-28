@@ -403,6 +403,7 @@ export class MockApiClient implements ApiClient {
         variants: null,
         looks_like_dates: name.includes("date"),
         numbers_as_text: role === "test" && name === "monthly_spend",
+        currency_as_text: null,
         skewed: false,
       })),
     });

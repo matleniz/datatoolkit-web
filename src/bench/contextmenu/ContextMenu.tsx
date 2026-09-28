@@ -170,6 +170,20 @@ export function ContextMenu() {
       run: () => openEd("parse_dates", { column: col }),
     });
   } else if (isTextKind(kind)) {
+    if (pr?.currency_as_text) {
+      const fmt = pr.currency_as_text;
+      items.push({
+        kind: "item",
+        text: "Parse as number…",
+        run: () =>
+          openEd("to_numeric", {
+            column: col,
+            decimal: fmt.decimal,
+            thousands: fmt.thousands,
+            percent: fmt.percent,
+          }),
+      });
+    }
     items.push({
       kind: "item",
       text: "Standardize text…",

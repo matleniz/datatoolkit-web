@@ -1,0 +1,11 @@
+order_id,quantity,item_name,item_price
+1,1,Chips,"$2.39 "
+1,2,Chicken Bowl,"$10.98 "
+2,1,Steak Burrito,"$9.25 "
+2,1,Chips and Guacamole,"$4.45 "
+3,3,Canned Soft Drink,"$3.75 "
+3,1,Chicken Bowl,"$8.75 "
+4,1,Veggie Bowl,"$11.25 "
+4,2,Chips,"$2.39 "
+5,1,Barbacoa Bowl,"$9.25 "
+5,1,Side of Chips,"$1.69 "

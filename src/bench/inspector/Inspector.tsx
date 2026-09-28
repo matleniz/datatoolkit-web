@@ -343,7 +343,19 @@ export function Inspector() {
         btn("Parse dates…", () => openEd("parse_dates", { column: c1 })),
       );
     }
-    if (isTextKind(k1) && pr?.numbers_as_text) {
+    if (isTextKind(k1) && pr?.currency_as_text) {
+      const fmt = pr.currency_as_text;
+      transform.push(
+        btn("Parse as number…", () =>
+          openEd("to_numeric", {
+            column: c1,
+            decimal: fmt.decimal,
+            thousands: fmt.thousands,
+            percent: fmt.percent,
+          }),
+        ),
+      );
+    } else if (isTextKind(k1) && pr?.numbers_as_text) {
       transform.push(
         btn("Cast to float…", () =>
           openEd("cast", { column: c1, dtype: "float" }),
