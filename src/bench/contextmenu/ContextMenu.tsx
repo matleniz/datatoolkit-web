@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { useAppDispatch, useAppState } from "../../state/AppStore";
+import { chartPrefillFromSelection } from "../dock/chartPrefill";
 import { isNumericKind, isTextKind, KIND_LABEL } from "../kinds";
 import { toEngineParams } from "../presets";
 import { useWorkbenchData } from "../WorkbenchData";
@@ -120,6 +121,29 @@ export function ContextMenu() {
       dispatch({ type: "PICK_COL", name: col });
       dispatch({ type: "SET_DIST_BY", by: null });
       dispatch({ type: "OPEN_TOOL", id: "dist" });
+    },
+  });
+  items.push({
+    kind: "item",
+    text: "Chart…",
+    run: () => {
+      const names = inMulti
+        ? [...selection.columns.filter((c) => c !== col), col]
+        : [col];
+      dispatch({ type: "CLEAR_SELECTION" });
+      for (const name of names) {
+        dispatch({ type: "PICK_COL", name, add: true });
+      }
+      const draftCols = names.map((name) => {
+        const m = columns.find((c) => c.name === name);
+        const k = m?.kind ?? profiles.get(name)?.kind ?? "text";
+        return { name, kind: k };
+      });
+      dispatch({
+        type: "SET_CHART_DRAFT",
+        draft: chartPrefillFromSelection(draftCols),
+      });
+      dispatch({ type: "OPEN_TOOL", id: "chart" });
     },
   });
   items.push({

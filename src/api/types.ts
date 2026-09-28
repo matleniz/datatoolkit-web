@@ -88,6 +88,8 @@ export interface DatasetSource {
   workspace: string;
   role?: "train" | "test";
   labeled?: boolean;
+  /** Replay only the first N steps; omit / null = every step (MAT-175). */
+  version?: number | null;
 }
 
 /** File-only sources usable as workspace X / y. */
@@ -175,6 +177,12 @@ export interface VariableSpec {
   column: string;
 }
 
+/** Saved chart builder spec (name + chart-key params without `source`). */
+export interface ChartSpec {
+  name: string;
+  params: Record<string, unknown>;
+}
+
 export type StepTarget = "train" | "test" | "both";
 
 export interface Step {
@@ -192,6 +200,11 @@ export interface Workspace {
   merges: MergeSpec[];
   variables: VariableSpec[];
   steps: Step[];
+  /**
+   * Saved chart specs (MAT-172). Front-owned until the engine Workspace
+   * gains a `charts` field (MAT-185); stripped on PUT and kept in localStorage.
+   */
+  charts?: ChartSpec[];
 }
 
 export interface ExportRequest {

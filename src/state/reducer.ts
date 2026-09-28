@@ -1,4 +1,15 @@
-import type { CsvSource, Step, VariableSpec, Workspace } from "../api/types";
+import type {
+  ChartSpec,
+  CsvSource,
+  Step,
+  VariableSpec,
+  Workspace,
+} from "../api/types";
+import type { ChartDraft } from "../bench/dock/chartPrefill";
+import {
+  hydrateWorkspaceCharts,
+  saveStoredCharts,
+} from "../bench/dock/chartStorage";
 import type { WorkspaceSourcesState } from "../screens/sources/sourcesLogic";
 
 export type ScreenId = "sources" | "align" | "bench";
@@ -14,7 +25,8 @@ export type ToolId =
   | "outliers"
   | "target"
   | "drift"
-  | "feature_selection";
+  | "feature_selection"
+  | "chart";
 
 /** Course stage ids used by the Suggestions filter (prototype STAGES). */
 export type CourseStage =
@@ -92,6 +104,8 @@ export interface AppState {
    * Keys are `toolId` or `toolId::column` (see `toolParamsKey`).
    */
   toolParams: Record<string, Record<string, unknown>>;
+  /** Current Chart tool draft (MAT-172); null until first open / prefill. */
+  chartDraft: ChartDraft | null;
   /** Last engine error message while replaying / previewing (verbatim). */
   benchError: string | null;
   /**
@@ -113,6 +127,7 @@ export function emptyWorkspace(name = "untitled"): Workspace {
     merges: [],
     variables: [],
     steps: [],
+    charts: [],
   };
 }
 
@@ -141,6 +156,7 @@ export const initialState: AppState = {
   targetColumn: "churn",
   distBy: null,
   toolParams: {},
+  chartDraft: null,
   benchError: null,
   filesByWorkspace: {},
 };
@@ -219,6 +235,11 @@ export type AppAction =
       params: Record<string, unknown>;
     }
   | { type: "CLEAR_TOOL_PARAMS"; key: string }
+  | { type: "SET_CHART_DRAFT"; draft: ChartDraft | null }
+  | { type: "PATCH_CHART_DRAFT"; patch: Partial<ChartDraft> }
+  | { type: "ADD_CHART"; chart: ChartSpec }
+  | { type: "REMOVE_CHART"; name: string }
+  | { type: "SET_CHARTS"; charts: ChartSpec[] }
   | { type: "SET_BENCH_ERROR"; message: string | null }
   | { type: "ADD_STEP"; step: Step }
   | { type: "REMOVE_STEP"; index: number };
@@ -272,7 +293,8 @@ function withVariables(
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case "SET_WORKSPACE": {
-      const ws = action.workspace;
+      const raw = action.workspace;
+      const ws = raw ? hydrateWorkspaceCharts(raw) : null;
       let targetColumn = state.targetColumn;
       if (ws?.datasets.train.target_column) {
         targetColumn = ws.datasets.train.target_column;
@@ -601,6 +623,69 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const next = { ...state.toolParams };
       delete next[action.key];
       return { ...state, toolParams: next };
+    }
+    case "SET_CHART_DRAFT":
+      return { ...state, chartDraft: action.draft };
+    case "PATCH_CHART_DRAFT": {
+      if (!state.chartDraft) {
+        return {
+          ...state,
+          chartDraft: {
+            chart: "histogram",
+            x: null,
+            y: null,
+            color: null,
+            facet_row: null,
+            facet_col: null,
+            size: null,
+            columns: [],
+            agg: null,
+            trendline: false,
+            log_x: false,
+            log_y: false,
+            bins: 30,
+            sample_size: 10_000,
+            ...action.patch,
+          },
+        };
+      }
+      return {
+        ...state,
+        chartDraft: { ...state.chartDraft, ...action.patch },
+      };
+    }
+    case "ADD_CHART": {
+      if (!state.workspace) return state;
+      const charts = [
+        ...(state.workspace.charts ?? []).filter(
+          (c) => c.name !== action.chart.name,
+        ),
+        action.chart,
+      ];
+      saveStoredCharts(state.workspace.name, charts);
+      return {
+        ...state,
+        workspace: { ...state.workspace, charts },
+      };
+    }
+    case "REMOVE_CHART": {
+      if (!state.workspace) return state;
+      const charts = (state.workspace.charts ?? []).filter(
+        (c) => c.name !== action.name,
+      );
+      saveStoredCharts(state.workspace.name, charts);
+      return {
+        ...state,
+        workspace: { ...state.workspace, charts },
+      };
+    }
+    case "SET_CHARTS": {
+      if (!state.workspace) return state;
+      saveStoredCharts(state.workspace.name, action.charts);
+      return {
+        ...state,
+        workspace: { ...state.workspace, charts: action.charts },
+      };
     }
     case "SET_BENCH_ERROR":
       return { ...state, benchError: action.message };

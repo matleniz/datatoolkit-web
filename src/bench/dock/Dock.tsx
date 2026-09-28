@@ -3,6 +3,7 @@ import type { CSSProperties, DragEvent } from "react";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import type { DockPos, DockSize, ToolId } from "../../state/reducer";
 import { DOCK_SIZES, toolDef } from "../toolrail/tools";
+import { ChartDockBody } from "./ChartDockBody";
 import { DockWindowBody } from "./DockWindowBody";
 import "./Dock.css";
 
@@ -153,7 +154,7 @@ function DockWindow({ id }: { id: ToolId }) {
         </button>
       </div>
       <div className="dock-body">
-        <DockWindowBody id={id} />
+        {id === "chart" ? <ChartDockBody /> : <DockWindowBody id={id} />}
       </div>
     </section>
   );
