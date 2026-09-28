@@ -6,6 +6,7 @@ import {
   captureFlowScreenshot,
   clearFlowScreenshots,
   openWorkbench,
+  waitForGridReady,
 } from "./helpers";
 
 test("Flow 6: export (manifest shown, files exist on disk)", async ({
@@ -69,5 +70,6 @@ test("Flow 6: export (manifest shown, files exist on disk)", async ({
   expect(diskManifest.workspace).toBe("churn");
 
   // Capture screenshot with the manifest clearly visible
+  await waitForGridReady(page);
   await captureFlowScreenshot(page, "6-export", "01-export-manifest.png");
 });

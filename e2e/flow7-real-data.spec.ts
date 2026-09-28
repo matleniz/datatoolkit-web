@@ -1,7 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { captureFlowScreenshot, clearFlowScreenshots } from "./helpers";
+import {
+  captureFlowScreenshot,
+  clearFlowScreenshots,
+  waitForGridReady,
+} from "./helpers";
 
 const REAL_DATA_DIR = "/mnt/c/Users/mat24/Downloads";
 const X_TRAIN = join(REAL_DATA_DIR, "X_train_6ZIKlTY.csv");
@@ -123,8 +127,17 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
     page.getByRole("main").getByText("Train / test alignment"),
   ).toBeVisible();
 
-  // Never screenshot a loading state
-  await expect(page.getByText("Loading…")).toHaveCount(0);
+  // Wait for the alignment table to render (not the loading placeholder).
+  await expect(page.locator(".align-table-row").first()).toBeVisible({
+    timeout: 90_000,
+  });
+  await expect(
+    page.locator(".align-table-row", { hasText: "patient_id" }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".align-status-badge").first()).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByText("Loading alignment report...")).toHaveCount(0);
 
   // Screenshot 02: Alignment screen with real data
   await captureFlowScreenshot(page, "7-real-data", "02-parkinson-align.png");
@@ -132,7 +145,7 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
   // 6. Navigate to Workbench
   await page.getByRole("button", { name: "Open workbench →" }).click();
   await expect(page.getByLabel("Workbench")).toBeVisible();
-  await expect(page.getByLabel("Data grid")).toBeVisible({ timeout: 60_000 });
+  await waitForGridReady(page);
 
   // Pipeline raw shape '55603 × 13'
   const rawNode = page
@@ -166,11 +179,8 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
     page.getByRole("tab", { name: /Suggestions · [1-9]/ }),
   ).toBeVisible();
 
-  // Never screenshot a loading state
-  await expect(page.locator(".dock-window:has-text('Loading…')")).toHaveCount(0);
-  await expect(page.getByText("Loading workspace…")).toBeHidden();
-
   // Screenshot 03: Workbench with real data
+  await waitForGridReady(page);
   await captureFlowScreenshot(
     page,
     "7-real-data",

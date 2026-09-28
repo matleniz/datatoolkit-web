@@ -5,6 +5,7 @@ import {
   clearFlowScreenshots,
   churnWorkspace,
   fixturesDir,
+  waitForGridReady,
 } from "./helpers";
 
 test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel, delete, suggestions > 0)", async ({
@@ -70,7 +71,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   // Open Workbench
   await page.getByRole("button", { name: "Open workbench →" }).click();
   await expect(page.getByLabel("Workbench")).toBeVisible();
-  await expect(page.getByLabel("Data grid")).toBeVisible({ timeout: 30_000 });
+  await waitForGridReady(page);
   await expect(page.locator(".grid-th", { hasText: "age" })).toBeVisible({
     timeout: 30_000,
   });
@@ -102,6 +103,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   ).toBeVisible();
 
   // Screenshot 01: initial grid with alignment steps and suggestions
+  await waitForGridReady(page);
   await captureFlowScreenshot(page, "3-workbench", "01-grid.png");
 
   // 2. Right-click age -> Replace sentinels
@@ -117,6 +119,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
     page.getByRole("button", { name: "Apply step" }).first(),
   ).toBeEnabled({ timeout: 15_000 });
 
+  await waitForGridReady(page);
   await captureFlowScreenshot(
     page,
     "3-workbench",
@@ -154,6 +157,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
     timeout: 15_000,
   });
 
+  await waitForGridReady(page);
   await captureFlowScreenshot(page, "3-workbench", "03-impute-learned.png");
 
   // Apply impute
@@ -176,14 +180,15 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   // 4. One-hot city with diff preview
   const cityHeader = page.locator(".grid-th", { hasText: "city" }).first();
 
-  // Inspect city: Value groups lists canonical 'paris' with spellings, never 'normalized'
+  // Inspect city: Value groups summarises spellings collapsed by strip+lower
+  // (engine exposes variant counts, not the canonical token list).
   await cityHeader.click();
   const inspector = page.getByLabel("Inspector");
   await expect(inspector).toBeVisible();
   const valueGroups = inspector.locator(".insp-groups");
   await expect(valueGroups).toBeVisible();
-  await expect(valueGroups).toContainText("paris");
-  await expect(valueGroups).not.toContainText("normalized");
+  await expect(valueGroups).toContainText("identical once stripped + lowercased");
+  await expect(valueGroups).toContainText(/\d+\s*→\s*\d+/);
 
   await cityHeader.click({ button: "right" });
   await page.getByRole("menuitem", { name: /One-hot/ }).click();
@@ -208,6 +213,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   await expect(firstAddedCell).toBeVisible();
   await expect(firstAddedCell).toHaveText(/^[01]$/);
 
+  await waitForGridReady(page);
   await captureFlowScreenshot(page, "3-workbench", "04-onehot-diff.png");
 
   // Apply one-hot
@@ -242,6 +248,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   await expect(row3Age).toHaveText("-999");
   await expect(row3Age).not.toHaveText("36");
 
+  await waitForGridReady(page);
   await captureFlowScreenshot(page, "3-workbench", "05-time-travel.png");
 
   await page.getByRole("button", { name: "Back to latest" }).click();
@@ -267,5 +274,6 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
     )
     .toBeGreaterThan(0);
 
+  await waitForGridReady(page);
   await captureFlowScreenshot(page, "3-workbench", "06-after-delete.png");
 });

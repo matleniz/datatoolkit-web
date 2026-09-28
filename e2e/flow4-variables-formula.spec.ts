@@ -3,6 +3,7 @@ import {
   captureFlowScreenshot,
   clearFlowScreenshots,
   openWorkbench,
+  waitForGridReady,
 } from "./helpers";
 
 test("Flow 4: variables + formula (create @spend_median, formula step, syntax error shown, value visible on Test view)", async ({
@@ -35,6 +36,7 @@ test("Flow 4: variables + formula (create @spend_median, formula step, syntax er
   const varValue = await varCard.locator(".var-value").innerText();
   expect(Number(varValue)).toBeGreaterThan(0);
 
+  await waitForGridReady(page);
   await captureFlowScreenshot(
     page,
     "4-variables-formula",
@@ -59,6 +61,7 @@ test("Flow 4: variables + formula (create @spend_median, formula step, syntax er
   const applyBtn = page.getByRole("button", { name: "Apply step" }).first();
   await expect(applyBtn).toBeDisabled();
 
+  await waitForGridReady(page);
   await captureFlowScreenshot(
     page,
     "4-variables-formula",
@@ -80,6 +83,7 @@ test("Flow 4: variables + formula (create @spend_median, formula step, syntax er
     timeout: 15_000,
   });
 
+  await waitForGridReady(page);
   await captureFlowScreenshot(
     page,
     "4-variables-formula",
@@ -112,6 +116,7 @@ test("Flow 4: variables + formula (create @spend_median, formula step, syntax er
   await expect(testFirstCell).toBeVisible();
   await expect(testFirstCell).toHaveText("2.25");
 
+  await waitForGridReady(page);
   await captureFlowScreenshot(
     page,
     "4-variables-formula",

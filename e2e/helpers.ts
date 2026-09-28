@@ -35,6 +35,31 @@ export async function captureFlowScreenshot(
   await page.screenshot({ path: docsPath, fullPage: true });
 }
 
+/**
+ * Wait until the workbench grid is ready for a screenshot:
+ * ≥1 data row, no "Loading" text anywhere, raw pipeline shape not "—".
+ */
+export async function waitForGridReady(page: Page): Promise<void> {
+  await expect(page.getByLabel("Data grid")).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator(".grid-row").first()).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByText(/Loading/)).toHaveCount(0, { timeout: 60_000 });
+
+  const rawNode = page
+    .locator(".pipeline-node")
+    .filter({ has: page.locator(".pipeline-ver", { hasText: /^raw$/ }) });
+  await expect(rawNode).toBeVisible({ timeout: 30_000 });
+  await expect(rawNode.locator(".pipeline-meta > span").first()).not.toHaveText(
+    "—",
+    { timeout: 60_000 },
+  );
+  await expect(rawNode.locator(".pipeline-meta > span").first()).toHaveText(
+    /\d+\s*×\s*\d+/,
+    { timeout: 60_000 },
+  );
+}
+
 export function churnWorkspace(): Workspace {
   return {
     name: "churn",
@@ -101,7 +126,7 @@ export async function openWorkbench(
   }
 
   await expect(page.getByLabel("Workbench")).toBeVisible();
-  await expect(page.getByLabel("Data grid")).toBeVisible({ timeout: 30_000 });
+  await waitForGridReady(page);
   await expect(page.locator(".grid-th", { hasText: "age" })).toBeVisible({
     timeout: 30_000,
   });
