@@ -236,9 +236,29 @@ export function Inspector() {
                   }),
                 )
               : null}
-            {btn("Formula with these…", () =>
-              openEd("formula", { expr: numSel.join(" + ") }),
+            {btn("New feature…", () =>
+              openEd("formula", { expr: "", name: "" }),
             )}
+            {numSel.length
+              ? btn("Polynomial features…", () =>
+                  openEd("polynomial", {
+                    columns: numSel.slice(),
+                    degree: 2,
+                  }),
+                )
+              : null}
+            {numSel.length
+              ? btn("Power transform…", () =>
+                  openEd("power_transform", { columns: numSel.slice() }),
+                )
+              : null}
+            {numSel.length
+              ? btn("Quantile transform…", () =>
+                  openEd("quantile_transform", {
+                    columns: numSel.slice(),
+                  }),
+                )
+              : null}
             {numSel.length
               ? btn(`Scale ${numSel.length}…`, () =>
                   openEd("scale", {

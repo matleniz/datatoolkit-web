@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import type { ColumnKind, JsonValue } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
-import { formulaPlaceholder } from "./formulaPlaceholder";
+import { FormulaField } from "./FormulaField";
 import { formatLearnedState } from "../format";
 import { isNumericKind } from "../kinds";
 import { targetColumnOf } from "../left/datasetSource";
@@ -22,20 +22,6 @@ import {
 } from "../stages";
 import { useWorkbenchData } from "../WorkbenchData";
 
-const FUNCS_OPS = [
-  "log1p(",
-  "sqrt(",
-  "abs(",
-  "min(",
-  "max(",
-  "+",
-  "−",
-  "×",
-  "÷",
-  "(",
-  ")",
-] as const;
-
 const WHAT: Record<string, string> = {
   replace_sentinels:
     "Turns placeholder values such as -999 or \"N/A\" into real missing values.",
@@ -51,6 +37,14 @@ const WHAT: Record<string, string> = {
     "Drops columns whose train missing fraction exceeds a threshold. The same columns are dropped on test.",
   formula:
     "Your own column from an expression over columns, numbers, functions and @variables.",
+  polynomial:
+    "Expand numeric columns into polynomial features (readable names like a^2, a*b).",
+  power_transform:
+    "Yeo-Johnson / Box-Cox power map; lambdas learned on train.",
+  quantile_transform:
+    "Map values to a uniform or normal distribution using train quantiles.",
+  spline:
+    "Expand numeric columns into B-spline basis functions (knots learned on train).",
   drop_columns: "Removes columns from the frames the step applies to.",
   drop_duplicates:
     "Removes rows identical on the subset. keep first/last requires sort_by.",
@@ -181,6 +175,10 @@ export function StepEditor() {
                       op === "impute_knn" ||
                       op === "impute_iterative" ||
                       op === "interactions" ||
+                      op === "polynomial" ||
+                      op === "power_transform" ||
+                      op === "quantile_transform" ||
+                      op === "spline" ||
                       op === "align_to_train"
                     ) {
                       preset.columns = selection.columns.slice();
@@ -454,7 +452,6 @@ function Field({
   variables: { name: string; stat: string; column: string }[];
 }) {
   const dispatch = useAppDispatch();
-  const { preview, previewError } = useWorkbenchData();
 
   if (field.whenStrategyConstant && params.strategy !== "constant") {
     return null;
@@ -828,75 +825,15 @@ function Field({
   }
 
   if (field.widget === "formula") {
-    const expr = String(params.expr ?? "");
-    const insert = (txt: string) => {
-      const next = `${expr.replace(/\s+$/, "")} ${txt}`.trim();
-      set("expr", next);
-    };
-    const numCols = columns.filter((c) => isNumericKind(c.kind));
-    let status =
-      "Columns, numbers, @variables, + − × ÷ ^ ( ), log log1p exp sqrt abs round min max.";
-    let statusClass = "formula-status muted";
-    if (previewError) {
-      status = previewError;
-      statusClass = "formula-status err";
-    } else if (preview && params.name) {
-      status = "OK · expression accepted by the engine";
-      statusClass = "formula-status ok";
-    }
     return (
-      <div className="ed-field">
-        <span className="ed-label">{field.label}</span>
-        <input
-          aria-label="Expression"
-          className="ed-input formula"
-          value={expr}
-          placeholder={formulaPlaceholder(columns, variables)}
-          onChange={(e) => set("expr", e.target.value)}
-        />
-        <span className="ed-help">Insert a column</span>
-        <div className="chip-row">
-          {numCols.map((c) => (
-            <button
-              key={c.name}
-              type="button"
-              className="tiny-chip"
-              onClick={() => insert(c.name)}
-            >
-              {c.name}
-            </button>
-          ))}
-        </div>
-        <span className="ed-help">Variables, functions, operators</span>
-        <div className="chip-row">
-          {variables.map((v) => (
-            <button
-              key={v.name}
-              type="button"
-              className="tiny-chip var"
-              onClick={() => insert(`@${v.name}`)}
-            >
-              @{v.name}
-            </button>
-          ))}
-          {FUNCS_OPS.map((t) => {
-            const ins =
-              ({ "−": "-", "×": "*", "÷": "/" } as Record<string, string>)[t] ??
-              t;
-            return (
-              <button
-                key={t}
-                type="button"
-                className="tiny-chip"
-                onClick={() => insert(ins)}
-              >
-                {t}
-              </button>
-            );
-          })}
-        </div>
-        <div className={statusClass}>{status}</div>
-      </div>
+      <FormulaField
+        label={field.label}
+        expr={String(params.expr ?? "")}
+        onExprChange={(next) => set("expr", next)}
+        columns={columns}
+        variables={variables}
+        nameSet={Boolean(params.name)}
+      />
     );
   }
 

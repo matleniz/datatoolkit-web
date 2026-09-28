@@ -46,6 +46,14 @@ export function ContextMenu() {
   const inMulti =
     selection.columns.includes(col) && selection.columns.length > 1;
   const pr = profiles.get(col);
+  const multiNumeric = inMulti
+    ? selection.columns.filter((name) => {
+        const k =
+          columns.find((c) => c.name === name)?.kind ??
+          profiles.get(name)?.kind;
+        return isNumericKind(k);
+      })
+    : [];
 
   const openEd = (
     op: string,
@@ -229,6 +237,38 @@ export function ContextMenu() {
   });
   items.push({ kind: "sep" });
 
+  // Multi-selection feature ops (MAT-173): prefill from the numeric selection.
+  if (multiNumeric.length >= 1) {
+    items.push({
+      kind: "item",
+      text: "New feature…",
+      hint: "ƒ",
+      run: () => openEd("formula", { expr: "", name: "" }),
+    });
+    items.push({
+      kind: "item",
+      text: "Polynomial features…",
+      run: () =>
+        openEd("polynomial", {
+          columns: multiNumeric.slice(),
+          degree: 2,
+        }),
+    });
+    items.push({
+      kind: "item",
+      text: "Power transform…",
+      run: () =>
+        openEd("power_transform", { columns: multiNumeric.slice() }),
+    });
+    items.push({
+      kind: "item",
+      text: "Quantile transform…",
+      run: () =>
+        openEd("quantile_transform", { columns: multiNumeric.slice() }),
+    });
+    items.push({ kind: "sep" });
+  }
+
   if (kind === "number") {
     items.push({
       kind: "item",
@@ -237,7 +277,7 @@ export function ContextMenu() {
       run: () => dispatch({ type: "SET_LEFT_TAB", tab: "vars" }),
     });
   }
-  if (isNumericKind(kind)) {
+  if (isNumericKind(kind) && !multiNumeric.length) {
     items.push({
       kind: "item",
       text: "Use in formula",

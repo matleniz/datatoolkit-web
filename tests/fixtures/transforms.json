@@ -92,7 +92,7 @@
   {
     "op": "formula",
     "title": "Formula",
-    "description": "Add a float column from a whitelisted expression over columns, numbers, functions and train-fitted @variables.",
+    "description": "Add a float column from a whitelisted expression over columns, numbers, functions (incl. where/clip/comparisons) and train-fitted @variables.",
     "needs_target": false
   },
   {
@@ -156,6 +156,24 @@
     "needs_target": false
   },
   {
+    "op": "polynomial",
+    "title": "Polynomial features",
+    "description": "Replace numeric columns by their polynomial expansion (readable names like a^2, a*b; output capped).",
+    "needs_target": false
+  },
+  {
+    "op": "power_transform",
+    "title": "Power transform",
+    "description": "Power-map numeric columns (Yeo-Johnson / Box-Cox), fitted on train.",
+    "needs_target": false
+  },
+  {
+    "op": "quantile_transform",
+    "title": "Quantile transform",
+    "description": "Map columns to a uniform/normal distribution via train quantiles.",
+    "needs_target": false
+  },
+  {
     "op": "rename",
     "title": "Rename columns",
     "description": "Rename columns via an old -> new mapping.",
@@ -186,6 +204,12 @@
     "needs_target": true
   },
   {
+    "op": "spline",
+    "title": "Spline features",
+    "description": "Replace numeric columns by B-spline bases fitted on train knots.",
+    "needs_target": false
+  },
+  {
     "op": "standardize_text",
     "title": "Standardize text",
     "description": "Strip / lowercase text columns and map variants to canonical values.",
@@ -194,7 +218,7 @@
   {
     "op": "to_numeric",
     "title": "Parse numeric text",
-    "description": "Parse text numbers (currency symbols, thousands / decimal separators,",
+    "description": "Parse text numbers (currency symbols, thousands / decimal separators",
     "needs_target": false
   }
 ]

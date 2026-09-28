@@ -1,0 +1,45 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Numeric columns to transform in place",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Columns",
+      "type": "array",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "output_distribution": {
+      "default": "uniform",
+      "description": "Map train quantiles to this distribution",
+      "enum": [
+        "uniform",
+        "normal"
+      ],
+      "title": "Output Distribution",
+      "type": "string"
+    },
+    "n_quantiles": {
+      "default": 1000,
+      "description": "Number of quantiles learned on train",
+      "minimum": 2,
+      "title": "N Quantiles",
+      "type": "integer"
+    },
+    "random_state": {
+      "default": 0,
+      "description": "Seed for subsampled quantiles",
+      "title": "Random State",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "columns"
+  ],
+  "title": "QuantileTransformParams",
+  "type": "object"
+}

@@ -35,6 +35,10 @@ export function toEngineParams(
     op === "impute_knn" ||
     op === "impute_iterative" ||
     op === "interactions" ||
+    op === "polynomial" ||
+    op === "power_transform" ||
+    op === "quantile_transform" ||
+    op === "spline" ||
     op === "align_to_train" ||
     op === "onehot" ||
     op === "clip" ||
