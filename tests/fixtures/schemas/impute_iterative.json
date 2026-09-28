@@ -1,0 +1,35 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Numeric columns, each regressed on the others",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Columns",
+      "type": "array",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "max_iter": {
+      "default": 10,
+      "description": "Imputation rounds",
+      "minimum": 1,
+      "title": "Max Iter",
+      "type": "integer"
+    },
+    "random_state": {
+      "default": 0,
+      "description": "Seed (fixed: replay is exact)",
+      "title": "Random State",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "columns"
+  ],
+  "title": "ImputeIterativeParams",
+  "type": "object"
+}

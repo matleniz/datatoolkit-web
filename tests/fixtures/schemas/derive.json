@@ -1,0 +1,59 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "a": {
+      "description": "Left column",
+      "title": "A",
+      "type": "string",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "column"
+    },
+    "b": {
+      "description": "Right column",
+      "title": "B",
+      "type": "string",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "column"
+    },
+    "op": {
+      "description": "a/b, a-b, a*b, or days from a to b (both parsed as dates)",
+      "enum": [
+        "ratio",
+        "difference",
+        "product",
+        "days_between"
+      ],
+      "title": "Op",
+      "type": "string"
+    },
+    "name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Output column (default '<a>_<op>_<b>')",
+      "title": "Name"
+    },
+    "min_denominator": {
+      "default": 1.0,
+      "description": "ratio only: |b| is clipped up to this value (no inf)",
+      "exclusiveMinimum": 0,
+      "title": "Min Denominator",
+      "type": "number"
+    }
+  },
+  "required": [
+    "a",
+    "b",
+    "op"
+  ],
+  "title": "DeriveParams",
+  "type": "object"
+}

@@ -1,1 +1,59 @@
-{"additionalProperties":false,"properties":{"columns":{"description":"Columns to fill","items":{"type":"string"},"minItems":1,"title":"Columns","type":"array","x-dtk-dtype":"any","x-dtk-source":"step","x-dtk-widget":"columns"},"strategy":{"default":"median","description":"Fill value learned on train: median / mean (numeric), most_frequent (any), constant (fill_value)","enum":["median","mean","most_frequent","constant"],"title":"Strategy","type":"string"},"fill_value":{"anyOf":[{"type":"string"},{"type":"number"},{"type":"integer"},{"type":"null"}],"default":null,"description":"strategy \"constant\": the value; default \"MISSING\" for non-numeric columns, 0 for numeric ones","title":"Fill Value"},"add_indicator":{"default":false,"description":"Add a binary <col>_was_missing column next to each column","title":"Add Indicator","type":"boolean"}},"required":["columns"],"title":"ImputeParams","type":"object"}
+{
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Columns to fill",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Columns",
+      "type": "array",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "strategy": {
+      "default": "median",
+      "description": "Fill value learned on train: median / mean (numeric), most_frequent (any), constant (fill_value)",
+      "enum": [
+        "median",
+        "mean",
+        "most_frequent",
+        "constant"
+      ],
+      "title": "Strategy",
+      "type": "string"
+    },
+    "fill_value": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "strategy \"constant\": the value; default \"MISSING\" for non-numeric columns, 0 for numeric ones",
+      "title": "Fill Value"
+    },
+    "add_indicator": {
+      "default": false,
+      "description": "Add a binary <col>_was_missing column next to each column",
+      "title": "Add Indicator",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "columns"
+  ],
+  "title": "ImputeParams",
+  "type": "object"
+}

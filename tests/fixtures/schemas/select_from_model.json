@@ -1,0 +1,99 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "target": {
+      "description": "Target column (read at fit only)",
+      "title": "Target",
+      "type": "string",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "column"
+    },
+    "model": {
+      "default": "tree",
+      "description": "l1: L1 logistic / LassoCV on standardized columns (zeroes coefficients); tree: random-forest importance",
+      "enum": [
+        "l1",
+        "tree"
+      ],
+      "title": "Model",
+      "type": "string"
+    },
+    "threshold": {
+      "anyOf": [
+        {
+          "enum": [
+            "mean",
+            "median"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Keep importance >= this: \"mean\", \"median\" or a number (default: 1e-5 for l1, mean for tree)",
+      "title": "Threshold"
+    },
+    "max_features": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Keep at most this many (best first)",
+      "title": "Max Features"
+    },
+    "task": {
+      "default": "auto",
+      "description": "auto | classification | regression",
+      "enum": [
+        "auto",
+        "classification",
+        "regression"
+      ],
+      "title": "Task",
+      "type": "string"
+    },
+    "columns": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Candidate numeric columns; default every numeric column but the target",
+      "title": "Columns",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "random_state": {
+      "default": 0,
+      "description": "Model seed",
+      "title": "Random State",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "target"
+  ],
+  "title": "SelectFromModelParams",
+  "type": "object"
+}

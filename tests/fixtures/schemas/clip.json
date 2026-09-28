@@ -1,1 +1,38 @@
-{"additionalProperties":false,"properties":{"columns":{"description":"Numeric columns to clip","items":{"type":"string"},"minItems":1,"title":"Columns","type":"array","x-dtk-dtype":"numeric","x-dtk-source":"step","x-dtk-widget":"columns"},"lower":{"default":1.0,"description":"Lower percentile","maximum":100,"minimum":0,"title":"Lower","type":"number"},"upper":{"default":99.0,"description":"Upper percentile","maximum":100,"minimum":0,"title":"Upper","type":"number"}},"required":["columns"],"title":"ClipParams","type":"object"}
+{
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Numeric columns to clip",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Columns",
+      "type": "array",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "lower": {
+      "default": 1.0,
+      "description": "Lower percentile",
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Lower",
+      "type": "number"
+    },
+    "upper": {
+      "default": 99.0,
+      "description": "Upper percentile",
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Upper",
+      "type": "number"
+    }
+  },
+  "required": [
+    "columns"
+  ],
+  "title": "ClipParams",
+  "type": "object"
+}

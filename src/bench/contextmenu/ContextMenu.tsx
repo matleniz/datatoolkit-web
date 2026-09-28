@@ -166,6 +166,11 @@ export function ContextMenu() {
         text: "One-hot…",
         run: () => openEd("onehot", { column: col }),
       });
+      items.push({
+        kind: "item",
+        text: "Ordinal…",
+        run: () => openEd("ordinal", { column: col }),
+      });
     }
   }
 

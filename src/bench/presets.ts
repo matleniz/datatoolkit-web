@@ -32,6 +32,10 @@ export function toEngineParams(
 
   if (
     op === "impute" ||
+    op === "impute_knn" ||
+    op === "impute_iterative" ||
+    op === "interactions" ||
+    op === "align_to_train" ||
     op === "onehot" ||
     op === "clip" ||
     op === "log1p" ||
@@ -42,6 +46,30 @@ export function toEngineParams(
     if (typeof p.column === "string") {
       const { column, ...rest } = p;
       return { ...rest, columns: [column] };
+    }
+  }
+
+  if (op === "drop_missing_target") {
+    if (!p.target && typeof p.column === "string") {
+      return { ...p, target: p.column };
+    }
+  }
+
+  if (op === "ffill") {
+    if (!p.sort_by && typeof p.column === "string") {
+      return { ...p, sort_by: p.column };
+    }
+  }
+
+  if (op === "bin") {
+    if (typeof p.edges === "string") {
+      p.edges = p.edges
+        .split(",")
+        .map((s) => Number(s.trim()))
+        .filter((n) => !Number.isNaN(n));
+    }
+    if (typeof p.labels === "string") {
+      p.labels = p.labels.split(",").map((s) => s.trim()).filter(Boolean);
     }
   }
 
@@ -102,6 +130,42 @@ export function toEngineParams(
       name: p.name ?? "",
       expr: p.expr ?? "",
       variables: p.variables ?? p.vars ?? [],
+    };
+  }
+
+  if (op === "filter_rows") {
+    const conds =
+      (p.conditions as Array<Record<string, unknown>> | undefined) ?? [];
+    const cleaned = conds.map((c) => {
+      const col = String(c.column ?? "");
+      const operator = String(c.op ?? "eq");
+      let val = c.value;
+      if (operator === "isna" || operator === "notna") {
+        val = null;
+      } else if (operator === "isin" || operator === "notin") {
+        if (typeof val === "string") {
+          val = val
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((s) => (Number.isNaN(Number(s)) ? s : Number(s)));
+        } else if (!Array.isArray(val)) {
+          val = val !== undefined && val !== null ? [val] : [];
+        }
+      } else if (typeof val === "string" && val.trim() !== "") {
+        const num = Number(val);
+        if (!Number.isNaN(num)) val = num;
+      }
+      return {
+        column: col,
+        op: operator,
+        value: val,
+      };
+    });
+    return {
+      ...p,
+      conditions: cleaned,
+      combine: p.combine ?? "and",
     };
   }
 

@@ -1,0 +1,75 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Numeric columns to align",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Columns",
+      "type": "array",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "mode": {
+      "default": "shift_mean",
+      "description": "shift_mean / shift_median: move the frame's mean / median onto train's; standardize: also rescale std; robust: median + IQR; quantile: map onto train's quantile function",
+      "enum": [
+        "shift_mean",
+        "shift_median",
+        "standardize",
+        "robust",
+        "quantile"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "group": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Column: align per group (statistics fitted on train); unseen or small groups fall back to the global statistics",
+      "title": "Group",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "column"
+    },
+    "min_rows": {
+      "default": 30,
+      "description": "Fewer non-null frame values than this leaves the column (or group) unchanged",
+      "minimum": 1,
+      "title": "Min Rows",
+      "type": "integer"
+    },
+    "on_small": {
+      "default": "skip",
+      "description": "A column with fewer than min_rows values",
+      "enum": [
+        "skip",
+        "raise"
+      ],
+      "title": "On Small",
+      "type": "string"
+    },
+    "n_quantiles": {
+      "default": 101,
+      "description": "Train quantiles kept for mode 'quantile'",
+      "minimum": 2,
+      "title": "N Quantiles",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "columns"
+  ],
+  "title": "AlignToTrainParams",
+  "type": "object"
+}

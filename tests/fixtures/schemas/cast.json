@@ -1,0 +1,19 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "dtypes": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Column -> target dtype (e.g. 'int64', 'category')",
+      "minProperties": 1,
+      "title": "Dtypes",
+      "type": "object"
+    }
+  },
+  "required": [
+    "dtypes"
+  ],
+  "title": "CastParams",
+  "type": "object"
+}

@@ -1,0 +1,188 @@
+[
+  {
+    "op": "align_to_train",
+    "title": "Align to train statistics",
+    "description": "Realign a shifted / broken numeric column onto train's distribution.",
+    "needs_target": false
+  },
+  {
+    "op": "bin",
+    "title": "Bin column",
+    "description": "Bin a numeric column by explicit edges or train quantiles.",
+    "needs_target": false
+  },
+  {
+    "op": "cast",
+    "title": "Cast column types",
+    "description": "Cast columns to the given dtypes; a failing conversion raises.",
+    "needs_target": false
+  },
+  {
+    "op": "clip",
+    "title": "Clip outliers",
+    "description": "Clip columns to percentile bounds learned on train (state: bounds).",
+    "needs_target": false
+  },
+  {
+    "op": "cyclical",
+    "title": "Cyclical encoding",
+    "description": "Encode a cyclic column as '<col>_sin' and '<col>_cos'.",
+    "needs_target": false
+  },
+  {
+    "op": "datetime_parts",
+    "title": "Datetime parts",
+    "description": "Extract hour / dayofweek / month / year / is_weekend from a datetime column.",
+    "needs_target": false
+  },
+  {
+    "op": "derive",
+    "title": "Derive column",
+    "description": "Add a column combining two columns (ratio, difference, product, days_between).",
+    "needs_target": false
+  },
+  {
+    "op": "drop_columns",
+    "title": "Drop columns",
+    "description": "Remove the listed columns.",
+    "needs_target": false
+  },
+  {
+    "op": "drop_correlated",
+    "title": "Drop correlated",
+    "description": "Drop one column of each highly correlated pair (keeps the more target-correlated).",
+    "needs_target": true
+  },
+  {
+    "op": "drop_duplicates",
+    "title": "Drop duplicates",
+    "description": "Drop duplicate rows, keeping first/last by an explicit sort order.",
+    "needs_target": false
+  },
+  {
+    "op": "drop_low_variance",
+    "title": "Drop low variance",
+    "description": "Drop numeric columns whose train variance is at or below a threshold.",
+    "needs_target": false
+  },
+  {
+    "op": "drop_missing_target",
+    "title": "Drop rows with missing target",
+    "description": "Drop rows whose target is missing (state: rows dropped at fit).",
+    "needs_target": false
+  },
+  {
+    "op": "ffill",
+    "title": "Forward fill",
+    "description": "Carry the last seen value forward in sort_by order (never backward).",
+    "needs_target": false
+  },
+  {
+    "op": "filter_rows",
+    "title": "Filter rows",
+    "description": "Keep the rows matching the conditions (no free-form expressions).",
+    "needs_target": false
+  },
+  {
+    "op": "formula",
+    "title": "Formula",
+    "description": "Add a float column from a whitelisted expression over columns, numbers, functions and train-fitted @variables.",
+    "needs_target": false
+  },
+  {
+    "op": "group_agg",
+    "title": "Group aggregate",
+    "description": "Join per-group statistics (fitted on train) onto each row.",
+    "needs_target": false
+  },
+  {
+    "op": "impute",
+    "title": "Impute",
+    "description": "Fill missing values with a statistic learned on train (median, mean, mode, constant).",
+    "needs_target": false
+  },
+  {
+    "op": "impute_iterative",
+    "title": "Impute (iterative)",
+    "description": "Fill numeric columns by regressing each one on the others (MICE-style).",
+    "needs_target": false
+  },
+  {
+    "op": "impute_knn",
+    "title": "Impute (KNN)",
+    "description": "Fill numeric columns from the k nearest train rows (scale features first).",
+    "needs_target": false
+  },
+  {
+    "op": "interactions",
+    "title": "Interactions",
+    "description": "Add pairwise products '<a>*<b>' of the listed columns.",
+    "needs_target": false
+  },
+  {
+    "op": "log1p",
+    "title": "Log(1 + x)",
+    "description": "Replace x by log(1 + x) to tame a right skew (refuses negative values).",
+    "needs_target": false
+  },
+  {
+    "op": "onehot",
+    "title": "One-hot encode",
+    "description": "One 0/1 column per train category, in place of the column.",
+    "needs_target": false
+  },
+  {
+    "op": "ordinal",
+    "title": "Ordinal encode",
+    "description": "Code each category by its rank in an explicit order (unknown -> -1).",
+    "needs_target": false
+  },
+  {
+    "op": "parse_dates",
+    "title": "Parse dates",
+    "description": "Parse columns to datetime; unparseable values raise, never become NaT.",
+    "needs_target": false
+  },
+  {
+    "op": "pca",
+    "title": "PCA",
+    "description": "Replace numeric columns by their principal components pc1..pcN (fitted on train).",
+    "needs_target": false
+  },
+  {
+    "op": "rename",
+    "title": "Rename columns",
+    "description": "Rename columns via an old -> new mapping.",
+    "needs_target": false
+  },
+  {
+    "op": "replace_sentinels",
+    "title": "Replace sentinels with NaN",
+    "description": "Turn sentinel values (-999, 'N/A', ...) into NaN, per column.",
+    "needs_target": false
+  },
+  {
+    "op": "scale",
+    "title": "Scale",
+    "description": "Rescale numeric columns with train statistics (standard, minmax, robust, maxabs).",
+    "needs_target": false
+  },
+  {
+    "op": "select_from_model",
+    "title": "Select from model",
+    "description": "Embedded: keep the columns an L1 model or a random forest finds important.",
+    "needs_target": true
+  },
+  {
+    "op": "select_k_best",
+    "title": "Select k best",
+    "description": "Filter: keep the k best columns by mutual information or F-test with the target.",
+    "needs_target": true
+  },
+  {
+    "op": "standardize_text",
+    "title": "Standardize text",
+    "description": "Strip / lowercase text columns and map variants to canonical values.",
+    "needs_target": false
+  }
+]

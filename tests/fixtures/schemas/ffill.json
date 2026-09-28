@@ -1,0 +1,51 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "sort_by": {
+      "description": "Column giving the order (e.g. a timestamp)",
+      "title": "Sort By",
+      "type": "string",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "column"
+    },
+    "columns": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Columns to fill; default all but sort_by",
+      "title": "Columns",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "limit": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Max consecutive missing values filled",
+      "title": "Limit"
+    }
+  },
+  "required": [
+    "sort_by"
+  ],
+  "title": "FfillParams",
+  "type": "object"
+}

@@ -1,0 +1,29 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Numeric columns to combine (at most 10)",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10,
+      "minItems": 2,
+      "title": "Columns",
+      "type": "array",
+      "x-dtk-dtype": "numeric",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "columns"
+    },
+    "interaction_only": {
+      "default": true,
+      "description": "Only products of distinct columns (no squares)",
+      "title": "Interaction Only",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "columns"
+  ],
+  "title": "InteractionsParams",
+  "type": "object"
+}

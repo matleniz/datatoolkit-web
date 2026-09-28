@@ -71,6 +71,7 @@ export function SuggestionsTab() {
         const results: { keyId: string; result: Result }[] = [];
         const errors: string[] = [];
         for (const keyId of SUGGESTION_KEYS) {
+          if (keyId === "feature_selection" && !target) continue;
           try {
             const schema = await apiClient.keySchema(keyId);
             const params = keyParamsFromSchema(schema, available);

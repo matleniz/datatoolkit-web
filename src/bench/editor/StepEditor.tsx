@@ -1,8 +1,10 @@
+import { useEffect } from "react";
 import type { ColumnKind, JsonValue } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { formulaPlaceholder } from "./formulaPlaceholder";
 import { formatLearnedState } from "../format";
-import { isNumericKind } from "../kinds";
+import { isNumericKind, isTextKind } from "../kinds";
+import { targetColumnOf } from "../left/datasetSource";
 import { resolveOp, toEngineParams } from "../presets";
 import {
   filterColumnsByDtype,
@@ -54,6 +56,8 @@ const WHAT: Record<string, string> = {
   ordinal: "Replaces each category by its rank in the order you set.",
   log1p: "Replaces x by log(1 + x).",
   parse_dates: "Parses text into dates.",
+  filter_rows:
+    "Keep rows matching conditions (e.g. column > value or column not missing).",
 };
 
 /** W2 — step editor (replaces inspector when open). */
@@ -62,6 +66,7 @@ export function StepEditor() {
   const dispatch = useAppDispatch();
   const {
     columns,
+    profiles,
     transforms,
     schemaFields,
     preview,
@@ -113,7 +118,26 @@ export function StepEditor() {
                     op.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
                   const sel1 = selection.columns[0];
                   const preset: Record<string, unknown> = {};
+                  const target = workspace ? targetColumnOf(workspace) : null;
+                  if (target) {
+                    if (
+                      [
+                        "select_k_best",
+                        "select_from_model",
+                        "drop_missing_target",
+                        "drop_low_variance",
+                        "drop_correlated",
+                        "pca",
+                        "group_agg",
+                      ].includes(op)
+                    ) {
+                      preset.target = target;
+                    }
+                  }
                   if (sel1) {
+                    const pr = profiles.get(sel1);
+                    const isNum = pr ? isNumericKind(pr.kind) : false;
+                    const isTxt = pr ? isTextKind(pr.kind) : false;
                     if (
                       [
                         "impute",
@@ -128,13 +152,61 @@ export function StepEditor() {
                       preset.column = sel1;
                       if (op === "replace_sentinels") preset.values = [-999];
                     }
-                    if (op === "scale" || op === "drop_columns") {
+                    if (op === "ordinal" && isTxt) {
+                      preset.column = sel1;
+                    }
+                    if ((op === "bin" || op === "cyclical") && isNum) {
+                      preset.column = sel1;
+                    }
+                    if (
+                      op === "scale" ||
+                      op === "drop_columns" ||
+                      op === "impute_knn" ||
+                      op === "impute_iterative" ||
+                      op === "interactions" ||
+                      op === "align_to_train"
+                    ) {
                       preset.columns = selection.columns.slice();
+                    }
+                    if (op === "ffill") {
+                      preset.sort_by = sel1;
+                    }
+                    if (op === "group_agg") {
+                      preset.group = sel1;
+                      if (selection.columns.length > 1) {
+                        preset.value = selection.columns[1];
+                      }
+                    }
+                    if (op === "drop_missing_target" && !preset.target) {
+                      preset.target = sel1;
                     }
                     if (op === "rename" || op === "cast") {
                       preset.column = sel1;
                     }
                     if (op === "formula") preset.expr = sel1;
+                    if (op === "filter_rows") {
+                      const pr = profiles.get(sel1);
+                      const isNum = pr ? isNumericKind(pr.kind) : false;
+                      preset.conditions = [
+                        {
+                          column: sel1,
+                          op: isNum ? "gt" : "notna",
+                          value: isNum ? 0 : null,
+                        },
+                      ];
+                      preset.combine = "and";
+                    }
+                  }
+                  if (op === "filter_rows" && !preset.conditions) {
+                    const col = columns[0]?.name ?? "";
+                    preset.conditions = [
+                      {
+                        column: col,
+                        op: "gt",
+                        value: 0,
+                      },
+                    ];
+                    preset.combine = "and";
                   }
                   return (
                     <button
@@ -391,6 +463,83 @@ function Field({
     );
   }
 
+  if (field.widget === "enum_list") {
+    const current = (params[field.key] as string[] | null | undefined) ?? [];
+    return (
+      <div className="ed-field">
+        <span className="ed-label">{field.label}</span>
+        <div className="chip-row">
+          {(field.enumValues ?? []).map((o) => {
+            const on = current.includes(o);
+            return (
+              <button
+                key={o}
+                type="button"
+                className={on ? "chip on" : "chip"}
+                onClick={() => {
+                  const a = [...current];
+                  const i = a.indexOf(o);
+                  if (i >= 0) a.splice(i, 1);
+                  else a.push(o);
+                  set(field.key, a);
+                }}
+              >
+                {o}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (field.widget === "number_list" || field.widget === "string_list") {
+    const rawVal = params[field.key];
+    const isNum = field.widget === "number_list";
+    const display = Array.isArray(rawVal)
+      ? rawVal.join(", ")
+      : rawVal === null || rawVal === undefined
+        ? ""
+        : String(rawVal);
+    return (
+      <div className="ed-field">
+        <span className="ed-label">{field.label}</span>
+        <input
+          aria-label={field.label}
+          className="ed-input"
+          value={display}
+          placeholder={isNum ? "e.g. 0, 10, 20, 50" : "e.g. a, b, c"}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw.trim() === "") {
+              set(field.key, null);
+              return;
+            }
+            if (isNum) {
+              const nums = raw.split(",").map((s) => Number(s.trim()));
+              if (nums.some((n) => Number.isNaN(n))) {
+                set(field.key, raw);
+              } else {
+                set(field.key, nums);
+              }
+            } else {
+              set(field.key, raw.split(",").map((s) => s.trim()).filter(Boolean));
+            }
+          }}
+          onBlur={() => {
+            if (isNum && typeof params[field.key] === "string") {
+              const nums = String(params[field.key])
+                .split(",")
+                .map((s) => Number(s.trim()))
+                .filter((n) => !Number.isNaN(n));
+              set(field.key, nums.length ? nums : null);
+            }
+          }}
+        />
+      </div>
+    );
+  }
+
   if (field.widget === "bool") {
     return (
       <div className="ed-field">
@@ -622,6 +771,17 @@ function Field({
     );
   }
 
+  if (field.widget === "conditions") {
+    return (
+      <ConditionsField
+        field={field}
+        params={params}
+        columns={columns}
+        onChange={(conditions) => set("conditions", conditions)}
+      />
+    );
+  }
+
   return null;
 }
 
@@ -687,6 +847,16 @@ function CategoriesField({
   // Seed order from top_values when column picked empty — left to caller via profiles.
   const { profiles } = useWorkbenchData();
 
+  useEffect(() => {
+    if (col && order.length === 0 && profiles.has(col)) {
+      const pr = profiles.get(col);
+      const seeded = pr?.top_values?.map((t) => t.value) ?? [];
+      if (seeded.length > 0) {
+        onChange({ [col]: seeded });
+      }
+    }
+  }, [col, order.length, profiles, onChange]);
+
   const pickCol = (name: string) => {
     const pr = profiles.get(name);
     const seeded =
@@ -748,6 +918,207 @@ function CategoriesField({
       {!order.length ? (
         <span className="ed-help">Pick a column first.</span>
       ) : null}
+    </div>
+  );
+}
+
+function ConditionsField({
+  field,
+  params,
+  columns,
+  onChange,
+}: {
+  field: EditorField;
+  params: Record<string, unknown>;
+  columns: { name: string; kind: ColumnKind }[];
+  onChange: (
+    conditions: Array<{ column: string; op: string; value: unknown }>,
+  ) => void;
+}) {
+  const conditions =
+    (params.conditions as
+      | Array<{ column: string; op: string; value: unknown }>
+      | undefined) ?? [];
+  const operators = field.enumValues ?? [
+    "eq",
+    "ne",
+    "gt",
+    "ge",
+    "lt",
+    "le",
+    "isin",
+    "notin",
+    "isna",
+    "notna",
+  ];
+
+  useEffect(() => {
+    if (conditions.length === 0 && columns.length > 0) {
+      onChange([
+        {
+          column: columns[0]?.name ?? "",
+          op: "gt",
+          value: 0,
+        },
+      ]);
+    }
+  }, [conditions.length, columns, onChange]);
+
+  const updateCondition = (
+    index: number,
+    patch: Partial<{ column: string; op: string; value: unknown }>,
+  ) => {
+    const next = conditions.map((c, i) => {
+      if (i !== index) return c;
+      const updated = { ...c, ...patch };
+      if (patch.op === "isna" || patch.op === "notna") {
+        updated.value = null;
+      } else if (
+        (patch.op === "isin" || patch.op === "notin") &&
+        !Array.isArray(updated.value)
+      ) {
+        updated.value =
+          updated.value !== undefined && updated.value !== null
+            ? [updated.value]
+            : [];
+      }
+      return updated;
+    });
+    onChange(next);
+  };
+
+  const removeCondition = (index: number) => {
+    onChange(conditions.filter((_, i) => i !== index));
+  };
+
+  const addCondition = () => {
+    const firstCol = columns[0]?.name ?? "";
+    onChange([
+      ...conditions,
+      {
+        column: firstCol,
+        op: "gt",
+        value: 0,
+      },
+    ]);
+  };
+
+  return (
+    <div className="ed-field" data-conditions-field>
+      <span className="ed-label">{field.label}</span>
+      <div
+        className="conditions-list"
+        style={{ display: "flex", flexDirection: "column", gap: 8 }}
+      >
+        {conditions.map((c, idx) => {
+          const isNullOp = c.op === "isna" || c.op === "notna";
+          const isListOp = c.op === "isin" || c.op === "notin";
+          const displayVal =
+            c.value === null || c.value === undefined
+              ? ""
+              : Array.isArray(c.value)
+                ? c.value.join(", ")
+                : String(c.value);
+
+          return (
+            <div
+              key={idx}
+              className="condition-row"
+              data-condition-row={idx}
+              style={{ display: "flex", alignItems: "center", gap: 6 }}
+            >
+              <select
+                aria-label={`Condition ${idx + 1} column`}
+                className="ed-select"
+                value={c.column}
+                onChange={(e) =>
+                  updateCondition(idx, { column: e.target.value })
+                }
+                style={{ flex: 1, minWidth: 100 }}
+              >
+                {columns.map((col) => (
+                  <option key={col.name} value={col.name}>
+                    {col.name}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                aria-label={`Condition ${idx + 1} operator`}
+                className="ed-select"
+                value={c.op}
+                onChange={(e) => updateCondition(idx, { op: e.target.value })}
+                style={{ width: 100 }}
+              >
+                {operators.map((op) => (
+                  <option key={op} value={op}>
+                    {op}
+                  </option>
+                ))}
+              </select>
+
+              {!isNullOp ? (
+                <input
+                  aria-label={`Condition ${idx + 1} value`}
+                  className="ed-input"
+                  style={{ flex: 1, minWidth: 80 }}
+                  placeholder={isListOp ? "val1, val2" : "value"}
+                  value={displayVal}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (isListOp) {
+                      const list = raw
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean)
+                        .map((s) => (Number.isNaN(Number(s)) ? s : Number(s)));
+                      updateCondition(idx, { value: list });
+                    } else {
+                      const num = Number(raw);
+                      const parsed =
+                        raw.trim() !== "" && !Number.isNaN(num) ? num : raw;
+                      updateCondition(idx, { value: parsed });
+                    }
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    flex: 1,
+                    color: "var(--dtk-muted)",
+                    fontSize: 12,
+                    paddingLeft: 4,
+                  }}
+                >
+                  ∅
+                </div>
+              )}
+
+              {conditions.length > 1 ? (
+                <button
+                  type="button"
+                  className="small-chip"
+                  aria-label={`Remove condition ${idx + 1}`}
+                  onClick={() => removeCondition(idx)}
+                  title="Remove condition"
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 6 }}>
+        <button
+          type="button"
+          className="link-btn"
+          onClick={addCondition}
+          aria-label="Add condition"
+        >
+          + Add condition
+        </button>
+      </div>
     </div>
   );
 }

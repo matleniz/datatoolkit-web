@@ -1,0 +1,34 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "column": {
+      "description": "Datetime (or date-like) column",
+      "title": "Column",
+      "type": "string",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "column"
+    },
+    "parts": {
+      "description": "Parts to extract (each becomes '<column>_<part>')",
+      "items": {
+        "enum": [
+          "hour",
+          "dayofweek",
+          "month",
+          "year",
+          "is_weekend"
+        ],
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Parts",
+      "type": "array"
+    }
+  },
+  "required": [
+    "column"
+  ],
+  "title": "DatetimePartsParams",
+  "type": "object"
+}

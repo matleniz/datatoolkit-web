@@ -66,21 +66,39 @@ export const OP_STAGE: Record<string, StageId> = {
   parse_dates: "import",
   rename: "import",
   cast: "import",
+  align_to_train: "import",
   drop_duplicates: "clean",
   replace_sentinels: "clean",
   standardize_text: "clean",
   map_value: "clean",
   impute: "clean",
   clip: "clean",
+  ffill: "clean",
+  impute_knn: "clean",
+  impute_iterative: "clean",
+  drop_missing_target: "clean",
+  filter_rows: "clean",
   onehot: "transform",
   ordinal: "transform",
   log1p: "transform",
   scale: "transform",
   datetime_parts: "transform",
   derive: "transform",
+  bin: "transform",
+  interactions: "transform",
+  group_agg: "transform",
+  cyclical: "transform",
   drop_columns: "select",
+  drop_low_variance: "select",
+  drop_correlated: "select",
+  select_k_best: "select",
+  select_from_model: "select",
+  pca: "select",
   formula: "custom",
 };
+
+/** Ops excluded from the generic step picker, with an explicit reason. */
+export const EXCLUDED_OPS: Record<string, string> = {};
 
 /** Ops that learn state on train (fitted badge). */
 export const FITTING_OPS = new Set([
@@ -98,6 +116,8 @@ export const FITTING_OPS = new Set([
   "drop_low_variance",
   "drop_correlated",
   "align_to_train",
+  "drop_missing_target",
+  "group_agg",
 ]);
 
 export function stepStage(op: string, align?: boolean): StageId {
@@ -125,6 +145,21 @@ export function opTitle(op: string): string {
     datetime_parts: "Date parts",
     derive: "Derive",
     map_value: "Map a value",
+    ffill: "Forward fill",
+    impute_knn: "Impute (KNN)",
+    impute_iterative: "Impute (iterative)",
+    drop_missing_target: "Drop rows with missing target",
+    filter_rows: "Filter rows",
+    bin: "Bin column",
+    interactions: "Interactions",
+    group_agg: "Group aggregate",
+    cyclical: "Cyclical encoding",
+    drop_low_variance: "Drop low variance",
+    drop_correlated: "Drop correlated",
+    select_k_best: "Select k best",
+    select_from_model: "Select from model",
+    pca: "PCA",
+    align_to_train: "Align to train",
   };
   return map[op] ?? op;
 }
@@ -199,6 +234,27 @@ export function stepSubLabel(
     }
     case "drop_duplicates":
       return `exact rows · keep ${String(params.keep ?? "none")}`;
+    case "filter_rows": {
+      const conds = params.conditions as
+        | Array<{ column?: string; op?: string; value?: unknown }>
+        | undefined;
+      if (!conds || !conds.length) return "";
+      const parts = conds
+        .map((c) => {
+          if (!c.column) return "";
+          if (c.op === "isna") return `${c.column} is missing`;
+          if (c.op === "notna") return `${c.column} not missing`;
+          const val =
+            c.value === null || c.value === undefined
+              ? ""
+              : Array.isArray(c.value)
+                ? `[${c.value.join(", ")}]`
+                : String(c.value);
+          return `${c.column} ${c.op ?? "=="} ${val}`;
+        })
+        .filter(Boolean);
+      return parts.join(params.combine === "or" ? " or " : " and ");
+    }
     case "ordinal": {
       const cats = params.categories as Record<string, unknown[]> | undefined;
       if (!cats) return "";
@@ -217,6 +273,45 @@ export function stepSubLabel(
       return `${String(params.column ?? "")} · month, dayofweek`;
     case "derive":
       return `${String(params.a)} ${String(params.op ?? params.kind)} ${String(params.b)}`;
+    case "ffill": {
+      const cols = (params.columns as string[] | undefined) ?? [];
+      const s = params.sort_by ? `sort by ${String(params.sort_by)}` : "";
+      return cols.length ? `${cols.join(", ")} · ${s}` : s;
+    }
+    case "impute_knn": {
+      const cols = (params.columns as string[] | undefined) ?? [];
+      return `${cols.join(", ")} · k=${String(params.n_neighbors ?? 5)}`;
+    }
+    case "impute_iterative": {
+      const cols = (params.columns as string[] | undefined) ?? [];
+      return `${cols.join(", ")} · iter=${String(params.max_iter ?? 10)}`;
+    }
+    case "drop_missing_target":
+      return String(params.target ?? "");
+    case "bin":
+      return `${String(params.column ?? "")} · ${String(params.mode ?? "qcut")}`;
+    case "interactions": {
+      const cols = (params.columns as string[] | undefined) ?? [];
+      return cols.join(" × ");
+    }
+    case "group_agg":
+      return `${String(params.value ?? "")} by ${String(params.group ?? "")}`;
+    case "cyclical":
+      return `${String(params.column ?? "")} · period ${String(params.period ?? "")}`;
+    case "drop_low_variance":
+      return `var ≤ ${String(params.threshold ?? 0)}`;
+    case "drop_correlated":
+      return `|r| ≥ ${String(params.threshold ?? 0.95)}`;
+    case "select_k_best":
+      return `k=${String(params.k ?? "")} · ${String(params.score ?? "mutual_info")}`;
+    case "select_from_model":
+      return `${String(params.model ?? "tree")}`;
+    case "pca":
+      return `n=${String(params.n_components ?? "0.95")}`;
+    case "align_to_train": {
+      const cols = (params.columns as string[] | undefined) ?? [];
+      return `${cols.join(", ")} · ${String(params.mode ?? "shift_mean")}`;
+    }
     default:
       return op;
   }
