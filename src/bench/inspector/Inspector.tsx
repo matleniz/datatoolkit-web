@@ -281,7 +281,25 @@ export function Inspector() {
     const analyse = [
       btn(
         "Distribution",
-        () => dispatch({ type: "OPEN_TOOL", id: "dist" }),
+        () => {
+          dispatch({ type: "SET_DIST_BY", by: null });
+          dispatch({ type: "OPEN_TOOL", id: "dist" });
+        },
+        { tool: true },
+      ),
+      btn(
+        "Distribution by…",
+        () => {
+          const names = columns.map((c) => c.name);
+          const by =
+            targetColumn &&
+            targetColumn !== c1 &&
+            names.includes(targetColumn)
+              ? targetColumn
+              : names.find((n) => n !== c1) ?? null;
+          dispatch({ type: "SET_DIST_BY", by });
+          dispatch({ type: "OPEN_TOOL", id: "dist" });
+        },
         { tool: true },
       ),
       btn(

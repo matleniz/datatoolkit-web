@@ -6,7 +6,9 @@ import {
   waitForGridReady,
 } from "./helpers";
 
-test("MAT-146: Outliers window follows column selection", async ({ page }) => {
+test("MAT-146 / MAT-159: Outliers window follows column selection via engine columns=", async ({
+  page,
+}) => {
   test.setTimeout(120_000);
   clearFlowScreenshots("8-column-scope");
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -36,16 +38,16 @@ test("MAT-146: Outliers window follows column selection", async ({ page }) => {
     "data-scope-mode",
     "selection",
   );
-  // Only the selected column appears in the scoped list (row labels or col).
-  const cols = outliers.locator(".list-row[data-col]");
-  await expect(cols.first()).toBeVisible();
-  const colNames = await cols.evaluateAll((nodes) =>
-    [...new Set(nodes.map((n) => n.getAttribute("data-col")))],
-  );
-  expect(colNames).toEqual(["monthly_spend"]);
-  // Engine all-columns ResultView must not be shown while scoped.
-  await expect(outliers.locator("[data-engine-key]")).toHaveCount(0);
-  await expect(outliers.getByText("outliers_per_column")).toHaveCount(0);
+  // Scoped path uses the engine with columns=[selection] (MAT-159).
+  await expect(outliers.locator('[data-engine-key="outliers"]')).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(outliers.getByText("outliers_per_column")).toBeVisible();
+  const scopedTable = outliers.locator(".result-table-block", {
+    hasText: "outliers_per_column",
+  });
+  await expect(scopedTable.getByText("monthly_spend")).toBeVisible();
+  await expect(scopedTable.getByText("sessions")).toHaveCount(0);
 
   await waitForGridReady(page);
   await captureFlowScreenshot(
@@ -66,17 +68,14 @@ test("MAT-146: Outliers window follows column selection", async ({ page }) => {
     "sessions",
     { timeout: 30_000 },
   );
-  const cols2 = await outliers
-    .locator(".list-row[data-col]")
-    .evaluateAll((nodes) =>
-      [...new Set(nodes.map((n) => n.getAttribute("data-col")))],
-    );
-  // sessions may have zero outliers → message path without list rows
-  if (cols2.length) {
-    expect(cols2).toEqual(["sessions"]);
-  } else {
-    await expect(outliers.getByText(/sessions/)).toBeVisible();
-  }
+  await expect(outliers.locator('[data-engine-key="outliers"]')).toBeVisible({
+    timeout: 30_000,
+  });
+  const sessionsTable = outliers.locator(".result-table-block", {
+    hasText: "outliers_per_column",
+  });
+  await expect(sessionsTable.getByText("sessions")).toBeVisible();
+  await expect(sessionsTable.getByText("monthly_spend")).toHaveCount(0);
   await expect(outliers.locator('[data-outliers-col="monthly_spend"]')).toHaveCount(
     0,
   );
@@ -101,4 +100,9 @@ test("MAT-146: Outliers window follows column selection", async ({ page }) => {
     timeout: 30_000,
   });
   await expect(outliers.getByText("outliers_per_column")).toBeVisible();
+  const allTable = outliers.locator(".result-table-block", {
+    hasText: "outliers_per_column",
+  });
+  await expect(allTable.getByText("monthly_spend")).toBeVisible();
+  await expect(allTable.getByText("sessions")).toBeVisible();
 });

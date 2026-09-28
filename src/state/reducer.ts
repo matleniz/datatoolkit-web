@@ -80,6 +80,13 @@ export interface AppState {
   /* ---------- W2 workbench-core (MAT-134) ---------- */
   /** Target column name (y), mirrored for inspector / grid target glyph. */
   targetColumn: string | null;
+  /**
+   * Optional split column for the Distribution dock (`column_distribution.by`).
+   * Null = no split (native histogram). Set by "Distribution by…" or the
+   * window's split-by control. The workspace target (incl. y-file join name)
+   * is the usual default when opening Distribution by….
+   */
+  distBy: string | null;
   /** Last engine error message while replaying / previewing (verbatim). */
   benchError: string | null;
   /**
@@ -127,6 +134,7 @@ export const initialState: AppState = {
   alignToDecideCount: null,
   /* W2 */
   targetColumn: "churn",
+  distBy: null,
   benchError: null,
   filesByWorkspace: {},
 };
@@ -197,6 +205,7 @@ export type AppAction =
   | { type: "CLEAR_WORKSPACE_FILES"; name: string }
   /* W2 workbench-core */
   | { type: "SET_TARGET_COLUMN"; name: string | null }
+  | { type: "SET_DIST_BY"; by: string | null }
   | { type: "SET_BENCH_ERROR"; message: string | null }
   | { type: "ADD_STEP"; step: Step }
   | { type: "REMOVE_STEP"; index: number };
@@ -564,6 +573,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     /* ---------- W2 workbench-core ---------- */
     case "SET_TARGET_COLUMN":
       return { ...state, targetColumn: action.name };
+    case "SET_DIST_BY":
+      return { ...state, distBy: action.by };
     case "SET_BENCH_ERROR":
       return { ...state, benchError: action.message };
     case "ADD_STEP": {

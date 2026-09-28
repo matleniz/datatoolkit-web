@@ -99,6 +99,43 @@ export function churnWorkspace(): Workspace {
   };
 }
 
+/** Titanic demo (Survived on X as target_column) — MAT-147 distribution by. */
+export function titanicWorkspace(): Workspace {
+  return {
+    name: "titanic",
+    datasets: {
+      train: {
+        x: { kind: "csv", path: join(fixturesDir, "titanic_train.csv") },
+        target_column: "Survived",
+      },
+    },
+    label: { mode: "order" },
+    merges: [],
+    variables: [],
+    steps: [],
+  };
+}
+
+/**
+ * Titanic with Survived as a separate y file (label column renamed `target`
+ * to match the Studio y-file convention used by targetColumnOf).
+ */
+export function titanicYFileWorkspace(): Workspace {
+  return {
+    name: "titanic_y",
+    datasets: {
+      train: {
+        x: { kind: "csv", path: join(fixturesDir, "titanic_x.csv") },
+        y: { kind: "csv", path: join(fixturesDir, "titanic_y.csv") },
+      },
+    },
+    label: { mode: "order" },
+    merges: [],
+    variables: [],
+    steps: [],
+  };
+}
+
 /**
  * 60+ column train/test pair with mismatches at the bottom of the align report
  * (type mismatch, missing in test, extra in test). Used by scroll regression.
@@ -168,4 +205,37 @@ export async function openWorkbench(
       { timeout: 30_000 },
     )
     .toBeGreaterThan(0);
+}
+
+/** Load a custom workspace into the workbench (e2e helpers for non-churn sets). */
+export async function openWorkspaceBench(
+  page: Page,
+  workspace: Workspace,
+  readyCol: string,
+): Promise<void> {
+  await page.goto("/");
+  await expect(page.getByText("Loading workspace…")).toBeHidden({
+    timeout: 60_000,
+  });
+  await page.waitForFunction(
+    () => typeof window.__DTK_DISPATCH__ === "function",
+  );
+  await page.evaluate((ws) => {
+    const d = window.__DTK_DISPATCH__!;
+    d({ type: "SET_WORKSPACE", workspace: ws });
+    d({ type: "SET_SCREEN", screen: "bench" });
+    d({ type: "CLEAR_SELECTION" });
+    d({ type: "SET_DIST_BY", by: null });
+  }, workspace);
+  await page.waitForFunction(async () => {
+    const p = window.__DTK_WORKSPACE_SAVED__;
+    if (!p) return false;
+    await p;
+    return true;
+  });
+  await expect(page.getByLabel("Workbench")).toBeVisible();
+  await waitForGridReady(page);
+  await expect(page.locator(".grid-th", { hasText: readyCol })).toBeVisible({
+    timeout: 30_000,
+  });
 }

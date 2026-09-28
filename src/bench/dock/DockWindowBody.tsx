@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { ColumnProfile, Result, WorkspaceRow } from "../../api/types";
 import { EngineError } from "../../api/types";
-import { useAppState } from "../../state/AppStore";
+import { useAppDispatch, useAppState } from "../../state/AppStore";
 import type { ToolId } from "../../state/reducer";
 import { datasetSource, targetColumnOf } from "../left/datasetSource";
 import { keyParamsFromSchema } from "../left/keyParams";
@@ -15,9 +15,8 @@ import {
   SCOPEABLE_TOOLS,
   engineColumnsParam,
   isNumericKind,
-  listOutlierRows,
-  maxAbs,
   outliersBoundLabel,
+  schemaHasBy,
   schemaHasColumns,
   selectedNumericColumns,
 } from "./columnScope";
@@ -85,12 +84,13 @@ function topBars(
   }));
 }
 
-/** Engine keys that declare a `columns` param (or always run unscoped). */
+/** Engine keys that always run through run_key (dist joins when split-by is set). */
 const ENGINE_TOOLS = new Set<ToolId>([
   "outliers",
   "target",
   "drift",
   "feature_selection",
+  "dist",
 ]);
 const COMPARE_STATS = ["mean", "median", "std", "min", "max"] as const;
 
@@ -116,7 +116,8 @@ function ScopeToggle({
 }
 
 export function DockWindowBody({ id }: { id: ToolId }) {
-  const { workspace, selection, role, viewVersion } = useAppState();
+  const { workspace, selection, role, viewVersion, distBy } = useAppState();
+  const dispatch = useAppDispatch();
   const bench = useWorkbenchData();
   const [profiles, setProfiles] = useState<ColumnProfile[]>([]);
   const [rows, setRows] = useState<WorkspaceRow[]>([]);
@@ -137,6 +138,9 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     ? effectiveVersion(workspace, viewVersion)
     : 0;
   const showScopeToggle = SCOPEABLE_TOOLS.has(id);
+  /** Split-by for Distribution: engine `by` (target / any column). */
+  const splitBy = distBy && distBy !== focus ? distBy : null;
+  const runDistEngine = id === "dist" && Boolean(splitBy);
 
   useEffect(() => {
     if (!workspace?.datasets.train.x.path) {
@@ -225,10 +229,17 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         if (id === "dist") {
           if (!focus || !profColumns.some((p) => p.name === focus)) {
             setMsg("Select a column to see its distribution.");
+            return;
+          }
+          if (splitBy) {
+            setBound(
+              `bound to ${focus} · split by ${splitBy} · key column_distribution`,
+            );
+            // Fall through to engine run with by=.
           } else {
             setBound(`bound to ${focus}`);
+            return;
           }
-          return;
         }
 
         if (id === "missing") {
@@ -252,21 +263,15 @@ export function DockWindowBody({ id }: { id: ToolId }) {
               );
               return;
             }
-            if (selNum.length === 1) {
-              const oc = selNum[0]!;
-              const p = profColumns.find((c) => c.name === oc);
-              setBound(outliersBoundLabel(oc, p));
-              if (!p?.outliers) {
-                setMsg(`No IQR outlier in ${oc}.`);
-              }
-              // Native list rendered below — do not call the engine (no columns param).
-              return;
-            }
-            setBound(`bound to selection · ${selNum.length} columns`);
-            return;
+            setBound(
+              selNum.length === 1
+                ? `${outliersBoundLabel(selNum[0]!, profColumns.find((c) => c.name === selNum[0]))} · key outliers`
+                : `bound to selection · ${selNum.length} columns · key outliers`,
+            );
+          } else {
+            setBound("all numeric columns · key outliers");
           }
-          setBound("all numeric columns");
-          // Fall through to engine run (full Result — no front filtering).
+          // Fall through to engine run (columns=selection when scoped).
         }
 
         if (id === "target" || id === "feature_selection") {
@@ -283,7 +288,8 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         }
 
         const runEngine =
-          (id === "outliers" && scopeAll) ||
+          id === "outliers" ||
+          runDistEngine ||
           id === "target" ||
           id === "drift" ||
           id === "feature_selection";
@@ -299,24 +305,50 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           const hasCols = schemaHasColumns(schema);
           setHasColumnsParam(hasCols);
           if (hasCols) {
-            const cols = engineColumnsParam(selCols, scopeAll);
-            if (cols) {
-              const usable =
-                id === "feature_selection"
-                  ? cols.filter((c) => {
-                      const p = profColumns.find((pc) => pc.name === c);
-                      return p && isNumericKind(p.kind) && c !== target;
-                    })
-                  : cols;
-              if (usable.length > 0) available.columns = usable;
+            if (id === "outliers") {
+              const selNum = selectedNumericColumns(selCols, profColumns);
+              const cols = scopeAll ? null : selNum;
+              if (cols && cols.length > 0) available.columns = cols;
+            } else if (id === "dist" && focus) {
+              available.columns = [focus];
+            } else {
+              const cols = engineColumnsParam(selCols, scopeAll);
+              if (cols) {
+                const usable =
+                  id === "feature_selection"
+                    ? cols.filter((c) => {
+                        const p = profColumns.find((pc) => pc.name === c);
+                        return p && isNumericKind(p.kind) && c !== target;
+                      })
+                    : cols;
+                if (usable.length > 0) available.columns = usable;
+              }
             }
+          }
+          if (id === "dist" && splitBy && schemaHasBy(schema)) {
+            available.by = splitBy;
           }
           const params = keyParamsFromSchema(schema, available);
           const r = await apiClient.runKey(def.key, params);
           if (cancelled) return;
           setResult(r);
           if (id === "outliers") {
-            setBound("all numeric columns · key outliers");
+            const selNum = selectedNumericColumns(selCols, profColumns);
+            if (scopeAll) {
+              setBound("all numeric columns · key outliers");
+            } else if (selNum.length === 1) {
+              setBound(
+                `${outliersBoundLabel(selNum[0]!, profColumns.find((c) => c.name === selNum[0]))} · key outliers`,
+              );
+            } else {
+              setBound(
+                `bound to selection · ${selNum.length} columns · key outliers`,
+              );
+            }
+          } else if (id === "dist" && focus && splitBy) {
+            setBound(
+              `bound to ${focus} · split by ${splitBy} · key column_distribution`,
+            );
           } else if ((id === "target" || id === "feature_selection") && hasCols) {
             const cols = engineColumnsParam(selCols, scopeAll);
             setBound(
@@ -351,6 +383,8 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     target,
     def.key,
     scopeAll,
+    splitBy,
+    runDistEngine,
     bench.loading,
     bench.profiles,
     bench.rows,
@@ -363,10 +397,42 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     return m;
   }, [profiles]);
 
+  const splitByBar =
+    id === "dist" ? (
+      <div className="dock-split-by">
+        <label htmlFor="dock-split-by">
+          Split by
+          <select
+            id="dock-split-by"
+            aria-label="Split by"
+            value={splitBy ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              dispatch({ type: "SET_DIST_BY", by: v || null });
+            }}
+          >
+            <option value="">(none)</option>
+            {profiles
+              .map((p) => p.name)
+              .filter((name) => name !== focus)
+              .map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                  {name === target ? " (target)" : ""}
+                </option>
+              ))}
+          </select>
+        </label>
+      </div>
+    ) : null;
+
   const scopeBar =
-    showScopeToggle ? (
+    showScopeToggle || splitByBar ? (
       <div className="dock-scope-bar">
-        <ScopeToggle scopeAll={scopeAll} onChange={setScopeAll} />
+        {showScopeToggle ? (
+          <ScopeToggle scopeAll={scopeAll} onChange={setScopeAll} />
+        ) : null}
+        {splitByBar}
       </div>
     ) : null;
 
@@ -401,6 +467,12 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           ? {
               "data-outliers-col": outliersCol,
               "data-outliers-cols": outliersCol,
+            }
+          : {})}
+        {...(id === "dist"
+          ? {
+              "data-dist-col": focus ?? undefined,
+              "data-dist-by": splitBy ?? "",
             }
           : {})}
       >
@@ -458,7 +530,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     );
   }
 
-  if (id === "dist" && focus && profileByName.has(focus)) {
+  if (id === "dist" && focus && profileByName.has(focus) && !runDistEngine) {
     const p = profileByName.get(focus)!;
     const bars =
       p.kind === "number" ? histBars(p, 106) : topBars(p, 106);
@@ -467,7 +539,11 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         ? `n ${p.count} · missing ${p.missing} · distinct ${p.distinct}`
         : `${p.distinct} categories · ${p.missing} missing`;
     return (
-      <div data-scope-mode="selection" data-dist-col={focus}>
+      <div
+        data-scope-mode="selection"
+        data-dist-col={focus}
+        data-dist-by=""
+      >
         {scopeBar}
         <div className="dock-bound muted">{bound || `bound to ${focus}`}</div>
         <div className="muted" style={{ marginBottom: 6 }}>
@@ -534,92 +610,35 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     );
   }
 
-  if (id === "outliers" && !scopeAll) {
-    const selNum = selectedNumericColumns(selCols, profiles);
-    if (selNum.length === 1) {
-      const oc = selNum[0]!;
-      const p = profileByName.get(oc);
-      const fl = listOutlierRows(rows, oc, p);
-      const mxv = maxAbs(fl.map((x) => x.value));
-      return (
-        <div
-          data-scope-mode="selection"
-          data-outliers-col={oc}
-          data-outliers-cols={oc}
-        >
-          {scopeBar}
-          <div className="dock-bound muted">{bound}</div>
-          <div className="list-rows">
-            {fl.map((x) => (
-              <div
-                key={x.rid}
-                className="list-row"
-                data-col={oc}
-                data-outlier-row={x.rid}
-              >
-                <span className="list-name">row #{x.rid + 1}</span>
-                <span className="list-bar">
-                  <span
-                    style={{
-                      display: "block",
-                      height: 8,
-                      width: `${Math.round((Math.abs(x.value) / mxv) * 100)}%`,
-                      background: "#6b52b0",
-                    }}
-                  />
-                </span>
-                <span className="list-val mono">{fmtStat(x.value)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-    if (selNum.length > 1) {
-      return (
-        <div
-          data-scope-mode="selection"
-          data-outliers-cols={selNum.join(",")}
-        >
-          {scopeBar}
-          <div className="dock-bound muted">{bound}</div>
-          <div className="list-rows">
-            {selNum.map((name) => {
-              const p = profileByName.get(name);
-              const n = p?.outliers ?? 0;
-              const total = (p?.count ?? 0) + (p?.missing ?? 0) || 1;
-              const pct = n / total;
-              return (
-                <div key={name} className="list-row" data-col={name}>
-                  <span className="list-name">{name}</span>
-                  <span className="list-bar">
-                    <span
-                      style={{
-                        display: "block",
-                        height: 8,
-                        width: `${Math.round(pct * 100)}%`,
-                        background: "#6b52b0",
-                      }}
-                    />
-                  </span>
-                  <span className="list-val mono">
-                    {n ? `${n} · ${Math.round(pct * 100)}%` : "—"}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      );
-    }
-  }
-
   if (result) {
+    const selNum =
+      id === "outliers" && !scopeAll
+        ? selectedNumericColumns(selCols, profiles)
+        : [];
+    const outliersCol = selNum.length === 1 ? selNum[0] : undefined;
     return (
       <div
         data-scope-mode={scopeAll ? "all" : "selection"}
         data-engine-key={def.key}
         data-has-columns-param={hasColumnsParam ? "1" : "0"}
+        {...(id === "outliers"
+          ? {
+              ...(outliersCol
+                ? {
+                    "data-outliers-col": outliersCol,
+                    "data-outliers-cols": outliersCol,
+                  }
+                : selNum.length > 1
+                  ? { "data-outliers-cols": selNum.join(",") }
+                  : {}),
+            }
+          : {})}
+        {...(id === "dist"
+          ? {
+              "data-dist-col": focus ?? undefined,
+              "data-dist-by": splitBy ?? "",
+            }
+          : {})}
       >
         {scopeBar}
         {bound ? <div className="dock-bound muted">{bound}</div> : null}

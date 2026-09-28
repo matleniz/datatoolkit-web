@@ -110,6 +110,21 @@ export function ContextMenu() {
     text: "Distribution",
     run: () => {
       dispatch({ type: "PICK_COL", name: col });
+      dispatch({ type: "SET_DIST_BY", by: null });
+      dispatch({ type: "OPEN_TOOL", id: "dist" });
+    },
+  });
+  items.push({
+    kind: "item",
+    text: "Distribution by…",
+    run: () => {
+      const names = columns.map((c) => c.name);
+      const by =
+        targetColumn && targetColumn !== col && names.includes(targetColumn)
+          ? targetColumn
+          : names.find((n) => n !== col) ?? null;
+      dispatch({ type: "PICK_COL", name: col });
+      dispatch({ type: "SET_DIST_BY", by });
       dispatch({ type: "OPEN_TOOL", id: "dist" });
     },
   });

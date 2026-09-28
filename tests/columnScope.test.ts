@@ -2,15 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import type { ColumnProfile, WorkspaceRow } from "../src/api/types";
 import {
+  defaultSplitBy,
   engineColumnsParam,
   listOutlierRows,
   maxAbs,
   outliersBoundLabel,
+  schemaHasBy,
   schemaHasColumns,
   selectedNumericColumns,
 } from "../src/bench/dock/columnScope";
 
-describe("columnScope helpers (MAT-146)", () => {
+describe("columnScope helpers (MAT-146 / MAT-147 / MAT-159)", () => {
   it("detects columns on a key schema", () => {
     expect(
       schemaHasColumns({
@@ -22,6 +24,21 @@ describe("columnScope helpers (MAT-146)", () => {
       schemaHasColumns({
         type: "object",
         properties: { source: { type: "object" }, iqr_k: { type: "number" } },
+      }),
+    ).toBe(false);
+  });
+
+  it("detects by on column_distribution schema", () => {
+    expect(
+      schemaHasBy({
+        type: "object",
+        properties: { by: { type: "string" }, columns: { type: "array" } },
+      }),
+    ).toBe(true);
+    expect(
+      schemaHasBy({
+        type: "object",
+        properties: { columns: { type: "array" } },
       }),
     ).toBe(false);
   });
@@ -44,6 +61,15 @@ describe("columnScope helpers (MAT-146)", () => {
     expect(
       selectedNumericColumns(["age", "city", "flag", "missing"], profiles),
     ).toEqual(["age"]);
+  });
+
+  it("defaultSplitBy prefers target then first other column", () => {
+    expect(
+      defaultSplitBy("Survived", "Age", ["Age", "Sex", "Survived"]),
+    ).toBe("Survived");
+    expect(defaultSplitBy("Age", "Age", ["Age", "Sex", "Fare"])).toBe("Sex");
+    expect(defaultSplitBy(null, "Age", ["Age", "Fare"])).toBe("Fare");
+    expect(defaultSplitBy(null, "Age", ["Age"])).toBeNull();
   });
 
   it("listOutlierRows uses IQR fences and skips sentinels", () => {
