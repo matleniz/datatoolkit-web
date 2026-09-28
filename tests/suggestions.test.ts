@@ -3,9 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Result } from "../src/api/types";
 import {
   filterCardsByStage,
-  inconsistencySignals,
   mapSuggestionCards,
-  remapFreeTextDrop,
 } from "../src/bench/left/suggestions";
 
 function stepsResult(): Result {
@@ -64,48 +62,8 @@ function duplicatesNoSubsetResult(): Result {
   };
 }
 
-function inconsistenciesResult(): Result {
-  return {
-    metrics: {
-      n_columns_with_variants: 1,
-      n_mixed_date_format_columns: 1,
-    },
-    tables: [
-      {
-        title: "variants",
-        records: [
-          {
-            column: "city",
-            distinct_before: 5,
-            distinct_after: 2,
-            n_merged: 3,
-          },
-        ],
-      },
-      {
-        title: "suggested mapping",
-        records: [
-          { column: "city", canonical: "Paris", variant: "paris", count: 1 },
-          { column: "city", canonical: "Paris", variant: "Paris", count: 1 },
-        ],
-      },
-      {
-        title: "mixed date formats",
-        records: [
-          {
-            column: "date",
-            n_formats: 2,
-            formats: "yyyy-mm-dd, nn/nn/yyyy",
-          },
-        ],
-      },
-    ],
-    figures: [],
-    text: "Apply the suggested mapping.",
-  };
-}
-
-function freeTextDropSteps(): Result {
+/** Engine-shaped advisor rows after datatoolkit#40 / MAT-165. */
+function advisorConsistencySteps(): Result {
   return {
     metrics: {},
     tables: [
@@ -115,25 +73,68 @@ function freeTextDropSteps(): Result {
         records: [
           {
             column: "city",
-            category: "drop",
+            category: "consistency",
+            severity: "info",
             advice:
-              "free text: no text-feature op yet; drop it or engineer features first",
-            op: "drop_columns",
+              "free text, but 1 spelling variants of the same values " +
+              "(the inconsistencies key found them): standardize text instead of dropping",
+            op: "standardize_text",
             target: "both",
-            params: { columns: ["city"], missing_ok: true },
+            params: {
+              columns: ["city"],
+              strip: true,
+              lower: true,
+              mapping: { paris: "Paris" },
+            },
+          },
+          {
+            column: "site",
+            category: "consistency",
+            severity: "info",
+            advice:
+              "free text, but 3 spelling variants of the same values " +
+              "(the inconsistencies key found them): standardize text instead of dropping",
+            op: "standardize_text",
+            target: "both",
+            params: {
+              columns: ["site"],
+              strip: true,
+              lower: true,
+              unify_separators: true,
+              mapping: {
+                "site-a": "site_a",
+                "Site A": "site_a",
+                "SITE A": "site_a",
+              },
+            },
           },
           {
             column: "date",
-            category: "drop",
+            category: "consistency",
+            severity: "info",
             advice:
-              "free text: no text-feature op yet; drop it or engineer features first",
-            op: "drop_columns",
+              "free text, but it holds dates with mixed / ambiguous formats (the " +
+              "inconsistencies key found them): bring them to one format, then " +
+              "parse dates instead of dropping",
+            op: "parse_dates",
             target: "both",
-            params: { columns: ["date"], missing_ok: true },
+            params: { columns: ["date"] },
+          },
+          {
+            column: "signup",
+            category: "consistency",
+            severity: "info",
+            advice:
+              "free text, but it holds dates in one format (%Y-%m-%d, the " +
+              "inconsistencies key found them): parse dates instead of dropping",
+            op: "parse_dates",
+            target: "both",
+            params: { columns: ["signup"], format: "%Y-%m-%d" },
           },
           {
             column: "notes",
             category: "drop",
+            severity: "info",
             advice:
               "free text: no text-feature op yet; drop it or engineer features first",
             op: "drop_columns",
@@ -187,14 +188,16 @@ describe("mapSuggestionCards", () => {
     expect(subsetCard!.detail).toMatch(/pass `subset`/i);
   });
 
-  it("remaps free-text drop_columns to standardize_text / parse_dates (MAT-155 #2)", () => {
+  it("renders engine standardize_text / parse_dates cards as-is (MAT-165)", () => {
     const cards = mapSuggestionCards([
-      { keyId: "preprocessing_advisor", result: freeTextDropSteps() },
-      { keyId: "inconsistencies", result: inconsistenciesResult() },
+      { keyId: "preprocessing_advisor", result: advisorConsistencySteps() },
     ]);
     const city = cards.find((c) => c.column === "city");
+    const site = cards.find((c) => c.column === "site");
     const date = cards.find((c) => c.column === "date");
+    const signup = cards.find((c) => c.column === "signup");
     const notes = cards.find((c) => c.column === "notes");
+
     expect(city!.step?.op).toBe("standardize_text");
     expect(city!.step?.params).toMatchObject({
       columns: ["city"],
@@ -202,10 +205,30 @@ describe("mapSuggestionCards", () => {
       lower: true,
       mapping: { paris: "Paris" },
     });
+    expect(city!.stage).toBe("clean");
+    expect(city!.title).toBe("city: standardize_text");
+
+    expect(site!.step?.params).toMatchObject({
+      unify_separators: true,
+      mapping: {
+        "site-a": "site_a",
+        "Site A": "site_a",
+        "SITE A": "site_a",
+      },
+    });
+
     expect(date!.step?.op).toBe("parse_dates");
     expect(date!.step?.params).toEqual({ columns: ["date"] });
-    // No inconsistency signal → keep drop_columns
+    expect(date!.stage).toBe("clean");
+
+    expect(signup!.step?.params).toEqual({
+      columns: ["signup"],
+      format: "%Y-%m-%d",
+    });
+
+    // Genuine free text still comes through as drop_columns.
     expect(notes!.step?.op).toBe("drop_columns");
+    expect(notes!.stage).toBe("select");
   });
 
   it("filters by course stage", () => {
@@ -250,29 +273,5 @@ describe("mapSuggestionCards", () => {
     expect(filterCardsByStage(cards, "select").map((c) => c.column)).toEqual([
       "customer_id",
     ]);
-  });
-});
-
-describe("inconsistencySignals / remapFreeTextDrop", () => {
-  it("reads variants and date-format columns from inconsistencies tables", () => {
-    const s = inconsistencySignals(inconsistenciesResult());
-    expect([...s.variantCols]).toEqual(["city"]);
-    expect([...s.dateCols]).toEqual(["date"]);
-    expect(s.mappings.get("city")).toEqual({ paris: "Paris" });
-  });
-
-  it("returns null when advice is not a free-text drop", () => {
-    expect(
-      remapFreeTextDrop(
-        { op: "impute", target: "both", params: {} },
-        "city",
-        "impute with median",
-        {
-          variantCols: new Set(["city"]),
-          dateCols: new Set(),
-          mappings: new Map(),
-        },
-      ),
-    ).toBeNull();
   });
 });

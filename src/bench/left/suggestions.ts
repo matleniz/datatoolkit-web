@@ -92,123 +92,20 @@ function stepFromRecord(rec: Record<string, JsonValue>): Step | null {
   return { op, target, params: asParams(rec.params) };
 }
 
-/** Columns the inconsistencies key flagged for variants / date formats. */
-export function inconsistencySignals(result: Result): {
-  variantCols: Set<string>;
-  dateCols: Set<string>;
-  mappings: Map<string, Record<string, string>>;
-} {
-  const variantCols = new Set<string>();
-  const dateCols = new Set<string>();
-  const mappings = new Map<string, Record<string, string>>();
-  for (const table of result.tables) {
-    const title = table.title.toLowerCase();
-    if (title === "variants") {
-      for (const rec of table.records) {
-        const col = asString(rec.column);
-        if (col) variantCols.add(col);
-      }
-    } else if (title === "suggested mapping") {
-      for (const rec of table.records) {
-        const col = asString(rec.column);
-        const variant = asString(rec.variant).trim();
-        const canonical = asString(rec.canonical).trim();
-        if (!col || !variant || variant === canonical) continue;
-        const cur = mappings.get(col) ?? {};
-        cur[variant] = canonical;
-        mappings.set(col, cur);
-      }
-    } else if (
-      title === "ambiguous dates" ||
-      title === "mixed date formats"
-    ) {
-      for (const rec of table.records) {
-        const col = asString(rec.column);
-        if (col) dateCols.add(col);
-      }
-    }
-  }
-  return { variantCols, dateCols, mappings };
-}
-
-function isFreeTextDrop(advice: string, op: string | null): boolean {
-  return op === "drop_columns" && /free text/i.test(advice);
-}
-
-/**
- * Prefer standardize_text / parse_dates over free-text drop_columns when the
- * inconsistencies key already found variants or date formats for that column.
- */
-export function remapFreeTextDrop(
-  step: Step,
-  column: string | null,
-  advice: string,
-  signals: {
-    variantCols: Set<string>;
-    dateCols: Set<string>;
-    mappings: Map<string, Record<string, string>>;
-  },
-): { step: Step; detail: string; title?: string } | null {
-  if (!column || !isFreeTextDrop(advice, step.op)) return null;
-  if (signals.dateCols.has(column)) {
-    return {
-      step: {
-        op: "parse_dates",
-        target: step.target,
-        params: { columns: [column] },
-      },
-      detail: `${column}: inconsistencies found mixed/ambiguous date formats — parse dates instead of dropping`,
-      title: `${column}: parse_dates`,
-    };
-  }
-  if (signals.variantCols.has(column) || signals.mappings.has(column)) {
-    const mapping = signals.mappings.get(column) ?? {};
-    return {
-      step: {
-        op: "standardize_text",
-        target: step.target,
-        params: {
-          columns: [column],
-          strip: true,
-          lower: true,
-          ...(Object.keys(mapping).length ? { mapping } : {}),
-        },
-      },
-      detail: `${column}: inconsistencies found spelling variants — standardize text instead of dropping`,
-      title: `${column}: standardize_text`,
-    };
-  }
-  return null;
-}
-
 function cardsFromStepsTable(
   keyId: string,
   table: ResultTable,
-  signals: {
-    variantCols: Set<string>;
-    dateCols: Set<string>;
-    mappings: Map<string, Record<string, string>>;
-  },
 ): SuggestionCard[] {
   return table.records.map((rec, i) => {
-    let step = stepFromRecord(rec);
+    const step = stepFromRecord(rec);
     const column = asString(rec.column) || null;
-    let advice = asString(rec.advice) || asString(rec.detail) || asString(rec.why);
+    const advice = asString(rec.advice) || asString(rec.detail) || asString(rec.why);
     const category = asString(rec.category) || (keyId === "feature_selection" ? "select" : keyId);
-    let title =
+    const title =
       asString(rec.title) ||
       (column && column !== "(rows)"
         ? `${column}: ${asString(rec.op) || "step"}`
         : advice.slice(0, 80) || `${keyId} · ${table.title}`);
-
-    if (step) {
-      const remapped = remapFreeTextDrop(step, column === "(rows)" ? null : column, advice, signals);
-      if (remapped) {
-        step = remapped.step;
-        advice = remapped.detail;
-        if (remapped.title) title = remapped.title;
-      }
-    }
 
     return {
       id: `${keyId}:${table.title}:${i}`,
@@ -270,29 +167,18 @@ function cardsFromFinding(
 /**
  * Map engine Result payloads from the suggestion keys into UI cards.
  * Tables with `kind: "steps"` become cards whose only action is open-in-editor.
+ * Ops (including standardize_text / parse_dates from the advisor) are rendered
+ * as-is — analysis logic lives in the engine (MAT-165 / datatoolkit#40).
  */
 export function mapSuggestionCards(
   results: { keyId: string; result: Result }[],
 ): SuggestionCard[] {
-  const signals = {
-    variantCols: new Set<string>(),
-    dateCols: new Set<string>(),
-    mappings: new Map<string, Record<string, string>>(),
-  };
-  for (const { keyId, result } of results) {
-    if (keyId !== "inconsistencies") continue;
-    const s = inconsistencySignals(result);
-    for (const c of s.variantCols) signals.variantCols.add(c);
-    for (const c of s.dateCols) signals.dateCols.add(c);
-    for (const [col, map] of s.mappings) signals.mappings.set(col, map);
-  }
-
   const out: SuggestionCard[] = [];
   for (const { keyId, result } of results) {
     const stepTables = result.tables.filter((t) => t.kind === "steps");
     if (stepTables.length) {
       for (const table of stepTables) {
-        out.push(...cardsFromStepsTable(keyId, table, signals));
+        out.push(...cardsFromStepsTable(keyId, table));
       }
     } else {
       out.push(...cardsFromFinding(keyId, result));
