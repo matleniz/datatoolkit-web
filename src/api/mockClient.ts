@@ -272,10 +272,16 @@ export class MockApiClient implements ApiClient {
       sources: [],
       label: { mode: "order" },
       steps: [],
-      outputs: [
-        { path: `${body.out_dir}/processed/train.parquet` },
-        { path: `${body.out_dir}/manifest.json` },
-      ],
+      outputs: {
+        train: {
+          path: `${body.out_dir}/processed/train.parquet`,
+          rows: 100,
+        },
+        test: {
+          path: `${body.out_dir}/processed/test.parquet`,
+          rows: 40,
+        },
+      },
     });
   }
 

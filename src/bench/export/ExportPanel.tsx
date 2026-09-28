@@ -4,6 +4,10 @@ import { apiClient } from "../../api/client";
 import type { ExportManifest, ExportOutputEntry } from "../../api/types";
 import { EngineError } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
+import {
+  joinManifestPath,
+  resolveExportOutDir,
+} from "./exportPaths";
 import "./ExportPanel.css";
 
 const FIT_OPS = new Set([
@@ -20,10 +24,15 @@ function outputEntries(
   outputs: ExportManifest["outputs"],
 ): { role: string; entry: ExportOutputEntry }[] {
   if (Array.isArray(outputs)) {
-    return outputs.map((entry, i) => ({
-      role: String((entry as ExportOutputEntry).path ?? i),
-      entry: entry as ExportOutputEntry,
-    }));
+    return outputs.map((entry, i) => {
+      const e = entry as ExportOutputEntry;
+      const path = String(e.path ?? "");
+      let role = String(i);
+      if (/train\.parquet$/i.test(path)) role = "train";
+      else if (/test\.parquet$/i.test(path)) role = "test";
+      else if (path) role = path;
+      return { role, entry: e };
+    });
   }
   return Object.entries(outputs ?? {}).map(([role, entry]) => ({
     role,
@@ -45,6 +54,8 @@ export function ExportPanel() {
   const dispatch = useAppDispatch();
   const [outDir, setOutDir] = useState("./export");
   const [manifest, setManifest] = useState<ExportManifest | null>(null);
+  /** out_dir used for the last successful export (for path display). */
+  const [exportedOutDir, setExportedOutDir] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -80,6 +91,15 @@ export function ExportPanel() {
   const fittedInManifest = manifest
     ? countFittedSteps(manifest.steps ?? [])
     : 0;
+  const resolvedOutDir =
+    manifest && exportedOutDir != null
+      ? resolveExportOutDir(
+          exportedOutDir,
+          outs.map(({ entry }) => String(entry.path ?? "")),
+        )
+      : null;
+  const manifestFile =
+    resolvedOutDir != null ? joinManifestPath(resolvedOutDir) : null;
 
   return (
     <div className="export-panel" data-owner="W3" aria-label="Export">
@@ -119,16 +139,20 @@ export function ExportPanel() {
             setBusy(true);
             setError(null);
             setManifest(null);
+            setExportedOutDir(null);
+            const requested = outDir.trim();
             try {
               await apiClient.saveWorkspace(workspace);
               const m = await apiClient.exportWorkspace(workspace.name, {
-                out_dir: outDir.trim(),
+                out_dir: requested,
                 overwrite: true,
               });
+              setExportedOutDir(requested);
               setManifest(m);
             } catch (e) {
               setError(e instanceof EngineError ? e.message : String(e));
               setManifest(null);
+              setExportedOutDir(null);
             } finally {
               setBusy(false);
             }
@@ -150,18 +174,22 @@ export function ExportPanel() {
                 {" · "}
                 <strong>{fittedInManifest}</strong> fitted
               </div>
-              {outs.length ? (
-                <ul className="export-manifest-paths">
-                  {outs.map(({ role, entry }) => (
-                    <li key={role} className="mono">
-                      {role}: {entry.path}
-                      {typeof entry.rows === "number"
-                        ? ` · ${entry.rows} rows`
-                        : ""}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
+              <ul className="export-manifest-paths">
+                {resolvedOutDir != null ? (
+                  <li className="mono">Output dir: {resolvedOutDir}</li>
+                ) : null}
+                {outs.map(({ role, entry }) => (
+                  <li key={role} className="mono">
+                    {role}: {entry.path}
+                    {typeof entry.rows === "number"
+                      ? ` · ${entry.rows} rows`
+                      : ""}
+                  </li>
+                ))}
+                {manifestFile != null ? (
+                  <li className="mono">manifest: {manifestFile}</li>
+                ) : null}
+              </ul>
             </div>
             <pre className="export-manifest-json">
               {JSON.stringify(manifest, null, 2)}

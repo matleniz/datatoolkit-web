@@ -1,0 +1,47 @@
+/** Pure path helpers for the export manifest summary. */
+
+export function isAbsolutePath(p: string): boolean {
+  return (
+    p.startsWith("/") ||
+    p.startsWith("\\\\") ||
+    /^[A-Za-z]:[\\/]/.test(p)
+  );
+}
+
+/**
+ * If `path` is `<out_dir>/processed/<file>`, return `out_dir`.
+ * Handles both `/` and `\` separators.
+ */
+export function outDirFromProcessedPath(path: string): string | null {
+  const m = path.match(/^(.*)[/\\]processed[/\\][^/\\]+$/);
+  const dir = m?.[1];
+  if (dir == null || dir === "") return null;
+  return dir;
+}
+
+/**
+ * Resolve the export output directory for display.
+ * Prefer the absolute dir the user exported to; if that value was relative,
+ * derive the absolute dir as the parent of `processed/` from an output path.
+ */
+export function resolveExportOutDir(
+  requestedOutDir: string,
+  outputPaths: string[],
+): string {
+  const requested = requestedOutDir.trim().replace(/[/\\]+$/, "");
+  if (isAbsolutePath(requested)) {
+    return requested;
+  }
+  for (const p of outputPaths) {
+    const derived = outDirFromProcessedPath(p);
+    if (derived != null) return derived;
+  }
+  return requested;
+}
+
+/** `<out_dir>/manifest.json` (engine writes the manifest there last). */
+export function joinManifestPath(outDir: string): string {
+  const trimmed = outDir.replace(/[/\\]+$/, "");
+  const sep = trimmed.includes("\\") && !trimmed.includes("/") ? "\\" : "/";
+  return `${trimmed}${sep}manifest.json`;
+}
