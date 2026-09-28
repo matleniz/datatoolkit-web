@@ -309,7 +309,38 @@ export function AlignScreen() {
 
                   {/* Your fix cell */}
                   <div className="col-align-fix align-fix-cell">
-                    {note ? (
+                    {r.status === "value_mismatch" ? (
+                      <div className="align-value-mismatch">
+                        {(r.only_in_test ?? []).length > 0 ? (
+                          <ul
+                            className="align-only-in-test"
+                            aria-label="Test-only values"
+                          >
+                            {(r.only_in_test ?? []).map((v) => (
+                              <li key={v.value}>
+                                <code>{v.value}</code>
+                                <span className="align-value-count">
+                                  {" "}
+                                  ×{v.count}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        {r.pct_test_rows_unseen !== null &&
+                        r.pct_test_rows_unseen !== undefined ? (
+                          <span className="align-fix-note">
+                            {r.pct_test_rows_unseen}% of test rows unseen in
+                            train
+                          </span>
+                        ) : null}
+                        {r.near_match_hint ? (
+                          <span className="align-fix-hint">
+                            {r.near_match_hint}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : note ? (
                       <span className="align-fix-note">{note}</span>
                     ) : null}
 

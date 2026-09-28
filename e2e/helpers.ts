@@ -117,6 +117,29 @@ export function titanicWorkspace(): Workspace {
 }
 
 /**
+ * Adult-like train/test with trailing-dot income labels on test only
+ * (MAT-155 item 6 / align_report value_mismatch).
+ */
+export function adultAlignWorkspace(): Workspace {
+  return {
+    name: "adult_align",
+    datasets: {
+      train: {
+        x: { kind: "csv", path: join(fixturesDir, "adult_align_train.csv") },
+        target_column: "income",
+      },
+      test: {
+        x: { kind: "csv", path: join(fixturesDir, "adult_align_test.csv") },
+      },
+    },
+    label: { mode: "order" },
+    merges: [],
+    variables: [],
+    steps: [],
+  };
+}
+
+/**
  * Titanic with Survived as a separate y file (label column renamed `target`
  * to match the Studio y-file convention used by targetColumnOf).
  */

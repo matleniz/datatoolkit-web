@@ -1,0 +1,11 @@
+age,workclass,education,income
+25,Private,HS-grad,<=50K.
+38,Private,HS-grad,<=50K.
+28,Private,Bachelors,>50K.
+44,Private,Bachelors,>50K.
+18,Private,HS-grad,<=50K.
+34,Private,HS-grad,<=50K.
+29,Private,Masters,>50K.
+39,Private,Masters,>50K.
+20,Private,Bachelors,<=50K.
+45,Private,Bachelors,>50K.
