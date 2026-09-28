@@ -94,12 +94,6 @@ export const OP_STAGE: Record<string, StageId> = {
   spline: "transform",
   group_agg: "transform",
   cyclical: "transform",
-  // MAT-173 engine ops — full editor UI is mat173-front; map stages so
-  // transformsStage.test stays green against the shared engine (MAT-195).
-  polynomial: "transform",
-  power_transform: "transform",
-  quantile_transform: "transform",
-  spline: "transform",
   drop_columns: "select",
   drop_low_variance: "select",
   drop_correlated: "select",
