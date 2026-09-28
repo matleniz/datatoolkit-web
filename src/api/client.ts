@@ -51,6 +51,7 @@ export interface ApiClient {
     version: number | null,
     offset: number,
     limit: number,
+    signal?: AbortSignal,
   ): Promise<WorkspaceRows>;
   columnProfiles(
     workspace: Workspace,
@@ -63,6 +64,7 @@ export interface ApiClient {
     workspace: Workspace,
     step: Step,
     role: Role,
+    signal?: AbortSignal,
   ): Promise<PreviewStep>;
   alignReport(workspace: Workspace): Promise<AlignReport>;
 
@@ -104,6 +106,9 @@ export class HttpApiClient implements ApiClient {
   readonly baseUrl: string;
   private readonly dedupe = new InFlightDedupe();
   private transformsCache: Promise<TransformInfo[]> | null = null;
+  /** Session cache — schemas are immutable per op/key id for a given engine. */
+  private readonly transformSchemaCache = new Map<string, Promise<JsonSchema>>();
+  private readonly keySchemaCache = new Map<string, Promise<JsonSchema>>();
 
   constructor(baseUrl = import.meta.env.VITE_API_URL ?? "/api") {
     this.baseUrl = baseUrl.replace(/\/$/, "");
@@ -114,6 +119,7 @@ export class HttpApiClient implements ApiClient {
     path: string,
     body?: unknown,
     rawBody?: BodyInit,
+    signal?: AbortSignal,
   ): Promise<T> {
     const headers: Record<string, string> = {};
     let payload: BodyInit | undefined = rawBody;
@@ -124,8 +130,9 @@ export class HttpApiClient implements ApiClient {
       payload = bodyKey;
     }
     // Do not dedupe raw uploads (binary body is not a stable string key).
-    if (rawBody !== undefined) {
-      return this.execute<T>(method, path, headers, payload);
+    // Do not dedupe abortable calls — a shared promise cannot be half-aborted.
+    if (rawBody !== undefined || signal) {
+      return this.execute<T>(method, path, headers, payload, signal);
     }
     const key = this.dedupe.key(method, path, bodyKey);
     return this.dedupe.run(key, () =>
@@ -138,11 +145,13 @@ export class HttpApiClient implements ApiClient {
     path: string,
     headers: Record<string, string>,
     payload: BodyInit | undefined,
+    signal?: AbortSignal,
   ): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
       headers,
       body: payload,
+      signal,
     });
     if (res.status === 204) {
       return undefined as T;
@@ -174,7 +183,15 @@ export class HttpApiClient implements ApiClient {
   }
 
   keySchema(id: string): Promise<JsonSchema> {
-    return this.request("GET", `/keys/${encodeURIComponent(id)}/schema`);
+    let cached = this.keySchemaCache.get(id);
+    if (!cached) {
+      cached = this.request(
+        "GET",
+        `/keys/${encodeURIComponent(id)}/schema`,
+      );
+      this.keySchemaCache.set(id, cached);
+    }
+    return cached;
   }
 
   runKey(id: string, params: Record<string, unknown>): Promise<Result> {
@@ -191,10 +208,15 @@ export class HttpApiClient implements ApiClient {
   }
 
   transformSchema(op: string): Promise<JsonSchema> {
-    return this.request(
-      "GET",
-      `/transforms/${encodeURIComponent(op)}/schema`,
-    );
+    let cached = this.transformSchemaCache.get(op);
+    if (!cached) {
+      cached = this.request(
+        "GET",
+        `/transforms/${encodeURIComponent(op)}/schema`,
+      );
+      this.transformSchemaCache.set(op, cached);
+    }
+    return cached;
   }
 
   listWorkspaces(): Promise<Workspace[]> {
@@ -267,14 +289,21 @@ export class HttpApiClient implements ApiClient {
     version: number | null,
     offset: number,
     limit: number,
+    signal?: AbortSignal,
   ): Promise<WorkspaceRows> {
-    return this.request("POST", "/workspace/rows", {
-      workspace: sanitizeWorkspace(workspace),
-      role,
-      version,
-      offset,
-      limit,
-    });
+    return this.request(
+      "POST",
+      "/workspace/rows",
+      {
+        workspace: sanitizeWorkspace(workspace),
+        role,
+        version,
+        offset,
+        limit,
+      },
+      undefined,
+      signal,
+    );
   }
 
   columnProfiles(
@@ -299,12 +328,19 @@ export class HttpApiClient implements ApiClient {
     workspace: Workspace,
     step: Step,
     role: Role,
+    signal?: AbortSignal,
   ): Promise<PreviewStep> {
-    return this.request("POST", "/workspace/preview-step", {
-      workspace: sanitizeWorkspace(workspace),
-      step: sanitizeStep(step),
-      role,
-    });
+    return this.request(
+      "POST",
+      "/workspace/preview-step",
+      {
+        workspace: sanitizeWorkspace(workspace),
+        step: sanitizeStep(step),
+        role,
+      },
+      undefined,
+      signal,
+    );
   }
 
   alignReport(workspace: Workspace): Promise<AlignReport> {

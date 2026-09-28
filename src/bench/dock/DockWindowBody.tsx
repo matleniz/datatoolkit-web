@@ -105,6 +105,19 @@ const PER_COLUMN_PARAM_TOOLS = new Set<ToolId>(["dist", "outliers", "target"]);
 const COMPARE_STATS = ["mean", "median", "std", "min", "max"] as const;
 const PARAM_DEBOUNCE_MS = 300;
 
+/** Survives dock close/reopen — keyed by version+tool+params (+ selection scope). */
+type DockResultCacheEntry = {
+  profiles: ColumnProfile[];
+  rows: WorkspaceRow[];
+  result: Result | null;
+  msg: string | null;
+  bound: string;
+  hasColumnsParam: boolean;
+  corrCols: string[];
+  error: string | null;
+};
+const dockResultCache = new Map<string, DockResultCacheEntry>();
+
 function ScopeToggle({
   scopeAll,
   onChange,
@@ -178,6 +191,35 @@ export function DockWindowBody({ id }: { id: ToolId }) {
 
   const showParamsPanel = ENGINE_TOOLS.has(id);
 
+  const dockCacheKey = useMemo(() => {
+    if (!workspace?.datasets.train.x.path) return null;
+    return [
+      workspace.name,
+      workspace.datasets.train.x.path,
+      version,
+      workspace.steps.length,
+      id,
+      debouncedParamsJson,
+      selKey,
+      focus ?? "",
+      role,
+      scopeAll ? "1" : "0",
+      splitBy ?? "",
+      target ?? "",
+    ].join("\0");
+  }, [
+    workspace,
+    version,
+    id,
+    debouncedParamsJson,
+    selKey,
+    focus,
+    role,
+    scopeAll,
+    splitBy,
+    target,
+  ]);
+
   useEffect(() => {
     if (!workspace?.datasets.train.x.path) {
       setMsg("Load a workspace with a train source to run this tool.");
@@ -188,7 +230,34 @@ export function DockWindowBody({ id }: { id: ToolId }) {
       setError(null);
       return;
     }
+
+    // Reopen with nothing changed → reuse last result (not just warm bench data).
+    if (dockCacheKey) {
+      const hit = dockResultCache.get(dockCacheKey);
+      if (hit) {
+        setProfiles(hit.profiles);
+        setRows(hit.rows);
+        setResult(hit.result);
+        setMsg(hit.msg);
+        setBound(hit.bound);
+        setHasColumnsParam(hit.hasColumnsParam);
+        setCorrCols(hit.corrCols);
+        setError(hit.error);
+        setReady(true);
+        return;
+      }
+    }
+
     let cancelled = false;
+    let cacheBound = "";
+    let cacheMsg: string | null = null;
+    let cacheResult: Result | null = null;
+    let cacheHasColumns = false;
+    let cacheCorr: string[] = [];
+    let cacheProfiles: ColumnProfile[] = [];
+    let cacheRows: WorkspaceRow[] = [];
+    let cacheError: string | null = null;
+
     (async () => {
       setReady(false);
       setError(null);
@@ -224,6 +293,8 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           pageRows = wr.rows;
         }
         if (cancelled) return;
+        cacheProfiles = profColumns;
+        cacheRows = pageRows;
         setProfiles(profColumns);
         setRows(pageRows);
 
@@ -232,11 +303,12 @@ export function DockWindowBody({ id }: { id: ToolId }) {
             profColumns.some((p) => p.name === c),
           );
           if (cs.length < 2) {
-            setMsg(
-              "Select two or more columns (shift-click headers, or right-click → Add to selection).",
-            );
+            cacheMsg =
+              "Select two or more columns (shift-click headers, or right-click → Add to selection).";
+            setMsg(cacheMsg);
           } else {
-            setBound(`${cs.length} columns · ${role}`);
+            cacheBound = `${cs.length} columns · ${role}`;
+            setBound(cacheBound);
           }
           return;
         }
@@ -254,71 +326,73 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           const useSelection = !scopeAll && selNum.length >= 2;
           const use = (useSelection ? selNum : nums).slice(0, 7);
           if (use.length < 2) {
-            setMsg("Need at least two numeric columns.");
+            cacheMsg = "Need at least two numeric columns.";
+            setMsg(cacheMsg);
             setCorrCols([]);
             return;
           }
+          cacheCorr = use;
           setCorrCols(use);
-          setBound(
-            useSelection
-              ? `bound to selection · ${selNum.length} columns · key correlations`
-              : "all numeric columns · key correlations",
-          );
+          cacheBound = useSelection
+            ? `bound to selection · ${selNum.length} columns · key correlations`
+            : "all numeric columns · key correlations";
+          setBound(cacheBound);
           // Fall through to engine run.
         }
 
         if (id === "dist") {
           if (!focus || !profColumns.some((p) => p.name === focus)) {
-            setMsg("Select a column to see its distribution.");
+            cacheMsg = "Select a column to see its distribution.";
+            setMsg(cacheMsg);
             return;
           }
-          setBound(
-            splitBy
-              ? `bound to ${focus} · split by ${splitBy} · key column_distribution`
-              : `bound to ${focus} · key column_distribution`,
-          );
+          cacheBound = splitBy
+            ? `bound to ${focus} · split by ${splitBy} · key column_distribution`
+            : `bound to ${focus} · key column_distribution`;
+          setBound(cacheBound);
           // Always run engine so bins / log / norm knobs apply (MAT-174).
         }
 
         if (id === "missing") {
           const useSelection = !scopeAll && selCols.length > 0;
-          setBound(
-            useSelection
-              ? selCols.length === 1
-                ? `bound to ${selCols[0]} · key missing_values`
-                : `bound to selection · ${selCols.length} columns · key missing_values`
-              : `${role} · all columns · key missing_values`,
-          );
+          cacheBound = useSelection
+            ? selCols.length === 1
+              ? `bound to ${selCols[0]} · key missing_values`
+              : `bound to selection · ${selCols.length} columns · key missing_values`
+            : `${role} · all columns · key missing_values`;
+          setBound(cacheBound);
         }
 
         if (id === "outliers") {
           const selNum = selectedNumericColumns(selCols, profColumns);
           if (!scopeAll) {
             if (selNum.length === 0) {
-              setMsg(
-                "Select a numeric column. Fences: Q1 − 1.5·IQR and Q3 + 1.5·IQR, sentinels excluded.",
-              );
+              cacheMsg =
+                "Select a numeric column. Fences: Q1 − 1.5·IQR and Q3 + 1.5·IQR, sentinels excluded.";
+              setMsg(cacheMsg);
               return;
             }
-            setBound(
+            cacheBound =
               selNum.length === 1
                 ? `${outliersBoundLabel(selNum[0]!, profColumns.find((c) => c.name === selNum[0]))} · key outliers`
-                : `bound to selection · ${selNum.length} columns · key outliers`,
-            );
+                : `bound to selection · ${selNum.length} columns · key outliers`;
+            setBound(cacheBound);
           } else {
-            setBound("all numeric columns · key outliers");
+            cacheBound = "all numeric columns · key outliers";
+            setBound(cacheBound);
           }
         }
 
         if (id === "target" || id === "feature_selection") {
           if (!target) {
-            setMsg(
-              "No target yet: set it on the Sources screen, or right-click a column → Set as target.",
-            );
+            cacheMsg =
+              "No target yet: set it on the Sources screen, or right-click a column → Set as target.";
+            setMsg(cacheMsg);
             return;
           }
           if (role === "test") {
-            setMsg("The test set has no label. Switch to Train.");
+            cacheMsg = "The test set has no label. Switch to Train.";
+            setMsg(cacheMsg);
             return;
           }
         }
@@ -337,6 +411,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           const schema = await apiClient.keySchema(def.key);
           if (cancelled) return;
           const hasCols = schemaHasColumns(schema);
+          cacheHasColumns = hasCols;
           setHasColumnsParam(hasCols);
           if (hasCols) {
             if (id === "outliers") {
@@ -386,60 +461,70 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           );
           const r = await apiClient.runKey(def.key, params);
           if (cancelled) return;
+          cacheResult = r;
           setResult(r);
           if (id === "outliers") {
             const selNum = selectedNumericColumns(selCols, profColumns);
             if (scopeAll) {
-              setBound("all numeric columns · key outliers");
+              cacheBound = "all numeric columns · key outliers";
             } else if (selNum.length === 1) {
-              setBound(
-                `${outliersBoundLabel(selNum[0]!, profColumns.find((c) => c.name === selNum[0]))} · key outliers`,
-              );
+              cacheBound = `${outliersBoundLabel(selNum[0]!, profColumns.find((c) => c.name === selNum[0]))} · key outliers`;
             } else {
-              setBound(
-                `bound to selection · ${selNum.length} columns · key outliers`,
-              );
+              cacheBound = `bound to selection · ${selNum.length} columns · key outliers`;
             }
+            setBound(cacheBound);
           } else if (id === "missing") {
             const useSelection = !scopeAll && selCols.length > 0;
-            setBound(
-              useSelection
-                ? selCols.length === 1
-                  ? `bound to ${selCols[0]} · key missing_values`
-                  : `bound to selection · ${selCols.length} columns · key missing_values`
-                : `all columns · key missing_values`,
-            );
+            cacheBound = useSelection
+              ? selCols.length === 1
+                ? `bound to ${selCols[0]} · key missing_values`
+                : `bound to selection · ${selCols.length} columns · key missing_values`
+              : `all columns · key missing_values`;
+            setBound(cacheBound);
           } else if (id === "dist" && focus) {
-            setBound(
-              splitBy
-                ? `bound to ${focus} · split by ${splitBy} · key column_distribution`
-                : `bound to ${focus} · key column_distribution`,
-            );
+            cacheBound = splitBy
+              ? `bound to ${focus} · split by ${splitBy} · key column_distribution`
+              : `bound to ${focus} · key column_distribution`;
+            setBound(cacheBound);
           } else if (id === "corr") {
-            setBound(
-              `key correlations · ${(available.columns as string[] | undefined)?.length ?? 0} columns`,
-            );
+            cacheBound = `key correlations · ${(available.columns as string[] | undefined)?.length ?? 0} columns`;
+            setBound(cacheBound);
           } else if (
             (id === "target" || id === "feature_selection") &&
             hasCols
           ) {
             const cols = engineColumnsParam(selCols, scopeAll);
-            setBound(
-              cols
-                ? cols.length === 1
-                  ? `bound to ${cols[0]} · key ${def.key}`
-                  : `bound to selection · ${cols.length} columns · key ${def.key}`
-                : `all features · key ${def.key}`,
-            );
+            cacheBound = cols
+              ? cols.length === 1
+                ? `bound to ${cols[0]} · key ${def.key}`
+                : `bound to selection · ${cols.length} columns · key ${def.key}`
+              : `all features · key ${def.key}`;
+            setBound(cacheBound);
           } else {
-            setBound(`key ${def.key}`);
+            cacheBound = `key ${def.key}`;
+            setBound(cacheBound);
           }
         }
       } catch (e) {
         if (cancelled) return;
-        setError(e instanceof EngineError ? e.message : String(e));
+        cacheError = e instanceof EngineError ? e.message : String(e);
+        setError(cacheError);
       } finally {
-        if (!cancelled) setReady(true);
+        if (!cancelled) {
+          setReady(true);
+          if (dockCacheKey) {
+            dockResultCache.set(dockCacheKey, {
+              profiles: cacheProfiles,
+              rows: cacheRows,
+              result: cacheResult,
+              msg: cacheMsg,
+              bound: cacheBound,
+              hasColumnsParam: cacheHasColumns,
+              corrCols: cacheCorr,
+              error: cacheError,
+            });
+          }
+        }
       }
     })();
     return () => {
@@ -459,6 +544,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     splitBy,
     debouncedParamsJson,
     debouncedUserParams,
+    dockCacheKey,
     bench.loading,
     bench.profiles,
     bench.rows,

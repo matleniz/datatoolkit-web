@@ -444,6 +444,7 @@ export class MockApiClient implements ApiClient {
     version: number | null,
     offset: number,
     limit: number,
+    _signal?: AbortSignal,
   ): Promise<WorkspaceRows> {
     const frame = role === "train" ? TRAIN : TEST;
     const slice = frame.rows.slice(offset, offset + limit);
@@ -525,6 +526,7 @@ export class MockApiClient implements ApiClient {
     _workspace: Workspace,
     step: Step,
     role: Role,
+    _signal?: AbortSignal,
   ): Promise<PreviewStep> {
     const frame = role === "train" ? TRAIN : TEST;
     const cols = [...frame.columns];
