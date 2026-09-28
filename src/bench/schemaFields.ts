@@ -33,28 +33,65 @@ export interface EditorField {
 }
 
 /**
+ * Resolve a local `#/$defs/...` or `#/definitions/...` ref inside `root`.
+ * Returns the original prop when the ref is missing or non-local.
+ */
+export function resolveLocalRef(
+  prop: JsonSchema,
+  root: JsonSchema,
+): JsonSchema {
+  const ref = prop.$ref;
+  if (!ref || typeof ref !== "string") return prop;
+  const defsMatch = ref.match(/^#\/(\$defs|definitions)\/(.+)$/);
+  if (!defsMatch) return prop;
+  const bag =
+    defsMatch[1] === "$defs" ? root.$defs : root.definitions;
+  const target = bag?.[defsMatch[2]!];
+  if (!target) return prop;
+  return {
+    ...target,
+    title: prop.title ?? target.title,
+    description: prop.description ?? target.description,
+    default: prop.default !== undefined ? prop.default : target.default,
+    enum: prop.enum ?? target.enum,
+    "x-dtk-widget": prop["x-dtk-widget"] ?? target["x-dtk-widget"],
+    "x-dtk-dtype": prop["x-dtk-dtype"] ?? target["x-dtk-dtype"],
+    "x-dtk-source": prop["x-dtk-source"] ?? target["x-dtk-source"],
+  };
+}
+
+/**
  * Unwrap `anyOf` / `oneOf` / `type: [T, "null"]` unions so mapping sees the
  * non-null branch (engine schemas often use Optional[...] → anyOf + null).
+ * Pass `root` to follow local `$ref`s (MAT-177).
  */
-export function resolveSchemaProp(prop: JsonSchema): JsonSchema {
-  const variants = prop.anyOf ?? prop.oneOf;
+export function resolveSchemaProp(
+  prop: JsonSchema,
+  root?: JsonSchema,
+): JsonSchema {
+  const withRef = root ? resolveLocalRef(prop, root) : prop;
+  const variants = withRef.anyOf ?? withRef.oneOf;
   if (variants && variants.length > 0) {
     const nonNull = variants.filter((v) => !isNullOnlySchema(v));
     if (nonNull.length === 1) {
-      const inner = resolveSchemaProp(nonNull[0]!);
-      return resolveSchemaProp({
-        ...inner,
-        title: prop.title ?? inner.title,
-        description: prop.description ?? inner.description,
-        default: prop.default !== undefined ? prop.default : inner.default,
-        enum: prop.enum ?? inner.enum,
-        "x-dtk-widget": prop["x-dtk-widget"] ?? inner["x-dtk-widget"],
-        "x-dtk-dtype": prop["x-dtk-dtype"] ?? inner["x-dtk-dtype"],
-        "x-dtk-source": prop["x-dtk-source"] ?? inner["x-dtk-source"],
-      });
+      const inner = resolveSchemaProp(nonNull[0]!, root);
+      return resolveSchemaProp(
+        {
+          ...inner,
+          title: withRef.title ?? inner.title,
+          description: withRef.description ?? inner.description,
+          default:
+            withRef.default !== undefined ? withRef.default : inner.default,
+          enum: withRef.enum ?? inner.enum,
+          "x-dtk-widget": withRef["x-dtk-widget"] ?? inner["x-dtk-widget"],
+          "x-dtk-dtype": withRef["x-dtk-dtype"] ?? inner["x-dtk-dtype"],
+          "x-dtk-source": withRef["x-dtk-source"] ?? inner["x-dtk-source"],
+        },
+        root,
+      );
     }
     if (nonNull.length > 1) {
-      const resolved = nonNull.map((v) => resolveSchemaProp(v));
+      const resolved = nonNull.map((v) => resolveSchemaProp(v, root));
       const types = new Set<string>();
       for (const r of resolved) {
         if (!r.type) continue;
@@ -62,13 +99,13 @@ export function resolveSchemaProp(prop: JsonSchema): JsonSchema {
         else types.add(r.type);
       }
       const base: JsonSchema = {
-        title: prop.title,
-        description: prop.description,
-        default: prop.default,
-        enum: prop.enum,
-        "x-dtk-widget": prop["x-dtk-widget"],
-        "x-dtk-dtype": prop["x-dtk-dtype"],
-        "x-dtk-source": prop["x-dtk-source"],
+        title: withRef.title,
+        description: withRef.description,
+        default: withRef.default,
+        enum: withRef.enum,
+        "x-dtk-widget": withRef["x-dtk-widget"],
+        "x-dtk-dtype": withRef["x-dtk-dtype"],
+        "x-dtk-source": withRef["x-dtk-source"],
       };
       if (types.has("array")) {
         const arr = resolved.find((r) => r.type === "array");
@@ -89,14 +126,14 @@ export function resolveSchemaProp(prop: JsonSchema): JsonSchema {
     }
   }
 
-  if (Array.isArray(prop.type)) {
-    const nonNull = prop.type.filter((t) => t !== "null");
+  if (Array.isArray(withRef.type)) {
+    const nonNull = withRef.type.filter((t) => t !== "null");
     if (nonNull.length === 1) {
-      return { ...prop, type: nonNull[0] };
+      return { ...withRef, type: nonNull[0] };
     }
   }
 
-  return prop;
+  return withRef;
 }
 
 function isNullOnlySchema(prop: JsonSchema): boolean {
@@ -126,7 +163,7 @@ export function schemaToFields(schema: JsonSchema, op: string): EditorField[] {
   const fields: EditorField[] = [];
 
   for (const [key, raw] of Object.entries(props)) {
-    const prop = resolveSchemaProp(raw as JsonSchema);
+    const prop = resolveSchemaProp(raw as JsonSchema, schema);
     if (key === "fill_value") {
       fields.push({
         key,
@@ -329,7 +366,7 @@ export function schemaToFields(schema: JsonSchema, op: string): EditorField[] {
     }
     if (prop.type === "array") {
       const items = prop.items as JsonSchema | undefined;
-      const resolvedItems = items ? resolveSchemaProp(items) : undefined;
+      const resolvedItems = items ? resolveSchemaProp(items, schema) : undefined;
       if (resolvedItems?.enum && Array.isArray(resolvedItems.enum)) {
         fields.push({
           key,
@@ -351,7 +388,13 @@ export function schemaToFields(schema: JsonSchema, op: string): EditorField[] {
         });
         continue;
       }
-      if (resolvedItems?.type === "string" && !widgetHint) {
+      // Column-selector keys (and old engines without x-dtk-widget) → chips, not free text.
+      const columnKey =
+        key === "columns" ||
+        key === "subset" ||
+        key === "sort_by" ||
+        widgetHint === "columns";
+      if (resolvedItems?.type === "string" && !widgetHint && !columnKey) {
         fields.push({
           key,
           label: prop.title ?? key,
@@ -384,7 +427,7 @@ export function defaultParams(
   const out: Record<string, unknown> = {};
   const props = schema.properties ?? {};
   for (const [key, raw] of Object.entries(props)) {
-    const prop = resolveSchemaProp(raw as JsonSchema);
+    const prop = resolveSchemaProp(raw as JsonSchema, schema);
     if (prop.default !== undefined && prop.default !== null) {
       out[key] = prop.default;
     }
@@ -583,6 +626,98 @@ export function stepParamsValid(
     }
   }
   return { ok: true };
+}
+
+/**
+ * After mapping a transform schema, ensure required params produced fields.
+ * Returns an error message when the editor would silently render with no
+ * required controls (stale engine schema / unmapped $ref — MAT-177).
+ */
+export function schemaFieldsGap(
+  schema: JsonSchema,
+  fields: EditorField[],
+): string | null {
+  const required = schema.required ?? [];
+  if (required.length === 0) return null;
+  const keys = new Set(fields.map((f) => f.key));
+  const missing = required.filter((k) => !keys.has(k));
+  if (missing.length === 0) return null;
+  return (
+    `Transform schema did not yield editor fields for required params: ${missing.join(", ")}. ` +
+    "Is the engine API up to date with this Studio build?"
+  );
+}
+
+function stableParamJson(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => stableParamJson(v)).join(",")}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableParamJson(obj[k])}`).join(",")}}`;
+}
+
+/** True when two steps would do the same work (op + target + params). */
+export function stepsAreIdentical(
+  a: { op: string; target: string; params: Record<string, unknown> },
+  b: { op: string; target: string; params: Record<string, unknown> },
+): boolean {
+  if (a.op !== b.op || a.target !== b.target) return false;
+  return stableParamJson(a.params) === stableParamJson(b.params);
+}
+
+export interface StepEditorContext {
+  /** Column names on the frame the grid is showing (current role/version). */
+  availableColumns: string[];
+  /** Last step already in the workspace pipeline, if any. */
+  previousStep: {
+    op: string;
+    target: string;
+    params: Record<string, unknown>;
+  } | null;
+}
+
+/**
+ * Front-side blockers shown before Apply (do not wait on slow preview_step).
+ * Covers identical consecutive steps and drop_columns of already-gone names.
+ */
+export function stepEditorBlockers(
+  op: string,
+  params: Record<string, unknown>,
+  target: string,
+  ctx: StepEditorContext,
+): string | null {
+  // Prefer "already gone" over "identical" when re-dropping a removed column
+  // (the previous step is often the drop that removed it — MAT-177).
+  if (op === "drop_columns" && params.missing_ok !== true) {
+    const cols = params.columns;
+    if (Array.isArray(cols) && cols.length > 0) {
+      const available = new Set(ctx.availableColumns);
+      const gone = cols.filter((c) => typeof c === "string" && !available.has(c));
+      if (gone.length === 1) {
+        return `Column ${gone[0]} is already gone from this frame.`;
+      }
+      if (gone.length > 1) {
+        return `Columns already gone from this frame: ${gone.join(", ")}.`;
+      }
+    }
+  }
+
+  if (ctx.previousStep && stepsAreIdentical(
+    { op, target, params },
+    {
+      op: ctx.previousStep.op,
+      target: ctx.previousStep.target,
+      params: ctx.previousStep.params,
+    },
+  )) {
+    return "This step is identical to the previous one — change the parameters or discard.";
+  }
+
+  return null;
 }
 
 export function applySchemaDefault(

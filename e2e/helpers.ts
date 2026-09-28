@@ -253,6 +253,27 @@ export function wideAlignWorkspace(): Workspace {
 /**
  * Open workbench and wait until grid data is loaded and suggestions analysis has completed.
  */
+
+/** Parkinson-like train X + y (+ optional test): 13 X cols, separate y (MAT-177). */
+export function parkinsonLikeWorkspace(): Workspace {
+  return {
+    name: "parkinson_like",
+    datasets: {
+      train: {
+        x: { kind: "csv", path: join(fixturesDir, "parkinson_like_x.csv") },
+        y: { kind: "csv", path: join(fixturesDir, "parkinson_like_y.csv") },
+      },
+      test: {
+        x: { kind: "csv", path: join(fixturesDir, "parkinson_like_test.csv") },
+      },
+    },
+    label: { mode: "order" },
+    merges: [],
+    variables: [],
+    steps: [],
+  };
+}
+
 export async function openWorkbench(
   page: Page,
   reset = false,
