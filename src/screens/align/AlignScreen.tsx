@@ -8,6 +8,7 @@ import type {
 } from "../../api/types";
 import { useAppDispatch, useAppState, markWorkspaceSaved } from "../../state/AppStore";
 import {
+  alignRowNeedsDecision,
   computeRowFixes,
   countAlignStatuses,
   formatAlignmentStep,
@@ -241,7 +242,7 @@ export function AlignScreen() {
           ) : (
             alignRows.map((r, idx) => {
               const badge = getStatusBadgeInfo(r.status);
-              const needsFix = r.status !== "match" && r.status !== "label";
+              const needsFix = alignRowNeedsDecision(r);
               const colKey = r.train?.name ?? r.test?.name ?? `row_${idx}`;
               const castError = castErrors[colKey] || null;
               const { note, actions } = computeRowFixes(

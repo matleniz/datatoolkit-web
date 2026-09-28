@@ -346,6 +346,34 @@ export function computeRowFixes(
 }
 
 /**
+ * Severity for engine `value_mismatch` (MAT-179 / MAT-178).
+ *
+ * Prefer the engine's `blocking` flag when present. Otherwise: blocking when
+ * there is fixable spelling drift (`near_matches`) or a large share of test
+ * rows carry unseen values. Pure new categories with empty near_matches and
+ * low `pct_test_rows_unseen` stay visible but do not count as "to decide"
+ * (one-hot `handle_unknown` absorbs them).
+ */
+export const VALUE_MISMATCH_BLOCKING_PCT = 50;
+
+export function isBlockingValueMismatch(row: AlignReportRow): boolean {
+  if (row.status !== "value_mismatch") return false;
+  if (typeof row.blocking === "boolean") return row.blocking;
+  const near = row.near_matches ?? [];
+  if (near.length > 0) return true;
+  const pct = row.pct_test_rows_unseen;
+  if (pct === null || pct === undefined) return true;
+  return pct > VALUE_MISMATCH_BLOCKING_PCT;
+}
+
+/** True when the row should count toward "to decide" / needs-fix styling. */
+export function alignRowNeedsDecision(row: AlignReportRow): boolean {
+  if (row.status === "match" || row.status === "label") return false;
+  if (row.status === "value_mismatch") return isBlockingValueMismatch(row);
+  return true;
+}
+
+/**
  * Counts of columns by status category.
  */
 export function countAlignStatuses(rows: AlignReportRow[]): {
@@ -362,8 +390,11 @@ export function countAlignStatuses(rows: AlignReportRow[]): {
       ok++;
     } else if (r.status === "label") {
       info++;
+    } else if (r.status === "value_mismatch" && !isBlockingValueMismatch(r)) {
+      // Informational unseen categories: still shown in the table, not "to decide".
+      info++;
     } else {
-      // type_mismatch, value_mismatch, missing/extra, and any unknown status
+      // type_mismatch, blocking value_mismatch, missing/extra, unknown status
       fix++;
     }
   }
