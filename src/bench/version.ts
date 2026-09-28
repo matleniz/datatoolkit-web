@@ -5,6 +5,24 @@ export function latestVersion(ws: Workspace): number {
   return ws.steps.length;
 }
 
+/**
+ * Fingerprint of workspace parts that affect pipeline shapes.
+ * Variables and view version are intentionally excluded.
+ */
+export function shapesStructureKey(
+  ws: Workspace | null,
+  role: string,
+): string {
+  if (!ws) return `${role}|`;
+  return JSON.stringify({
+    role,
+    steps: ws.steps,
+    datasets: ws.datasets,
+    merges: ws.merges ?? [],
+    label: ws.label,
+  });
+}
+
 /** Resolve viewVersion (null = latest) to an engine version index. */
 export function effectiveVersion(
   ws: Workspace,

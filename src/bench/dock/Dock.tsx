@@ -182,7 +182,15 @@ export function Dock() {
   const style: CSSProperties = maximized
     ? { flexGrow: 1, minHeight: 0 }
     : right
-      ? { width: sizes.right, flexShrink: 0, minHeight: 0 }
+      ? {
+          width: sizes.right,
+          // Prototype widths (S/M/L) but never steal more than half the
+          // centre area — at M the grid must stay ≈≥50%.
+          maxWidth: "50%",
+          flexShrink: 0,
+          minHeight: 0,
+          minWidth: 0,
+        }
       : { height: sizes.bottom, flexShrink: 0 };
 
   const winsStyle: CSSProperties =

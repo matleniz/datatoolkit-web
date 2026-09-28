@@ -11,13 +11,23 @@ export function toEngineParams(
 
   // Prototype aliases → engine ops handled by caller (map_value → standardize_text).
   if (op === "replace_sentinels") {
-    if (p.sentinels) return p;
+    const existing = p.sentinels;
+    const hasSentinels =
+      existing &&
+      typeof existing === "object" &&
+      !Array.isArray(existing) &&
+      Object.keys(existing as object).length > 0;
+    if (hasSentinels) {
+      return { sentinels: existing };
+    }
     if (typeof p.column === "string" && p.values !== undefined) {
       return {
-        sentinels: { [p.column]: Array.isArray(p.values) ? p.values : [p.values] },
+        sentinels: {
+          [p.column]: Array.isArray(p.values) ? p.values : [p.values],
+        },
       };
     }
-    return { sentinels: {} };
+    return { sentinels: existing && typeof existing === "object" ? existing : {} };
   }
 
   if (

@@ -38,7 +38,7 @@ export function nameDisplay(name: string): string {
 /** Render fitted state from preview_step.state as readable lines. */
 export function formatLearnedState(state: Record<string, JsonValue>): string {
   if (!state || Object.keys(state).length === 0) {
-    return "Nothing: stateless op.";
+    return "Not fitted: nothing is learned on train";
   }
   if ("fill" in state && state.fill && typeof state.fill === "object") {
     const fill = state.fill as Record<string, JsonValue>;

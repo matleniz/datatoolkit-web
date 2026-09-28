@@ -5,6 +5,7 @@ import type { Result } from "../../api/types";
 import { EngineError } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import type { CourseStage } from "../../state/reducer";
+import { toEngineParams } from "../presets";
 import { datasetSource, targetColumnOf } from "./datasetSource";
 import {
   STAGE_COLOR,
@@ -157,7 +158,7 @@ export function SuggestionsTab() {
                   dispatch({
                     type: "OPEN_EDITOR",
                     op: cd.step!.op,
-                    params: cd.step!.params,
+                    params: toEngineParams(cd.step!.op, cd.step!.params),
                     target: cd.step!.target,
                   });
                 }}

@@ -9,6 +9,7 @@ import {
   type EditorField,
 } from "../schemaFields";
 import {
+  FITTING_OPS,
   OP_STAGE,
   STAGE_COLOR,
   STAGE_NAME,
@@ -66,6 +67,7 @@ export function StepEditor() {
     previewError,
     pendingStep,
     pendingDiffText,
+    previewLoading,
     applyPending,
     isLatest,
   } = useWorkbenchData();
@@ -168,11 +170,27 @@ export function StepEditor() {
   const what = WHAT[op] ?? info?.description ?? "";
   const paramsValid = stepParamsValid(op, editor.params, schemaFields);
   const canApply = !!pendingStep && !previewError && isLatest;
-  const learned = preview
-    ? formatLearnedState(preview.state)
-    : paramsValid.ok
-      ? "Complete the parameters to see what is learned."
-      : "Complete the parameters to see what is learned.";
+  const fits = FITTING_OPS.has(op);
+  let learned: string;
+  if (!fits) {
+    learned = "Not fitted: nothing is learned on train";
+  } else if (preview) {
+    learned = formatLearnedState(preview.state);
+  } else if (!paramsValid.ok) {
+    learned = "Complete the parameters to see what is learned.";
+  } else if (previewLoading) {
+    learned = "Fitting on train…";
+  } else {
+    learned = "Complete the parameters to see what is learned.";
+  }
+
+  const effectText = !pendingStep
+    ? isLatest
+      ? "—"
+      : "Go back to the latest version first."
+    : previewLoading && !preview
+      ? "Computing preview…"
+      : pendingDiffText || "no change on this view";
 
   return (
     <aside className="step-editor" aria-label="Step editor" data-owner="W2">
@@ -239,11 +257,7 @@ export function StepEditor() {
           Effect on this view
         </div>
         <div>
-          {pendingStep
-            ? `${pendingDiffText || "no change on this view"}`
-            : isLatest
-              ? "—"
-              : "Go back to the latest version first."}
+          {effectText}
         </div>
       </div>
 

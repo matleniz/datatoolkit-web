@@ -5,6 +5,7 @@ import { colAlerts, isOutlierValue, missPct, profileBars } from "../alerts";
 import { cellTone } from "../diff";
 import { cellDisplay, fmt, nameDisplay } from "../format";
 import { colWidth, isNumericKind, KIND_BAR, KIND_LABEL } from "../kinds";
+import { stepSummary } from "../stages";
 import { useWorkbenchData } from "../WorkbenchData";
 
 /** W2 — data grid. */
@@ -62,6 +63,11 @@ export function Grid() {
     <div className="grid-shell" data-owner="W2">
       <div className="grid-toolbar">
         <span className="grid-sel-text">{selText}</span>
+        {loading && display.rows.length > 0 ? (
+          <span className="grid-inline-loading" aria-live="polite">
+            Updating…
+          </span>
+        ) : null}
         <button
           type="button"
           className={selection.multi ? "chip on" : "chip"}
@@ -96,13 +102,9 @@ export function Grid() {
       {pendingStep && preview ? (
         <div className="banner preview-banner" role="status">
           <span className="banner-kicker">Live preview</span>
-          <code className="banner-code">
-            {JSON.stringify({
-              op: pendingStep.op,
-              target: pendingStep.target,
-              params: pendingStep.params,
-            })}
-          </code>
+          <span className="banner-code">
+            {stepSummary(pendingStep.op, pendingStep.params)}
+          </span>
           <span className="banner-delta">{pendingDiffText}</span>
           <div className="banner-spacer" />
           <button

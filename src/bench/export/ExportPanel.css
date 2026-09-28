@@ -31,8 +31,9 @@
   padding: 12px 16px;
   border-bottom: 1px solid var(--dtk-border);
   background: var(--dtk-bg-export);
-  height: 280px;
+  height: 380px;
   box-sizing: border-box;
+  min-height: 0;
 }
 
 .export-code-col {
@@ -41,12 +42,14 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-height: 0;
 }
 
 .export-heading {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .export-title {
@@ -66,10 +69,11 @@
   line-height: 1.55;
   white-space: pre;
   overflow: auto;
+  min-height: 0;
 }
 
 .export-side {
-  width: 240px;
+  width: 280px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -81,16 +85,19 @@
 .export-side-title {
   font-size: 12px;
   font-weight: 600;
+  flex-shrink: 0;
 }
 
 .export-outputs {
   font-size: 11px;
   line-height: 1.6;
+  flex-shrink: 0;
 }
 
 .export-side label {
   font-size: 11px;
   color: var(--dtk-muted);
+  flex-shrink: 0;
 }
 
 .export-side input {
@@ -100,6 +107,7 @@
   border-radius: 5px;
   font-family: var(--dtk-font-mono);
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .export-run-btn {
@@ -109,6 +117,7 @@
   background: var(--dtk-ink);
   color: #ffffff;
   font-weight: 500;
+  flex-shrink: 0;
 }
 
 .export-run-btn:disabled {
@@ -121,6 +130,8 @@
   border-radius: 6px;
   background: var(--dtk-surface);
   font-size: 12px;
+  flex-shrink: 0;
+  margin-top: auto;
 }
 
 .export-manifest {
@@ -128,12 +139,14 @@
   flex-direction: column;
   gap: 6px;
   min-height: 0;
+  flex: 1;
 }
 
 .export-manifest-summary {
   font-size: 12px;
   line-height: 1.45;
   color: var(--dtk-ink);
+  flex-shrink: 0;
 }
 
 .export-manifest-paths {
@@ -143,9 +156,16 @@
   line-height: 1.5;
 }
 
+.export-manifest-paths li {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .export-manifest-json {
   margin: 0;
-  max-height: 120px;
+  flex: 1;
+  min-height: 48px;
+  max-height: 140px;
   overflow: auto;
   font-family: var(--dtk-font-mono);
   font-size: 10px;
