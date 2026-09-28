@@ -7,6 +7,7 @@ import { isNumericKind } from "../kinds";
 import { targetColumnOf } from "../left/datasetSource";
 import { resolveOp, toEngineParams } from "../presets";
 import {
+  featureOpColumnsNeedingImpute,
   filterColumnsByDtype,
   stepParamsValid,
   fieldValuePresent,
@@ -257,6 +258,15 @@ export function StepEditor() {
   const title = info?.title ?? op;
   const what = WHAT[op] ?? info?.description ?? "";
   const paramsValid = stepParamsValid(op, editor.params, schemaFields);
+  const missingByColumn = new Map<string, number>();
+  for (const [name, pr] of profiles) {
+    missingByColumn.set(name, pr.missing);
+  }
+  const needImputeCols = featureOpColumnsNeedingImpute(
+    op,
+    editor.params,
+    missingByColumn,
+  );
   const formError =
     schemaError ||
     editorBlocker ||
@@ -391,7 +401,27 @@ export function StepEditor() {
 
       {(formError && !schemaError) || editorBlocker ? (
         <div className="ed-error" role="alert" data-ed-disabled-reason="">
-          {editorBlocker || previewError || paramsValid.missing}
+          <div>{editorBlocker || previewError || paramsValid.missing}</div>
+          {needImputeCols.length > 0 ? (
+            <button
+              type="button"
+              className="link-btn"
+              data-ed-open-impute=""
+              style={{ marginTop: 6 }}
+              onClick={() =>
+                dispatch({
+                  type: "OPEN_EDITOR",
+                  op: "impute",
+                  params: toEngineParams("impute", {
+                    column: needImputeCols[0],
+                    strategy: "median",
+                  }),
+                })
+              }
+            >
+              Open Impute…
+            </button>
+          ) : null}
         </div>
       ) : null}
       {!canApply && formError ? (

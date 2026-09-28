@@ -714,11 +714,52 @@ export interface StepEditorContext {
     target: string;
     params: Record<string, unknown>;
   } | null;
+  /**
+   * Missing-value counts by column name (from column profiles). Used to block
+   * feature ops that refuse NaNs before preview_step (MAT-191).
+   */
+  missingByColumn?: Map<string, number> | Record<string, number>;
+}
+
+/** Feature ops that refuse columns with missing values (engine requires impute first). */
+export const FEATURE_OPS_NEED_IMPUTE = new Set([
+  "polynomial",
+  "power_transform",
+  "quantile_transform",
+]);
+
+function missingCountOf(
+  name: string,
+  missingByColumn: Map<string, number> | Record<string, number>,
+): number {
+  if (missingByColumn instanceof Map) {
+    return missingByColumn.get(name) ?? 0;
+  }
+  return missingByColumn[name] ?? 0;
+}
+
+/**
+ * Columns selected for a feature op that still have missing values (MAT-191).
+ * Empty when the op does not require complete columns or nothing is missing.
+ */
+export function featureOpColumnsNeedingImpute(
+  op: string,
+  params: Record<string, unknown>,
+  missingByColumn?: Map<string, number> | Record<string, number>,
+): string[] {
+  if (!FEATURE_OPS_NEED_IMPUTE.has(op) || !missingByColumn) return [];
+  const cols = params.columns;
+  if (!Array.isArray(cols) || cols.length === 0) return [];
+  return cols.filter(
+    (c): c is string =>
+      typeof c === "string" && missingCountOf(c, missingByColumn) > 0,
+  );
 }
 
 /**
  * Front-side blockers shown before Apply (do not wait on slow preview_step).
- * Covers identical consecutive steps and drop_columns of already-gone names.
+ * Covers identical consecutive steps, drop_columns of already-gone names,
+ * and feature ops on columns that still have missing values (MAT-191).
  */
 export function stepEditorBlockers(
   op: string,
@@ -740,6 +781,18 @@ export function stepEditorBlockers(
         return `Columns already gone from this frame: ${gone.join(", ")}.`;
       }
     }
+  }
+
+  const needImpute = featureOpColumnsNeedingImpute(
+    op,
+    params,
+    ctx.missingByColumn,
+  );
+  if (needImpute.length === 1) {
+    return `Impute missing values first (${needImpute[0]} has missing).`;
+  }
+  if (needImpute.length > 1) {
+    return `Impute missing values first (${needImpute.join(", ")} have missing).`;
   }
 
   if (ctx.previousStep && stepsAreIdentical(

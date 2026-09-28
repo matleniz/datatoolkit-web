@@ -1,5 +1,8 @@
 /// <reference types="vite/client" />
 
+/** Absolute path to this checkout's `e2e/fixtures` (Vite `define`, MAT-190). */
+declare const __DTK_E2E_FIXTURES__: string;
+
 interface ImportMetaEnv {
   readonly VITE_API_URL?: string;
 }
