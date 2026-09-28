@@ -14,6 +14,13 @@ export function datasetSource(
   };
 }
 
+/**
+ * Target column name as it appears on the labeled frame.
+ * - `target_column` on train X (column-of-X mode)
+ * - y-file join: the label value column (churn fixture → `churn`; most
+ *   contest CSVs → `target`). Keys that split by the label (`by`, or
+ *   `by_label`+`target`) must use this name — the front does not rename.
+ */
 export function targetColumnOf(workspace: Workspace): string | null {
   if (workspace.datasets.train.target_column) {
     return workspace.datasets.train.target_column;

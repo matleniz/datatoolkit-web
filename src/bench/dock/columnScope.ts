@@ -16,6 +16,10 @@ export function schemaHasColumns(schema: JsonSchema): boolean {
   return Boolean(schema.properties && "columns" in schema.properties);
 }
 
+export function schemaHasBy(schema: JsonSchema): boolean {
+  return Boolean(schema.properties && "by" in schema.properties);
+}
+
 /**
  * Columns to pass to an engine key that declares `columns`.
  * `null` means "all" (omit / empty — engine default).
@@ -42,6 +46,20 @@ export function selectedNumericColumns(
     const p = byName.get(c);
     return p != null && p.kind === "number";
   });
+}
+
+/**
+ * Default "split by" for Distribution by…: target when set (and not the
+ * focus column), otherwise the first other column on the frame.
+ */
+export function defaultSplitBy(
+  target: string | null,
+  focus: string | null,
+  columns: string[],
+): string | null {
+  if (target && target !== focus && columns.includes(target)) return target;
+  const other = columns.find((c) => c !== focus);
+  return other ?? null;
 }
 
 export function outliersBoundLabel(
