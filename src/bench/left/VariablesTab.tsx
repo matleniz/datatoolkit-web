@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { apiClient } from "../../api/client";
+import type { JsonValue, VariableSpec } from "../../api/types";
+import { EngineError } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { useWorkbenchData } from "../WorkbenchData";
 import {
   VARIABLE_STATS,
-  computeStat,
   fmtStat,
   type VariableStat,
 } from "./stats";
@@ -13,19 +15,52 @@ function chipClass(on: boolean): string {
   return on ? "chip on" : "chip";
 }
 
+const PENDING_NAME = "__dtk_pending";
+
+function isValidVarName(name: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
+}
+
+/** Extract name → number|null from preview_step.state.variables. */
+function parseVariableValues(
+  state: Record<string, JsonValue>,
+): Record<string, number | null> {
+  const raw = state.variables;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, number | null> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, JsonValue>)) {
+    out[k] = typeof v === "number" && !Number.isNaN(v) ? v : null;
+  }
+  return out;
+}
+
+function displayValue(
+  name: string,
+  values: Record<string, number | null>,
+  loading: boolean,
+): string {
+  if (loading) return "…";
+  if (!(name in values)) return "…";
+  return fmtStat(values[name] ?? null);
+}
+
 /**
- * Variables tab — uses WorkbenchData profiles/rows (no extra profiles or
- * limit=5000 rows fetch on open).
+ * Variables tab — values come from the engine (train, latest version) via a
+ * throwaway formula preview_step, not from the grid's loaded page / view role.
  */
 export function VariablesTab() {
   const { workspace, editor } = useAppState();
   const dispatch = useAppDispatch();
-  const { profiles, rows, loading } = useWorkbenchData();
+  const { profiles, loading: profilesLoading } = useWorkbenchData();
   const [nvName, setNvName] = useState("");
   const [nvStat, setNvStat] = useState<VariableStat>("median");
   const [nvColumn, setNvColumn] = useState<string | null>(null);
 
-  const vars = workspace?.variables ?? [];
+  const [values, setValues] = useState<Record<string, number | null>>({});
+  const [valuesLoading, setValuesLoading] = useState(false);
+  const [valuesError, setValuesError] = useState<string | null>(null);
+
+  const vars = workspace?.variables;
   const edFormula = editor?.op === "formula";
 
   const profileList = useMemo(() => [...profiles.values()], [profiles]);
@@ -38,14 +73,78 @@ export function VariablesTab() {
     [profileList],
   );
 
+  const pendingVar = useMemo((): VariableSpec | null => {
+    if (!nvColumn) return null;
+    const name = isValidVarName(nvName) ? nvName : PENDING_NAME;
+    return { name, stat: nvStat, column: nvColumn };
+  }, [nvColumn, nvName, nvStat]);
+
+  const varsForFit = useMemo(() => {
+    const list = [...(vars ?? [])];
+    if (pendingVar && !list.some((v) => v.name === pendingVar.name)) {
+      list.push(pendingVar);
+    }
+    return list;
+  }, [vars, pendingVar]);
+
+  // Re-run when variables or steps change — never when only the view role changes.
+  useEffect(() => {
+    if (!workspace?.datasets.train.x.path || varsForFit.length === 0) {
+      setValues({});
+      setValuesError(null);
+      setValuesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setValuesLoading(true);
+    setValuesError(null);
+
+    (async () => {
+      try {
+        const prev = await apiClient.previewStep(
+          workspace,
+          {
+            op: "formula",
+            target: "train",
+            params: {
+              name: "__dtk_vars",
+              expr: "0",
+              variables: varsForFit,
+            },
+          },
+          "train",
+        );
+        if (cancelled) return;
+        setValues(parseVariableValues(prev.state));
+        setValuesError(null);
+      } catch (e) {
+        if (cancelled) return;
+        setValues({});
+        setValuesError(e instanceof EngineError ? e.message : String(e));
+      } finally {
+        if (!cancelled) setValuesLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace, varsForFit]);
+
   const nvOk =
     !!nvName &&
+    isValidVarName(nvName) &&
     !!nvColumn &&
     numericCols.includes(nvColumn) &&
-    !vars.some((v) => v.name === nvName);
+    !(vars ?? []).some((v) => v.name === nvName);
 
+  const pendingKey = pendingVar?.name ?? PENDING_NAME;
+  const previewValue = nvColumn
+    ? displayValue(pendingKey, values, valuesLoading)
+    : null;
   const preview = nvColumn
-    ? `@${nvName || "?"} = ${nvStat}(${nvColumn}) = ${fmtStat(computeStat(rows, nvStat, nvColumn))} on train`
+    ? `@${nvName || "?"} = ${nvStat}(${nvColumn}) = ${previewValue} on train`
     : "Pick a statistic and a column.";
 
   return (
@@ -56,13 +155,18 @@ export function VariablesTab() {
         <span className="mono">@name</span> in a formula: the step freezes
         their train value, so test reuses the same number.
       </p>
-      {loading && !profileList.length ? (
+      {profilesLoading && !profileList.length ? (
         <div className="muted">Loading…</div>
+      ) : null}
+      {valuesError ? (
+        <div className="engine-error" role="alert">
+          {valuesError}
+        </div>
       ) : null}
 
       <div className="var-list">
-        {vars.map((v) => {
-          const value = fmtStat(computeStat(rows, v.stat, v.column));
+        {(vars ?? []).map((v) => {
+          const value = displayValue(v.name, values, valuesLoading);
           return (
             <div key={v.name} className="var-card">
               <div className="var-card-top">
