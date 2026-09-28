@@ -205,47 +205,10 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     const ver = version;
 
     (async () => {
-      // Shapes (limit=1) start in parallel with the page of rows + profiles so
-      // the raw node shows dimensions immediately on large datasets.
-      // Step versions stay sequential: stop at the first failing step.
+      // Shapes: reuse the main rows page for the viewed version; only hit
+      // limit=1 for other pipeline versions (avoids a duplicate rows call on
+      // open when steps.length === 0).
       let rawShapeError: string | null = null;
-      const shapesTask = needShapes
-        ? (async () => {
-            const nextShapes: PipelineShape[] = [];
-            const errs = new Map<number, string>();
-            for (let v = 0; v <= n; v++) {
-              if (gen !== fetchGen.current) return;
-              try {
-                const r = await apiClient.workspaceRows(ws, role, v, 0, 1);
-                nextShapes.push({ rows: r.total, cols: r.columns.length });
-                // Publish progressively so "raw" is not stuck on "—" while later
-                // step shapes (or the big rows page) are still in flight.
-                if (gen === fetchGen.current) {
-                  setShapes([...nextShapes]);
-                  setStepErrors(new Map(errs));
-                }
-              } catch (e) {
-                const msg =
-                  e instanceof EngineError ? e.message : String(e);
-                if (v > 0) errs.set(v - 1, msg);
-                if (v === 0) {
-                  rawShapeError = msg;
-                  if (gen === fetchGen.current) {
-                    dispatch({ type: "SET_BENCH_ERROR", message: msg });
-                  }
-                }
-                nextShapes.push(
-                  nextShapes[nextShapes.length - 1] ?? { rows: 0, cols: 0 },
-                );
-                if (gen === fetchGen.current) {
-                  setShapes([...nextShapes]);
-                  setStepErrors(new Map(errs));
-                }
-                break;
-              }
-            }
-          })()
-        : Promise.resolve();
 
       try {
         const [rowsRes, profRaw] = await Promise.all([
@@ -258,9 +221,65 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
         setRows(rowsRes.rows);
         setTotal(rowsRes.total);
         setProfiles(new Map(profRes.columns.map((p) => [p.name, p])));
-        // Do not clear a concurrent raw-shape failure.
-        if (!rawShapeError) {
-          dispatch({ type: "SET_BENCH_ERROR", message: null });
+        dispatch({ type: "SET_BENCH_ERROR", message: null });
+
+        if (needShapes) {
+          const nextShapes: PipelineShape[] = new Array(n + 1);
+          const errs = new Map<number, string>();
+          nextShapes[ver] = {
+            rows: rowsRes.total,
+            cols: rowsRes.columns.length,
+          };
+          if (n === 0) {
+            setShapes([{ rows: rowsRes.total, cols: rowsRes.columns.length }]);
+            setStepErrors(new Map());
+          } else {
+            for (let v = 0; v <= n; v++) {
+              if (v === ver) continue;
+              if (gen !== fetchGen.current) return;
+              try {
+                const r = await apiClient.workspaceRows(ws, role, v, 0, 1);
+                nextShapes[v] = { rows: r.total, cols: r.columns.length };
+              } catch (e) {
+                const msg =
+                  e instanceof EngineError ? e.message : String(e);
+                if (v > 0) errs.set(v - 1, msg);
+                if (v === 0) {
+                  rawShapeError = msg;
+                  dispatch({ type: "SET_BENCH_ERROR", message: msg });
+                }
+                nextShapes[v] =
+                  nextShapes[v - 1] ?? { rows: 0, cols: 0 };
+                // Fill remaining with last known so the bar stays sized.
+                for (let u = v + 1; u <= n; u++) {
+                  if (!nextShapes[u]) nextShapes[u] = nextShapes[v]!;
+                }
+                break;
+              }
+              if (gen === fetchGen.current) {
+                setShapes(
+                  nextShapes.map(
+                    (s, i) =>
+                      s ??
+                      nextShapes[ver] ??
+                      nextShapes[i - 1] ?? { rows: 0, cols: 0 },
+                  ),
+                );
+                setStepErrors(new Map(errs));
+              }
+            }
+            if (gen === fetchGen.current) {
+              setShapes(
+                nextShapes.map(
+                  (s, i) =>
+                    s ??
+                    nextShapes[ver] ??
+                    nextShapes[i - 1] ?? { rows: 0, cols: 0 },
+                ),
+              );
+              setStepErrors(new Map(errs));
+            }
+          }
         }
       } catch (e) {
         if (gen !== fetchGen.current) return;
@@ -270,11 +289,13 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
         setTotal(0);
         setProfiles(new Map());
         dispatch({ type: "SET_BENCH_ERROR", message: msg });
+        if (needShapes && ver === 0) {
+          rawShapeError = msg;
+        }
       } finally {
         if (gen === fetchGen.current) setLoading(false);
       }
 
-      await shapesTask;
       if (rawShapeError && gen === fetchGen.current) {
         dispatch({ type: "SET_BENCH_ERROR", message: rawShapeError });
       }

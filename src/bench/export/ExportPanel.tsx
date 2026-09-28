@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "../../api/client";
 import type { ExportManifest, ExportOutputEntry } from "../../api/types";
 import { EngineError } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import {
+  defaultExportOutDir,
   joinManifestPath,
   resolveExportOutDir,
 } from "./exportPaths";
@@ -52,12 +53,18 @@ function countFittedSteps(steps: Record<string, unknown>[]): number {
 export function ExportPanel() {
   const { workspace, showExport } = useAppState();
   const dispatch = useAppDispatch();
-  const [outDir, setOutDir] = useState("./export");
+  const [outDir, setOutDir] = useState(() =>
+    workspace ? defaultExportOutDir(workspace) : "/tmp/exports",
+  );
   const [manifest, setManifest] = useState<ExportManifest | null>(null);
   /** out_dir used for the last successful export (for path display). */
   const [exportedOutDir, setExportedOutDir] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (workspace) setOutDir(defaultExportOutDir(workspace));
+  }, [workspace]);
 
   const steps = workspace?.steps ?? [];
   const nFit = steps.filter(

@@ -2,7 +2,7 @@ import { StrictMode, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
-import { ensureChurnWorkspace } from "./bootstrap";
+import { loadInitialWorkspace } from "./bootstrap";
 import { AppProvider, useAppDispatch } from "./state/AppStore";
 import "./theme/tokens.css";
 
@@ -13,10 +13,10 @@ function Bootstrap({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    ensureChurnWorkspace()
+    loadInitialWorkspace()
       .then((ws) => {
         if (cancelled) return;
-        dispatch({ type: "SET_WORKSPACE", workspace: ws });
+        if (ws) dispatch({ type: "SET_WORKSPACE", workspace: ws });
         setReady(true);
       })
       .catch((e) => {

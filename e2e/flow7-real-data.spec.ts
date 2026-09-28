@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Request } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -14,6 +14,14 @@ const Y_TRAIN = join(REAL_DATA_DIR, "y_train_lXj6X5y.csv");
 
 const realDataAvailable =
   existsSync(X_TRAIN) && existsSync(X_TEST) && existsSync(Y_TRAIN);
+
+function requestFingerprint(r: Request): string | null {
+  const url = r.url();
+  if (!url.includes("/api/workspace/")) return null;
+  if (r.method() !== "POST") return null;
+  const path = url.split("/api")[1] ?? url;
+  return `${r.method()} ${path} ${r.postData() ?? ""}`;
+}
 
 test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, workbench)", async ({
   page,
@@ -44,34 +52,26 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
   // 3. Upload real Parkinson files via file input
   const fileInput = page.locator('input[type="file"]');
 
-  // Upload X_train
   await fileInput.setInputFiles(X_TRAIN);
   const filesList = page.getByRole("region", { name: "Files list" });
   await expect(filesList.getByText("X_train_6ZIKlTY.csv")).toBeVisible({
     timeout: 30_000,
   });
 
-  // Upload y_train
   await fileInput.setInputFiles(Y_TRAIN);
   await expect(filesList.getByText("y_train_lXj6X5y.csv")).toBeVisible({
     timeout: 30_000,
   });
 
-  // Upload X_test
   await fileInput.setInputFiles(X_TEST);
   await expect(filesList.getByText("X_test_oiZ2ukx.csv")).toBeVisible({
     timeout: 30_000,
   });
 
-  // 4. Assert only the 3 parkinson files are listed in that workspace
   const fileRows = filesList.locator(".files-table-row");
   await expect(fileRows).toHaveCount(3);
   await expect(filesList.getByText("churn_train.csv")).toHaveCount(0);
-  await expect(filesList.getByText("churn_labels.csv")).toHaveCount(0);
-  await expect(filesList.getByText("churn_test.csv")).toHaveCount(0);
-  await expect(filesList.getByText("customers_extra.csv")).toHaveCount(0);
 
-  // Sources shows 'header 0' and '55603' for X_train
   const xTrainRow = filesList.locator(".files-table-row", {
     hasText: "X_train_6ZIKlTY.csv",
   });
@@ -90,17 +90,14 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
   });
   await xTestRow.getByRole("button", { name: /Test X/ }).click();
 
-  // Target card: Separate y file, By row order
   await page.getByRole("button", { name: "Separate y file" }).click();
   await page.getByRole("button", { name: "By row order" }).click();
 
-  // Wait for Result card to reflect the real dataset dimensions (55603 rows)
   const resultRegion = page.getByRole("region", { name: "Result schema" });
   await expect(resultRegion.getByText(/55\s?603/)).toBeVisible({
     timeout: 30_000,
   });
 
-  // Target chip is 'target' (never 'Index ◎')
   await expect(
     resultRegion.locator(".res-col-chip", { hasText: "Index ◎" }),
   ).toHaveCount(0);
@@ -108,11 +105,9 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
     resultRegion.locator(".res-col-chip", { hasText: "target" }),
   ).toContainText("◎");
 
-  // Never screenshot a loading state
   await expect(page.getByText("Loading…")).toHaveCount(0);
   await expect(page.getByText("Loading workspace…")).toBeHidden();
 
-  // Screenshot 01: Sources screen with real data
   await captureFlowScreenshot(
     page,
     "7-real-data",
@@ -127,7 +122,6 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
     page.getByRole("main").getByText("Train / test alignment"),
   ).toBeVisible();
 
-  // Wait for the alignment table to render (not the loading placeholder).
   await expect(page.locator(".align-table-row").first()).toBeVisible({
     timeout: 90_000,
   });
@@ -139,25 +133,46 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
   });
   await expect(page.getByText("Loading alignment report...")).toHaveCount(0);
 
-  // Screenshot 02: Alignment screen with real data
   await captureFlowScreenshot(page, "7-real-data", "02-parkinson-align.png");
 
-  // 6. Navigate to Workbench
+  // 6. Open workbench — assert grid ready < 8 s and no duplicate POSTs
+  const workspacePosts: string[] = [];
+  const onReq = (r: Request) => {
+    const fp = requestFingerprint(r);
+    if (fp) workspacePosts.push(fp);
+  };
+  page.on("request", onReq);
+
+  const t0 = Date.now();
   await page.getByRole("button", { name: "Open workbench →" }).click();
   await expect(page.getByLabel("Workbench")).toBeVisible();
   await waitForGridReady(page);
+  const gridReadyMs = Date.now() - t0;
+  page.off("request", onReq);
 
-  // Pipeline raw shape '55603 × 13'
+  expect(
+    gridReadyMs,
+    `grid ready in ${gridReadyMs}ms (target < 8000)`,
+  ).toBeLessThan(8_000);
+
+  const seen = new Set<string>();
+  const dupes: string[] = [];
+  for (const fp of workspacePosts) {
+    if (seen.has(fp)) dupes.push(fp.slice(0, 120));
+    else seen.add(fp);
+  }
+  expect(
+    dupes,
+    `duplicate POST /workspace/* while opening:\n${dupes.join("\n")}`,
+  ).toEqual([]);
+
   const rawNode = page
     .locator(".pipeline-node")
     .filter({ has: page.locator(".pipeline-ver", { hasText: /^raw$/ }) });
-  // Raw shape on the real dataset can take >5 s; do not assert the pipeline
-  // sub-label "extra" (FX-B makes it data-driven, e.g. "train X + y" with no merge).
   await expect(rawNode).toContainText(/55\s?603\s*×\s*13/, {
     timeout: 60_000,
   });
 
-  // Workbench grid shows rows with patient_id values
   await expect(
     page.locator(".grid-th", { hasText: "patient_id" }),
   ).toBeVisible({ timeout: 30_000 });
@@ -167,7 +182,6 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
   expect(firstPatientVal).toBeTruthy();
   expect(firstPatientVal).not.toMatch(/^[–—∅]?$/);
 
-  // Suggestions count > 0
   await expect
     .poll(
       async () =>
@@ -179,7 +193,22 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
     page.getByRole("tab", { name: /Suggestions · [1-9]/ }),
   ).toBeVisible();
 
-  // Screenshot 03: Workbench with real data
+  // Export Parkinson: default out_dir is absolute; run and show manifest paths
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const exportPanel = page.getByLabel("Export", { exact: true });
+  await expect(exportPanel).toBeVisible();
+  const outDirInput = page.getByLabel("Output directory");
+  const outDirVal = await outDirInput.inputValue();
+  expect(outDirVal.startsWith("/") || /^[A-Za-z]:[\\/]/.test(outDirVal)).toBe(
+    true,
+  );
+  await page.getByRole("button", { name: "Export parquet + manifest" }).click();
+  const manifestRegion = page.locator('[aria-label="Export manifest"]');
+  await expect(manifestRegion).toBeVisible({ timeout: 120_000 });
+  const manifestText = await manifestRegion.innerText();
+  expect(manifestText).toMatch(/train\.parquet/);
+  expect(manifestText).toMatch(/manifest\.json|Output dir/);
+
   await waitForGridReady(page);
   await captureFlowScreenshot(
     page,

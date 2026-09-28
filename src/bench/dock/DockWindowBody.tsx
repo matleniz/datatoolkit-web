@@ -6,9 +6,11 @@ import { EngineError } from "../../api/types";
 import { useAppState } from "../../state/AppStore";
 import type { ToolId } from "../../state/reducer";
 import { datasetSource, targetColumnOf } from "../left/datasetSource";
+import { keyParamsFromSchema } from "../left/keyParams";
 import { computeStat, fmtStat, round3 } from "../left/stats";
 import { toolDef } from "../toolrail/tools";
 import { effectiveVersion } from "../version";
+import { useWorkbenchData } from "../WorkbenchData";
 import { ResultView } from "./ResultView";
 
 function isNumericKind(kind: string): boolean {
@@ -82,6 +84,7 @@ const COMPARE_STATS = ["mean", "median", "std", "min", "max"] as const;
 
 export function DockWindowBody({ id }: { id: ToolId }) {
   const { workspace, selection, role, viewVersion } = useAppState();
+  const bench = useWorkbenchData();
   const [profiles, setProfiles] = useState<ColumnProfile[]>([]);
   const [rows, setRows] = useState<WorkspaceRow[]>([]);
   const [result, setResult] = useState<Result | null>(null);
@@ -95,6 +98,9 @@ export function DockWindowBody({ id }: { id: ToolId }) {
   const target = workspace ? targetColumnOf(workspace) : null;
   const def = toolDef(id);
   const selKey = selCols.join(",");
+  const version = workspace
+    ? effectiveVersion(workspace, viewVersion)
+    : 0;
 
   useEffect(() => {
     if (!workspace?.datasets.train.x.path) {
@@ -116,22 +122,38 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         if (window.__DTK_WORKSPACE_SAVED__) {
           await window.__DTK_WORKSPACE_SAVED__;
         }
-        const version = effectiveVersion(workspace, viewVersion);
-        const prof = await apiClient.columnProfiles(workspace, role, version);
-        const wr = await apiClient.workspaceRows(
-          workspace,
-          role,
-          version,
-          0,
-          5000,
-        );
+        let profColumns: ColumnProfile[];
+        let pageRows: WorkspaceRow[];
+        const canReuse =
+          !bench.loading &&
+          bench.profiles.size > 0 &&
+          bench.version === version;
+        if (canReuse) {
+          profColumns = [...bench.profiles.values()];
+          pageRows = bench.rows;
+        } else {
+          const prof = await apiClient.columnProfiles(
+            workspace,
+            role,
+            version,
+          );
+          const wr = await apiClient.workspaceRows(
+            workspace,
+            role,
+            version,
+            0,
+            500,
+          );
+          profColumns = prof.columns;
+          pageRows = wr.rows;
+        }
         if (cancelled) return;
-        setProfiles(prof.columns);
-        setRows(wr.rows);
+        setProfiles(profColumns);
+        setRows(pageRows);
 
         if (id === "compare") {
           const cs = selCols.filter((c) =>
-            prof.columns.some((p) => p.name === c),
+            profColumns.some((p) => p.name === c),
           );
           if (cs.length < 2) {
             setMsg(
@@ -144,11 +166,11 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         }
 
         if (id === "corr") {
-          const nums = prof.columns
+          const nums = profColumns
             .filter((p) => isNumericKind(p.kind))
             .map((p) => p.name);
           const selNum = selCols.filter((c) =>
-            prof.columns.some((p) => p.name === c && isNumericKind(p.kind)),
+            profColumns.some((p) => p.name === c && isNumericKind(p.kind)),
           );
           const use = (selNum.length >= 2 ? selNum : nums).slice(0, 7);
           if (use.length < 2) {
@@ -164,7 +186,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         }
 
         if (id === "dist") {
-          if (!focus || !prof.columns.some((p) => p.name === focus)) {
+          if (!focus || !profColumns.some((p) => p.name === focus)) {
             setMsg("Select a column to see its distribution.");
           } else {
             setBound(`bound to ${focus}`);
@@ -180,7 +202,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         if (id === "outliers") {
           const oc =
             focus &&
-            prof.columns.find((c) => c.name === focus)?.kind === "number"
+            profColumns.find((c) => c.name === focus)?.kind === "number"
               ? focus
               : null;
           if (!oc) {
@@ -189,7 +211,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
             );
             return;
           }
-          const p = prof.columns.find((c) => c.name === oc);
+          const p = profColumns.find((c) => c.name === oc);
           setBound(
             `bound to ${oc}` +
               (p?.iqr_bounds
@@ -216,17 +238,15 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         }
 
         if (ENGINE_TOOLS.has(id)) {
-          await apiClient.saveWorkspace(workspace);
           const source = datasetSource(workspace, role, role === "train");
-          const params: Record<string, unknown> = { source };
-          if (id === "target") {
-            params.target = target;
-            if (focus && focus !== target) params.columns = [focus];
+          const available: Record<string, unknown> = { source };
+          if (target) available.target = target;
+          if (workspace.datasets.test) {
+            available.test = datasetSource(workspace, "test", false);
           }
-          if (id === "drift" && workspace.datasets.test) {
-            params.test = datasetSource(workspace, "test", false);
-          }
-          if (id === "outliers" && focus) params.columns = [focus];
+          if (focus) available.columns = [focus];
+          const schema = await apiClient.keySchema(def.key);
+          const params = keyParamsFromSchema(schema, available);
           const r = await apiClient.runKey(def.key, params);
           if (cancelled) return;
           setResult(r);
@@ -242,7 +262,21 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     return () => {
       cancelled = true;
     };
-  }, [workspace, selCols, selKey, focus, role, viewVersion, id, target, def.key]);
+  }, [
+    workspace,
+    selCols,
+    selKey,
+    focus,
+    role,
+    version,
+    id,
+    target,
+    def.key,
+    bench.loading,
+    bench.profiles,
+    bench.rows,
+    bench.version,
+  ]);
 
   const profileByName = useMemo(() => {
     const m = new Map<string, ColumnProfile>();
