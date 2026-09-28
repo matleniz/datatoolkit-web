@@ -2,13 +2,13 @@
   display: flex;
   flex: 1;
   min-height: 0;
-  height: calc(100vh - var(--dtk-header-h));
   overflow: hidden;
 }
 
 .align-main {
-  flex-grow: 1;
+  flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
   padding: 20px 28px;
   display: flex;
@@ -20,6 +20,7 @@
   display: flex;
   align-items: baseline;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .align-title {
@@ -36,6 +37,7 @@
 .align-counts-row {
   display: flex;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .align-count-chip {
@@ -67,6 +69,8 @@
   border: 1px solid var(--dtk-border);
   border-radius: 10px;
   overflow: hidden;
+  /* Keep natural height so .align-main scrolls; do not shrink/clip rows. */
+  flex-shrink: 0;
 }
 
 .align-table-header {
@@ -199,6 +203,7 @@
 .align-sidebar {
   width: 330px;
   flex-shrink: 0;
+  min-height: 0;
   padding: 20px 16px;
   background: var(--dtk-bg-subtle);
   border-left: 1px solid var(--dtk-border);

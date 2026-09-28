@@ -257,9 +257,11 @@
 .workbench-main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--dtk-surface);
+  overflow: hidden;
 }
 
 .workbench-grid-area {
@@ -698,11 +700,17 @@
   background: var(--dtk-bg-subtle);
   min-height: 0;
   padding: 0;
+  /* Clip here; inspector scrolls via .insp-scroll, step editor via itself. */
+  overflow: hidden;
+}
+
+.step-editor {
   overflow-y: auto;
 }
 
 .insp-scroll {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 16px;
 }
@@ -717,6 +725,8 @@
   padding-top: 12px;
   background: var(--dtk-surface);
   border-left: 1px solid var(--dtk-border);
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .placeholder {

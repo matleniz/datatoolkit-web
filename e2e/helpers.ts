@@ -100,6 +100,29 @@ export function churnWorkspace(): Workspace {
 }
 
 /**
+ * 60+ column train/test pair with mismatches at the bottom of the align report
+ * (type mismatch, missing in test, extra in test). Used by scroll regression.
+ */
+export function wideAlignWorkspace(): Workspace {
+  return {
+    name: "wide_align",
+    datasets: {
+      train: {
+        x: { kind: "csv", path: join(fixturesDir, "wide_align_train.csv") },
+        y: { kind: "csv", path: join(fixturesDir, "wide_align_labels.csv") },
+      },
+      test: {
+        x: { kind: "csv", path: join(fixturesDir, "wide_align_test.csv") },
+      },
+    },
+    label: { mode: "order" },
+    merges: [],
+    variables: [],
+    steps: [],
+  };
+}
+
+/**
  * Open workbench and wait until grid data is loaded and suggestions analysis has completed.
  */
 export async function openWorkbench(
