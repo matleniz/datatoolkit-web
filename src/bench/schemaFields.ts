@@ -11,6 +11,8 @@ export type FieldWidget =
   | "bool"
   | "number"
   | "text"
+  /** Integer/number or the literal `"auto"` (e.g. column_distribution.bins). */
+  | "auto_number"
   | "sentinels"
   | "categories"
   | "mapping"
@@ -154,6 +156,28 @@ function schemaPropAllowsNull(prop: JsonSchema): boolean {
 }
 
 /**
+ * True when a prop is `integer|number | "auto"` (Pydantic BinsSpec-style anyOf).
+ * Detected before resolveSchemaProp collapses the union to number-only.
+ */
+function isAutoOrNumberUnion(
+  prop: JsonSchema,
+  root?: JsonSchema,
+): boolean {
+  const variants = prop.anyOf ?? prop.oneOf;
+  if (!variants || variants.length < 2) return false;
+  let hasNum = false;
+  let hasAuto = false;
+  for (const v of variants) {
+    if (isNullOnlySchema(v)) continue;
+    const r = resolveSchemaProp(v, root);
+    if (r.type === "integer" || r.type === "number") hasNum = true;
+    if (r.const === "auto") hasAuto = true;
+    if (r.type === "string" && r.enum?.includes("auto")) hasAuto = true;
+  }
+  return hasNum && hasAuto;
+}
+
+/**
  * Map GET /transforms/{op}/schema → editor field descriptors.
  * Special-cases engine object params (sentinels, categories, mapping, dtypes).
  */
@@ -163,7 +187,19 @@ export function schemaToFields(schema: JsonSchema, op: string): EditorField[] {
   const fields: EditorField[] = [];
 
   for (const [key, raw] of Object.entries(props)) {
-    const prop = resolveSchemaProp(raw as JsonSchema, schema);
+    const rawProp = raw as JsonSchema;
+    if (isAutoOrNumberUnion(rawProp, schema)) {
+      const prop = resolveSchemaProp(rawProp, schema);
+      fields.push({
+        key,
+        label: (rawProp.title ?? prop.title) ?? key,
+        widget: "auto_number",
+        required: required.has(key),
+        description: rawProp.description ?? prop.description,
+      });
+      continue;
+    }
+    const prop = resolveSchemaProp(rawProp, schema);
     if (key === "fill_value") {
       fields.push({
         key,

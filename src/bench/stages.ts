@@ -100,7 +100,13 @@ export const OP_STAGE: Record<string, StageId> = {
 };
 
 /** Ops excluded from the generic step picker, with an explicit reason. */
-export const EXCLUDED_OPS: Record<string, string> = {};
+export const EXCLUDED_OPS: Record<string, string> = {
+  // Engine lists these; Studio picker/editor not wired yet (MAT-197).
+  polynomial: "Not yet exposed in the step picker (MAT-197)",
+  power_transform: "Not yet exposed in the step picker (MAT-197)",
+  quantile_transform: "Not yet exposed in the step picker (MAT-197)",
+  spline: "Not yet exposed in the step picker (MAT-197)",
+};
 
 /** Ops that learn state on train (fitted badge). */
 export const FITTING_OPS = new Set([

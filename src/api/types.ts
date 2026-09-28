@@ -287,6 +287,14 @@ export interface Variants {
   normalized: number;
 }
 
+/** Smart per-column defaults from the engine (MAT-174). */
+export interface SuggestedParams {
+  top_k: number;
+  bins?: number;
+  /** Maps to key param `log_x` on column_distribution. */
+  log_scale?: boolean;
+}
+
 export interface ColumnProfile {
   name: string;
   kind: ColumnKind;
@@ -308,6 +316,8 @@ export interface ColumnProfile {
     percent: boolean;
   } | null;
   skewed: boolean;
+  /** Engine smart defaults for analysis keys (bins, log_scale, top_k). */
+  suggested_params?: SuggestedParams;
 }
 
 /** POST /workspace/profiles → { columns, version } */

@@ -4,6 +4,12 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import type { JsonSchema } from "../src/api/types";
+import { suggestedParamsToKeyParams } from "../src/bench/dock/suggestedParams";
+import {
+  keySchemaDefaults,
+  keyTunableFields,
+} from "../src/bench/left/keyTunable";
+import { toEngineParams } from "../src/bench/presets";
 import {
   defaultParams,
   resolveSchemaProp,
@@ -14,7 +20,6 @@ import {
   stepParamsValid,
   stripNullParams,
 } from "../src/bench/schemaFields";
-import { toEngineParams } from "../src/bench/presets";
 
 const fixturesDir = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -113,7 +118,26 @@ describe("schema → editor fields", () => {
     expect(d.strategy).toBe("median");
   });
 
-  it("resolveSchemaProp unwraps anyOf null unions", () => {
+  it("maps bins anyOf integer|auto to auto_number", () => {
+    const schema: JsonSchema = {
+      type: "object",
+      properties: {
+        bins: {
+          anyOf: [
+            { type: "integer" },
+            { const: "auto", type: "string" },
+          ],
+          default: "auto",
+          title: "Bins",
+        },
+        source: { type: "object", title: "Source" },
+      },
+    };
+    const fields = schemaToFields(schema, "column_distribution");
+    expect(fields.find((f) => f.key === "bins")?.widget).toBe("auto_number");
+  });
+
+  it("resolveSchemaProp still unwraps plain number|null", () => {
     const resolved = resolveSchemaProp({
       anyOf: [{ type: "number" }, { type: "null" }],
       default: null,
@@ -127,6 +151,53 @@ describe("schema → editor fields", () => {
     expect(
       stripNullParams({ columns: ["age"], fill_value: null, strategy: "median" }),
     ).toEqual({ columns: ["age"], strategy: "median" });
+  });
+});
+
+describe("key tunable fields (MAT-174)", () => {
+  it("hides structural params and keeps knobs", () => {
+    const schema: JsonSchema = {
+      type: "object",
+      properties: {
+        source: { type: "object" },
+        columns: {
+          type: "array",
+          items: { type: "string" },
+          "x-dtk-widget": "columns",
+        },
+        bins: {
+          anyOf: [{ type: "integer" }, { const: "auto", type: "string" }],
+          default: "auto",
+          title: "Bins",
+        },
+        log_x: { type: "boolean", default: false, title: "Log X" },
+        method: {
+          type: "string",
+          enum: ["pearson", "spearman"],
+          default: "pearson",
+        },
+      },
+    };
+    const fields = keyTunableFields(schema, "column_distribution");
+    expect(fields.map((f) => f.key).sort()).toEqual([
+      "bins",
+      "log_x",
+      "method",
+    ]);
+    const defaults = keySchemaDefaults(schema, "column_distribution");
+    expect(defaults.bins).toBe("auto");
+    expect(defaults.log_x).toBe(false);
+    expect(defaults).not.toHaveProperty("source");
+  });
+
+  it("maps suggested_params log_scale → log_x", () => {
+    expect(
+      suggestedParamsToKeyParams({
+        top_k: 10,
+        bins: 8,
+        log_scale: true,
+      }),
+    ).toEqual({ bins: 8, top_k: 10, log_x: true });
   });
 });
 

@@ -736,6 +736,47 @@ function Field({
     );
   }
 
+  if (field.widget === "auto_number") {
+    const rawVal = params[field.key];
+    const isAuto =
+      rawVal === "auto" || rawVal === undefined || rawVal === null;
+    const numDisplay = isAuto ? "" : String(rawVal);
+    return (
+      <div className="ed-field" data-ed-field={field.key}>
+        <span className="ed-label">{field.label}</span>
+        <div className="chip-row" style={{ alignItems: "center" }}>
+          <button
+            type="button"
+            className={isAuto ? "chip on" : "chip"}
+            aria-pressed={isAuto}
+            onClick={() => set(field.key, "auto")}
+          >
+            auto
+          </button>
+          <input
+            aria-label={field.label}
+            className="ed-input"
+            type="number"
+            min={2}
+            max={200}
+            placeholder="count"
+            value={numDisplay}
+            style={{ width: 88 }}
+            onChange={(e) => {
+              const raw = e.target.value.trim();
+              if (raw === "") {
+                set(field.key, "auto");
+                return;
+              }
+              const v = Number(raw);
+              if (!Number.isNaN(v)) set(field.key, v);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   if (field.widget === "sentinels") {
     return (
       <SentinelsField

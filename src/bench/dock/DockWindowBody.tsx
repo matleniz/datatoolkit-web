@@ -7,7 +7,9 @@ import { useAppDispatch, useAppState } from "../../state/AppStore";
 import type { ToolId } from "../../state/reducer";
 import { datasetSource, targetColumnOf } from "../left/datasetSource";
 import { keyParamsFromSchema } from "../left/keyParams";
+import { toolParamsKey } from "../left/keyTunable";
 import { computeStat, fmtStat } from "../left/stats";
+import { stripNullParams } from "../schemaFields";
 import { toolDef } from "../toolrail/tools";
 import { effectiveVersion } from "../version";
 import { useWorkbenchData } from "../WorkbenchData";
@@ -21,6 +23,7 @@ import {
   selectedNumericColumns,
 } from "./columnScope";
 import { EMPTY_DATA_ROWS_MSG } from "../format";
+import { DockParamsPanel } from "./DockParamsPanel";
 import { ResultView } from "./ResultView";
 
 function pearson(
@@ -85,7 +88,7 @@ function topBars(
   }));
 }
 
-/** Engine keys that always run through run_key (dist joins when split-by is set). */
+/** Tools that run through run_key and expose a Parameters panel (MAT-174). */
 const ENGINE_TOOLS = new Set<ToolId>([
   "outliers",
   "missing",
@@ -93,8 +96,14 @@ const ENGINE_TOOLS = new Set<ToolId>([
   "drift",
   "feature_selection",
   "dist",
+  "corr",
 ]);
+
+/** Per-column param persistence (smart defaults differ by column). */
+const PER_COLUMN_PARAM_TOOLS = new Set<ToolId>(["dist", "outliers", "target"]);
+
 const COMPARE_STATS = ["mean", "median", "std", "min", "max"] as const;
+const PARAM_DEBOUNCE_MS = 300;
 
 function ScopeToggle({
   scopeAll,
@@ -118,7 +127,8 @@ function ScopeToggle({
 }
 
 export function DockWindowBody({ id }: { id: ToolId }) {
-  const { workspace, selection, role, viewVersion, distBy } = useAppState();
+  const { workspace, selection, role, viewVersion, distBy, toolParams } =
+    useAppState();
   const dispatch = useAppDispatch();
   const bench = useWorkbenchData();
   const [profiles, setProfiles] = useState<ColumnProfile[]>([]);
@@ -130,6 +140,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
   const [ready, setReady] = useState(false);
   const [scopeAll, setScopeAll] = useState(false);
   const [hasColumnsParam, setHasColumnsParam] = useState(false);
+  const [corrCols, setCorrCols] = useState<string[]>([]);
 
   const selCols = selection.columns;
   const focus = selCols[0] ?? selection.cell?.col ?? null;
@@ -142,7 +153,30 @@ export function DockWindowBody({ id }: { id: ToolId }) {
   const showScopeToggle = SCOPEABLE_TOOLS.has(id);
   /** Split-by for Distribution: engine `by` (target / any column). */
   const splitBy = distBy && distBy !== focus ? distBy : null;
-  const runDistEngine = id === "dist" && Boolean(splitBy);
+
+  const paramColumn =
+    PER_COLUMN_PARAM_TOOLS.has(id) && focus ? focus : null;
+  const storageKey = toolParamsKey(id, paramColumn);
+  const userParams = toolParams[storageKey] ?? {};
+  const paramsJson = JSON.stringify(userParams);
+  const [debouncedParamsJson, setDebouncedParamsJson] = useState(paramsJson);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setDebouncedParamsJson(paramsJson);
+    }, PARAM_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [paramsJson]);
+
+  const debouncedUserParams = useMemo(() => {
+    try {
+      return JSON.parse(debouncedParamsJson) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }, [debouncedParamsJson]);
+
+  const showParamsPanel = ENGINE_TOOLS.has(id);
 
   useEffect(() => {
     if (!workspace?.datasets.train.x.path) {
@@ -209,23 +243,28 @@ export function DockWindowBody({ id }: { id: ToolId }) {
 
         if (id === "corr") {
           const nums = profColumns
-            .filter((p) => isNumericKind(p.kind))
+            .filter((p) => isNumericKind(p.kind) && p.name !== target)
             .map((p) => p.name);
           const selNum = selCols.filter((c) =>
-            profColumns.some((p) => p.name === c && isNumericKind(p.kind)),
+            profColumns.some(
+              (p) =>
+                p.name === c && isNumericKind(p.kind) && c !== target,
+            ),
           );
           const useSelection = !scopeAll && selNum.length >= 2;
           const use = (useSelection ? selNum : nums).slice(0, 7);
           if (use.length < 2) {
             setMsg("Need at least two numeric columns.");
-          } else {
-            setBound(
-              useSelection
-                ? `bound to selection · ${selNum.length} columns`
-                : "all numeric columns · select 2+ to narrow",
-            );
+            setCorrCols([]);
+            return;
           }
-          return;
+          setCorrCols(use);
+          setBound(
+            useSelection
+              ? `bound to selection · ${selNum.length} columns · key correlations`
+              : "all numeric columns · key correlations",
+          );
+          // Fall through to engine run.
         }
 
         if (id === "dist") {
@@ -233,15 +272,12 @@ export function DockWindowBody({ id }: { id: ToolId }) {
             setMsg("Select a column to see its distribution.");
             return;
           }
-          if (splitBy) {
-            setBound(
-              `bound to ${focus} · split by ${splitBy} · key column_distribution`,
-            );
-            // Fall through to engine run with by=.
-          } else {
-            setBound(`bound to ${focus}`);
-            return;
-          }
+          setBound(
+            splitBy
+              ? `bound to ${focus} · split by ${splitBy} · key column_distribution`
+              : `bound to ${focus} · key column_distribution`,
+          );
+          // Always run engine so bins / log / norm knobs apply (MAT-174).
         }
 
         if (id === "missing") {
@@ -253,7 +289,6 @@ export function DockWindowBody({ id }: { id: ToolId }) {
                 : `bound to selection · ${selCols.length} columns · key missing_values`
               : `${role} · all columns · key missing_values`,
           );
-          // Fall through to engine run (columns=selection when scoped; MAT-155).
         }
 
         if (id === "outliers") {
@@ -273,7 +308,6 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           } else {
             setBound("all numeric columns · key outliers");
           }
-          // Fall through to engine run (columns=selection when scoped).
         }
 
         if (id === "target" || id === "feature_selection") {
@@ -289,16 +323,13 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           }
         }
 
-        const runEngine =
-          id === "outliers" ||
-          id === "missing" ||
-          runDistEngine ||
-          id === "target" ||
-          id === "drift" ||
-          id === "feature_selection";
-        if (runEngine && ENGINE_TOOLS.has(id)) {
+        const runEngine = ENGINE_TOOLS.has(id);
+        if (runEngine) {
           const source = datasetSource(workspace, role, role === "train");
-          const available: Record<string, unknown> = { source };
+          const available: Record<string, unknown> = {
+            source,
+            ...debouncedUserParams,
+          };
           if (target) available.target = target;
           if (workspace.datasets.test) {
             available.test = datasetSource(workspace, "test", false);
@@ -317,6 +348,21 @@ export function DockWindowBody({ id }: { id: ToolId }) {
               if (cols && cols.length > 0) available.columns = cols;
             } else if (id === "dist" && focus) {
               available.columns = [focus];
+            } else if (id === "corr") {
+              const nums = profColumns
+                .filter((p) => isNumericKind(p.kind) && p.name !== target)
+                .map((p) => p.name);
+              const selNum = selCols.filter((c) =>
+                profColumns.some(
+                  (p) =>
+                    p.name === c &&
+                    isNumericKind(p.kind) &&
+                    c !== target,
+                ),
+              );
+              const useSelection = !scopeAll && selNum.length >= 2;
+              const use = (useSelection ? selNum : nums).slice(0, 7);
+              if (use.length > 0) available.columns = use;
             } else {
               const cols = engineColumnsParam(selCols, scopeAll);
               if (cols) {
@@ -334,7 +380,10 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           if (id === "dist" && splitBy && schemaHasBy(schema)) {
             available.by = splitBy;
           }
-          const params = keyParamsFromSchema(schema, available);
+          // Structural wins over user params for columns / by / target / sources.
+          const params = stripNullParams(
+            keyParamsFromSchema(schema, available),
+          );
           const r = await apiClient.runKey(def.key, params);
           if (cancelled) return;
           setResult(r);
@@ -360,11 +409,20 @@ export function DockWindowBody({ id }: { id: ToolId }) {
                   : `bound to selection · ${selCols.length} columns · key missing_values`
                 : `all columns · key missing_values`,
             );
-          } else if (id === "dist" && focus && splitBy) {
+          } else if (id === "dist" && focus) {
             setBound(
-              `bound to ${focus} · split by ${splitBy} · key column_distribution`,
+              splitBy
+                ? `bound to ${focus} · split by ${splitBy} · key column_distribution`
+                : `bound to ${focus} · key column_distribution`,
             );
-          } else if ((id === "target" || id === "feature_selection") && hasCols) {
+          } else if (id === "corr") {
+            setBound(
+              `key correlations · ${(available.columns as string[] | undefined)?.length ?? 0} columns`,
+            );
+          } else if (
+            (id === "target" || id === "feature_selection") &&
+            hasCols
+          ) {
             const cols = engineColumnsParam(selCols, scopeAll);
             setBound(
               cols
@@ -399,7 +457,8 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     def.key,
     scopeAll,
     splitBy,
-    runDistEngine,
+    debouncedParamsJson,
+    debouncedUserParams,
     bench.loading,
     bench.profiles,
     bench.rows,
@@ -411,6 +470,23 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     for (const p of profiles) m.set(p.name, p);
     return m;
   }, [profiles]);
+
+  const focusProfile = focus ? profileByName.get(focus) : undefined;
+  const columnKinds = useMemo(
+    () => profiles.map((p) => ({ name: p.name, kind: p.kind })),
+    [profiles],
+  );
+
+  const paramsPanel =
+    showParamsPanel && workspace?.datasets.train.x.path ? (
+      <DockParamsPanel
+        keyId={def.key}
+        storageKey={storageKey}
+        params={userParams}
+        columns={columnKinds}
+        profile={focusProfile}
+      />
+    ) : null;
 
   const splitByBar =
     id === "dist" ? (
@@ -455,6 +531,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     return (
       <div>
         {scopeBar}
+        {paramsPanel}
         <div className="engine-error" role="alert">
           {error}
         </div>
@@ -465,6 +542,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     return (
       <div>
         {scopeBar}
+        {paramsPanel}
         <div className="dock-msg muted">Loading…</div>
       </div>
     );
@@ -479,6 +557,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     return (
       <div data-empty-rows="1">
         {scopeBar}
+        {paramsPanel}
         <div className="dock-empty-state" role="status">
           {EMPTY_DATA_ROWS_MSG}
         </div>
@@ -508,6 +587,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           : {})}
       >
         {scopeBar}
+        {paramsPanel}
         {bound ? <div className="dock-bound muted">{bound}</div> : null}
         <div className="dock-msg">{msg}</div>
       </div>
@@ -535,81 +615,19 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     );
   }
 
-  if (id === "corr") {
-    const nums = profiles
-      .filter((p) => isNumericKind(p.kind))
-      .map((p) => p.name);
-    const selNum = selCols.filter((c) => {
-      const k = profileByName.get(c)?.kind;
-      return k && isNumericKind(k);
-    });
-    const useSelection = !scopeAll && selNum.length >= 2;
-    const use = (useSelection ? selNum : nums).slice(0, 7);
-    if (use.length < 2) {
-      return (
-        <div>
-          {scopeBar}
-          <div className="dock-msg">Need at least two numeric columns.</div>
-        </div>
-      );
-    }
-    return (
-      <div data-scope-mode={scopeAll || !useSelection ? "all" : "selection"}>
-        {scopeBar}
-        <CorrNative cols={use} rows={rows} bound={bound} />
-      </div>
-    );
-  }
-
-  if (id === "dist" && focus && profileByName.has(focus) && !runDistEngine) {
-    const p = profileByName.get(focus)!;
-    const bars =
-      p.kind === "number" ? histBars(p, 106) : topBars(p, 106);
-    const stats =
-      p.kind === "number"
-        ? `n ${p.count} · missing ${p.missing} · distinct ${p.distinct}`
-        : `${p.distinct} categories · ${p.missing} missing`;
-    return (
-      <div
-        data-scope-mode="selection"
-        data-dist-col={focus}
-        data-dist-by=""
-      >
-        {scopeBar}
-        <div className="dock-bound muted">{bound || `bound to ${focus}`}</div>
-        <div className="muted" style={{ marginBottom: 6 }}>
-          {stats}
-        </div>
-        <div className="hist-bars tall">
-          {bars.map((b, i) => (
-            <span
-              key={i}
-              title={b.tip}
-              style={{
-                flex: "1 1 0",
-                minWidth: 4,
-                height: b.height,
-                background: p.kind === "number" ? "#1d5b86" : "#a8844a",
-                borderRadius: "1px 1px 0 0",
-              }}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   if (id === "missing" && !result) {
-    // Waiting for engine missing_values (or empty selection message).
     const useSelection = !scopeAll && selCols.length > 0;
     return (
       <div
         data-scope-mode={useSelection ? "selection" : "all"}
         data-missing-cols={
-          useSelection ? selCols.join(",") : profiles.map((c) => c.name).join(",")
+          useSelection
+            ? selCols.join(",")
+            : profiles.map((c) => c.name).join(",")
         }
       >
         {scopeBar}
+        {paramsPanel}
         {bound ? <div className="dock-bound muted">{bound}</div> : null}
         <div className="dock-msg muted">Loading…</div>
       </div>
@@ -652,10 +670,32 @@ export function DockWindowBody({ id }: { id: ToolId }) {
           ? {
               "data-dist-col": focus ?? undefined,
               "data-dist-by": splitBy ?? "",
+              "data-dist-bins":
+                debouncedUserParams.bins !== undefined
+                  ? String(debouncedUserParams.bins)
+                  : undefined,
+            }
+          : {})}
+        {...(id === "corr"
+          ? {
+              "data-corr-size": String(
+                corrCols.length ||
+                  ((debouncedUserParams.columns as string[] | undefined)
+                    ?.length ?? 0),
+              ),
+            }
+          : {})}
+        {...(id === "outliers" &&
+        debouncedUserParams.contamination !== undefined
+          ? {
+              "data-outliers-contamination": String(
+                debouncedUserParams.contamination,
+              ),
             }
           : {})}
       >
         {scopeBar}
+        {paramsPanel}
         {bound ? <div className="dock-bound muted">{bound}</div> : null}
         <ResultView result={result} />
       </div>
@@ -664,6 +704,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
   return (
     <div>
       {scopeBar}
+      {paramsPanel}
       <div className="dock-msg muted">Loading…</div>
     </div>
   );
@@ -765,62 +806,6 @@ function CompareNative({
             </div>
           );
         })}
-      </div>
-    </div>
-  );
-}
-
-function CorrNative({
-  cols,
-  rows,
-  bound,
-}: {
-  cols: string[];
-  rows: WorkspaceRow[];
-  bound: string;
-}) {
-  return (
-    <div data-corr-size={cols.length}>
-      <div className="dock-bound muted">{bound}</div>
-      <div className="matrix" data-corr-matrix="1">
-        <div className="matrix-head">
-          <span className="matrix-corner" />
-          {cols.map((n) => (
-            <span key={n} className="matrix-h" title={n}>
-              {n.length > 7 ? `${n.slice(0, 6)}…` : n}
-            </span>
-          ))}
-        </div>
-        {cols.map((a) => (
-          <div key={a} className="matrix-row" data-corr-row={a}>
-            <span className="matrix-label" title={a}>
-              {a}
-            </span>
-            {cols.map((b) => {
-              const r = a === b ? 1 : pearson(rows, a, b);
-              const t = r === null ? "–" : r.toFixed(2);
-              const m = r === null ? 0 : Math.abs(r);
-              const bg =
-                r === null
-                  ? "#f0efea"
-                  : r >= 0
-                    ? `rgba(29, 91, 134, ${(0.08 + 0.85 * m).toFixed(2)})`
-                    : `rgba(180, 70, 15, ${(0.08 + 0.85 * m).toFixed(2)})`;
-              const fg = m > 0.55 ? "#ffffff" : "#1c1b18";
-              return (
-                <span
-                  key={b}
-                  className="matrix-cell"
-                  data-corr-cell={`${a}×${b}`}
-                  title={`${a} × ${b} : r = ${t}`}
-                  style={{ background: bg, color: fg }}
-                >
-                  {t}
-                </span>
-              );
-            })}
-          </div>
-        ))}
       </div>
     </div>
   );
