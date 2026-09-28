@@ -312,7 +312,10 @@ export class MockApiClient implements ApiClient {
     return Promise.resolve(structuredClone(ws));
   }
 
-  saveWorkspace(ws: Workspace): Promise<Workspace> {
+  saveWorkspace(ws: Workspace, signal?: AbortSignal): Promise<Workspace> {
+    if (signal?.aborted) {
+      return Promise.reject(new DOMException("Aborted", "AbortError"));
+    }
     const copy = structuredClone(ws);
     this.workspaces.set(ws.name, copy);
     return Promise.resolve(structuredClone(copy));

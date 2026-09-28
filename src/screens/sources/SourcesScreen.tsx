@@ -16,6 +16,7 @@ import {
   markWorkspaceSaved,
   abandonPendingWorkspaceSave,
 } from "../../state/AppStore";
+import { allowWorkspaceSave } from "../../state/workspaceSaveGate";
 import {
   ALL_ROLES,
   buildWorkspaceJson,
@@ -395,6 +396,7 @@ export function SourcesScreen() {
     activeNameRef.current = name;
     setActiveWsName(name);
     setSourcesLoading(true);
+    allowWorkspaceSave(name);
     // Clear immediately so previous workspace files cannot leak into the UI
     // or be re-persisted under the new name while we await the engine.
     applySources(emptyWorkspaceSources());
@@ -472,6 +474,7 @@ export function SourcesScreen() {
       variables: [],
       steps: [],
     };
+    allowWorkspaceSave(name);
     dispatch({ type: "SET_WORKSPACE", workspace: ws });
     const empty = emptyWorkspaceSources();
     dispatch({ type: "SET_WORKSPACE_FILES", name, sources: empty });
@@ -486,7 +489,7 @@ export function SourcesScreen() {
     // Invalidate any in-flight select of the old name (e.g. auto-select after
     // duplicate still loading when the user renames immediately).
     selectGenRef.current += 1;
-    abandonPendingWorkspaceSave();
+    abandonPendingWorkspaceSave([oldName]);
     const cached = filesByWorkspace[oldName] ??
       (oldName === activeWsName ? currentSources() : null);
     dispatch({ type: "CLEAR_WORKSPACE_FILES", name: oldName });
@@ -501,6 +504,7 @@ export function SourcesScreen() {
       persistSkip.current = true;
       activeNameRef.current = ws.name;
       setActiveWsName(ws.name);
+      allowWorkspaceSave(ws.name);
       dispatch({ type: "SET_WORKSPACE", workspace: ws });
       markWorkspaceSaved(ws);
       rememberWorkspaceName(ws.name);
@@ -516,7 +520,7 @@ export function SourcesScreen() {
     deletedNames: string[],
     fallback: string | null,
   ) => {
-    abandonPendingWorkspaceSave();
+    abandonPendingWorkspaceSave(deletedNames);
     for (const name of deletedNames) {
       dispatch({ type: "CLEAR_WORKSPACE_FILES", name });
       forgetWorkspaceName(name);

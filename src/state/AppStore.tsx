@@ -10,7 +10,6 @@ import {
 } from "react";
 
 import { apiClient, serializeWorkspace } from "../api/client";
-import type { Workspace } from "../api/types";
 import { rememberWorkspaceName } from "../bootstrap";
 import {
   appReducer,
@@ -18,33 +17,19 @@ import {
   type AppAction,
   type AppState,
 } from "./reducer";
+import {
+  commitWorkspaceSave,
+  getLastSavedWorkspaceJson,
+  getWorkspaceSaveEpoch,
+} from "./workspaceSaveGate";
+
+export {
+  abandonPendingWorkspaceSave,
+  markWorkspaceSaved,
+} from "./workspaceSaveGate";
 
 const AppStateContext = createContext<AppState | null>(null);
 const AppDispatchContext = createContext<Dispatch<AppAction> | null>(null);
-
-/** Last workspace JSON successfully PUT (shared so screens that save
- *  explicitly can skip the AppStore duplicate PUT). */
-let lastSavedWorkspaceJson: string | null = null;
-
-/**
- * Bumped to cancel in-flight / cleanup flush PUTs (MAT-171 delete of the
- * active workspace must not resurrect it — see MAT-149).
- */
-let saveEpoch = 0;
-
-/** Call after an explicit saveWorkspace so AppStore skips a redundant PUT. */
-export function markWorkspaceSaved(ws: Workspace): void {
-  lastSavedWorkspaceJson = serializeWorkspace(ws);
-}
-
-/**
- * Invalidate any pending AppStore workspace PUT. Call before clearing or
- * replacing a workspace that was just deleted / renamed away.
- */
-export function abandonPendingWorkspaceSave(): void {
-  saveEpoch += 1;
-  lastSavedWorkspaceJson = null;
-}
 
 declare global {
   interface Window {
@@ -94,12 +79,12 @@ export function AppProvider({
     }
     rememberWorkspaceName(ws.name);
     const serialized = serializeWorkspace(ws);
-    if (serialized === lastSavedWorkspaceJson) {
+    if (serialized === getLastSavedWorkspaceJson()) {
       window.__DTK_WORKSPACE_SAVED__ = Promise.resolve();
       return;
     }
 
-    const epochAtStart = saveEpoch;
+    const epochAtStart = getWorkspaceSaveEpoch();
     const gen = ++saveGen.current;
     let settled = false;
     let resolveGate!: () => void;
@@ -113,50 +98,36 @@ export function AppProvider({
     };
     window.__DTK_WORKSPACE_SAVED__ = gate;
 
-    const stillCurrent = () =>
-      gen === saveGen.current && epochAtStart === saveEpoch;
+    const isCurrent = (epoch: number) =>
+      gen === saveGen.current && epoch === getWorkspaceSaveEpoch();
+
+    const runSave = () =>
+      commitWorkspaceSave({
+        ws,
+        serialized,
+        epochAtStart,
+        isCurrent,
+        save: (body, signal) => apiClient.saveWorkspace(body, signal),
+        remove: (name) => apiClient.deleteWorkspace(name),
+      });
 
     const timer = window.setTimeout(() => {
       void (async () => {
-        if (!stillCurrent() || serialized === lastSavedWorkspaceJson) {
-          settle();
-          return;
-        }
-        try {
-          await apiClient.saveWorkspace(ws);
-          if (stillCurrent()) {
-            lastSavedWorkspaceJson = serialized;
-          }
-        } catch {
-          /* Consumers surface engine errors on the next key/export call. */
-        } finally {
-          settle();
-        }
+        await runSave();
+        settle();
       })();
     }, SAVE_DEBOUNCE_MS);
 
     return () => {
       window.clearTimeout(timer);
-      if (!stillCurrent() || serialized === lastSavedWorkspaceJson) {
+      if (!isCurrent(epochAtStart) || serialized === getLastSavedWorkspaceJson()) {
         settle();
         return;
       }
       void (async () => {
-        // Skip flush if a delete/rename abandoned this generation (MAT-171).
-        if (!stillCurrent()) {
-          settle();
-          return;
-        }
-        try {
-          await apiClient.saveWorkspace(ws);
-          if (stillCurrent()) {
-            lastSavedWorkspaceJson = serialized;
-          }
-        } catch {
-          /* ignore */
-        } finally {
-          settle();
-        }
+        // Flush on cleanup unless delete/rename abandoned this generation.
+        await runSave();
+        settle();
       })();
     };
   }, [state.workspace]);

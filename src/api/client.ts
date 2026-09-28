@@ -33,7 +33,7 @@ export interface ApiClient {
   listWorkspaces(): Promise<Workspace[]>;
   listWorkspaceSummaries(): Promise<WorkspaceSummary[]>;
   getWorkspace(name: string): Promise<Workspace>;
-  saveWorkspace(ws: Workspace): Promise<Workspace>;
+  saveWorkspace(ws: Workspace, signal?: AbortSignal): Promise<Workspace>;
   deleteWorkspace(name: string): Promise<void>;
   renameWorkspace(name: string, newName: string): Promise<Workspace>;
   duplicateWorkspace(name: string, newName: string): Promise<Workspace>;
@@ -231,11 +231,13 @@ class HttpApiClient implements ApiClient {
     return this.request("GET", `/workspaces/${encodeURIComponent(name)}`);
   }
 
-  saveWorkspace(ws: Workspace): Promise<Workspace> {
+  saveWorkspace(ws: Workspace, signal?: AbortSignal): Promise<Workspace> {
     return this.request(
       "PUT",
       `/workspaces/${encodeURIComponent(ws.name)}`,
       sanitizeWorkspace(ws),
+      undefined,
+      signal,
     );
   }
 

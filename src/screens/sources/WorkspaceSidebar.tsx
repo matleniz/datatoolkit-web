@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 
 import { apiClient } from "../../api/client";
 import type { EngineError, Workspace, WorkspaceSummary } from "../../api/types";
+import { abandonPendingWorkspaceSave } from "../../state/AppStore";
 import {
   deleteConfirmMessage,
   filterWorkspaceSummaries,
@@ -244,6 +245,10 @@ export function WorkspaceSidebar({
         ? deleteConfirmMessage(byName.get(unique[0]!)!)
         : multiDeleteConfirmMessage(unique);
     if (!window.confirm(message)) return;
+
+    // Cancel autosave BEFORE DELETEs so a debounced / in-flight PUT cannot
+    // resurrect these names (MAT-217).
+    abandonPendingWorkspaceSave(unique);
 
     setBusy(true);
     const deleted: string[] = [];
