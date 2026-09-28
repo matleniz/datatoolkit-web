@@ -127,6 +127,20 @@
   padding: 10px 12px;
 }
 
+/* MAT-175: the frame (role · version) a window's numbers come from. */
+.dock-identity {
+  font-size: 11px;
+  color: var(--dtk-muted);
+  margin-bottom: 6px;
+}
+
+.dock-identity.editing {
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: var(--dtk-accent-soft);
+  color: var(--dtk-accent-deep);
+}
+
 .dock-msg {
   color: var(--dtk-muted);
   line-height: 1.5;

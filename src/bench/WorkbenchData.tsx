@@ -42,6 +42,7 @@ import {
   WIDE_COL_THRESHOLD,
 } from "./grid/columnWindow";
 import { preferKnownColumns } from "./profileColumns";
+import { dataIdentity, type DataIdentity } from "./dataIdentity";
 import {
   effectiveVersion,
   latestVersion,
@@ -57,6 +58,15 @@ export interface PipelineShape {
 export interface WorkbenchDataValue {
   version: number;
   isLatest: boolean;
+  /**
+   * Refresh identity of the viewed frame (role + effective version + steps
+   * hash). Every consumer keys its fetches on `identity.key` (MAT-175).
+   */
+  identity: DataIdentity;
+  /** Identity of the frame currently held in `rows` / `columns` (null = none). */
+  rowsIdentity: string | null;
+  /** Identity of the frame currently held in `profiles` (null = none). */
+  profilesIdentity: string | null;
   columns: WorkspaceRowsColumn[];
   rows: WorkspaceRow[];
   total: number;
@@ -111,6 +121,10 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
   const [profiles, setProfiles] = useState<Map<string, ColumnProfile>>(
     new Map(),
   );
+  const [rowsIdentity, setRowsIdentity] = useState<string | null>(null);
+  const [profilesIdentity, setProfilesIdentity] = useState<string | null>(
+    null,
+  );
   const [preview, setPreview] = useState<PreviewStep | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [nextRows, setNextRows] = useState<WorkspaceRow[] | null>(null);
@@ -160,6 +174,11 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
   const isLatest = workspace
     ? version === latestVersion(workspace)
     : true;
+  const identity = useMemo(
+    () => dataIdentity(workspace, role, version),
+    [workspace, role, version],
+  );
+  const identityKey = identity.key;
   const structureKey = shapesStructureKey(workspace, role);
   /** Time-travel / role identity — not the effective version number (delete/add keep "latest"). */
   const viewKey = `${role}|${viewVersion === null ? "latest" : String(viewVersion)}`;
@@ -201,6 +220,8 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       setRows([]);
       setTotal(0);
       setProfiles(new Map());
+      setRowsIdentity(null);
+      setProfilesIdentity(null);
       setShapes([{ rows: 0, cols: 0 }]);
       setStepErrors(new Map());
       setLoading(false);
@@ -221,6 +242,8 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       setRows([]);
       setTotal(0);
       setProfiles(new Map());
+      setRowsIdentity(null);
+      setProfilesIdentity(null);
     }
 
     const needShapes =
@@ -235,6 +258,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
     const ws = workspace;
     const n = ws.steps.length;
     const ver = version;
+    const idKey = identityKey;
 
     (async () => {
       // Shapes: reuse the main rows page for the viewed version; only hit
@@ -278,6 +302,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
         setColumns(rowsRes.columns);
         setRows(rowsRes.rows);
         setTotal(rowsRes.total);
+        setRowsIdentity(idKey);
         dispatch({ type: "SET_BENCH_ERROR", message: null });
         // Unblock the grid as soon as rows arrive — do not wait on profiles.
         if (gen === fetchGen.current) setLoading(false);
@@ -357,6 +382,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
             if (gen !== fetchGen.current) return;
             const first = normalizeProfiles(firstRaw);
             setProfiles(new Map(first.columns.map((p) => [p.name, p])));
+            setProfilesIdentity(idKey);
             if (
               scopedOk &&
               firstCols &&
@@ -454,6 +480,8 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
         setRows([]);
         setTotal(0);
         setProfiles(new Map());
+        setRowsIdentity(null);
+        setProfilesIdentity(null);
         dispatch({ type: "SET_BENCH_ERROR", message: msg });
         if (needShapes && ver === 0) {
           rawShapeError = msg;
@@ -465,7 +493,16 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "SET_BENCH_ERROR", message: rawShapeError });
       }
     })();
-  }, [workspace, role, version, viewKey, structureKey, tick, dispatch]);
+  }, [
+    workspace,
+    role,
+    version,
+    identityKey,
+    viewKey,
+    structureKey,
+    tick,
+    dispatch,
+  ]);
 
   const hasMore = rows.length < total;
 
@@ -743,6 +780,9 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
   const value: WorkbenchDataValue = {
     version,
     isLatest,
+    identity,
+    rowsIdentity,
+    profilesIdentity,
     columns,
     rows,
     total,

@@ -4,6 +4,7 @@ import { apiClient } from "../../api/client";
 import type { JsonValue, VariableSpec } from "../../api/types";
 import { EngineError } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
+import { dataIdentity } from "../dataIdentity";
 import { useWorkbenchData } from "../WorkbenchData";
 import {
   VARIABLE_STATS,
@@ -61,6 +62,15 @@ export function VariablesTab() {
   const [valuesError, setValuesError] = useState<string | null>(null);
 
   const vars = workspace?.variables;
+  /**
+   * Values are what a formula appended now would freeze: train, latest
+   * version. Keyed on that identity (steps + params hash), not the object.
+   */
+  const trainLatestKey = useMemo(
+    () => dataIdentity(workspace, "train", null).key,
+    [workspace],
+  );
+  const [shownKey, setShownKey] = useState<string | null>(null);
   const edFormula = editor?.op === "formula";
 
   const profileList = useMemo(() => [...profiles.values()], [profiles]);
@@ -87,7 +97,8 @@ export function VariablesTab() {
     return list;
   }, [vars, pendingVar]);
 
-  // Re-run when variables or steps change — never when only the view role changes.
+  // Re-run when variables or the train-latest identity change — never when
+  // only the view role / version changes.
   useEffect(() => {
     if (!workspace?.datasets.train.x.path || varsForFit.length === 0) {
       setValues({});
@@ -118,6 +129,7 @@ export function VariablesTab() {
         if (cancelled) return;
         setValues(parseVariableValues(prev.state));
         setValuesError(null);
+        setShownKey(trainLatestKey);
       } catch (e) {
         if (cancelled) return;
         setValues({});
@@ -130,7 +142,7 @@ export function VariablesTab() {
     return () => {
       cancelled = true;
     };
-  }, [workspace, varsForFit]);
+  }, [trainLatestKey, varsForFit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const nvOk =
     !!nvName &&
@@ -148,7 +160,11 @@ export function VariablesTab() {
     : "Pick a statistic and a column.";
 
   return (
-    <div className="left-tab-body">
+    <div
+      className="left-tab-body"
+      data-identity={shownKey ?? ""}
+      data-identity-current={trainLatestKey}
+    >
       <p className="left-help">
         Named statistics, computed on <strong>train</strong> at the latest
         version. Use them as{" "}

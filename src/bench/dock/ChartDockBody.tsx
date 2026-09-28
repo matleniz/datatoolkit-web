@@ -3,10 +3,14 @@ import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { Result } from "../../api/types";
 import { EngineError } from "../../api/types";
-import { useAppDispatch, useAppState } from "../../state/AppStore";
+import {
+  ensureWorkspaceSaved,
+  useAppDispatch,
+  useAppState,
+} from "../../state/AppStore";
+import { identitySource } from "../dataIdentity";
 import { keyParamsFromSchema } from "../left/keyParams";
 import { useWorkbenchData } from "../WorkbenchData";
-import { effectiveVersion } from "../version";
 import {
   CHART_AGGS,
   CHART_TYPES,
@@ -17,6 +21,7 @@ import {
   defaultChartName,
   type ChartDraft,
 } from "./chartPrefill";
+import { IdentityStrip } from "./IdentityStrip";
 import { ResultView } from "./ResultView";
 
 function ColSelect({
@@ -59,15 +64,17 @@ function ColSelect({
  * Prefill from selection / chartDraft; saved specs live on workspace.charts.
  */
 export function ChartDockBody() {
-  const { workspace, selection, role, viewVersion, chartDraft } = useAppState();
+  const { workspace, selection, chartDraft } = useAppState();
   const dispatch = useAppDispatch();
   const bench = useWorkbenchData();
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [saveName, setSaveName] = useState("");
+  const [runParams, setRunParams] = useState<string | null>(null);
+  const [shownIdentity, setShownIdentity] = useState<string | null>(null);
 
-  const version = workspace ? effectiveVersion(workspace, viewVersion) : 0;
+  const identity = bench.identity;
   const colNames = useMemo(() => {
     if (bench.columns.length > 0) return bench.columns.map((c) => c.name);
     return [...bench.profiles.keys()];
@@ -107,21 +114,17 @@ export function ChartDockBody() {
       return;
     }
     let cancelled = false;
+    const idKey = identity.key;
     (async () => {
       setReady(false);
       setError(null);
       setResult(null);
+      setRunParams(null);
+      setShownIdentity(null);
       try {
-        if (window.__DTK_WORKSPACE_SAVED__) {
-          await window.__DTK_WORKSPACE_SAVED__;
-        }
-        const source = {
-          kind: "dataset" as const,
-          workspace: workspace.name,
-          role,
-          labeled: role === "train",
-          version: viewVersion,
-        };
+        await ensureWorkspaceSaved(workspace);
+        if (cancelled) return;
+        const source = identitySource(identity);
         const available: Record<string, unknown> = {
           source,
           ...chartDraftToParams(chartDraft),
@@ -131,25 +134,23 @@ export function ChartDockBody() {
         const params = keyParamsFromSchema(schema, available);
         const r = await apiClient.runKey("chart", params);
         if (cancelled) return;
+        setRunParams(JSON.stringify(params));
         setResult(r);
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof EngineError ? e.message : String(e));
       } finally {
-        if (!cancelled) setReady(true);
+        if (!cancelled) {
+          setReady(true);
+          setShownIdentity(idKey);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [
-    workspace,
-    role,
-    viewVersion,
-    version,
-    chartDraft,
-    workspace?.steps.length,
-  ]);
+    // identity.key covers role, version and the steps hash (MAT-175).
+  }, [workspace, identity.key, chartDraft]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saved = workspace?.charts ?? [];
   const patch = (p: Partial<ChartDraft>) =>
@@ -175,7 +176,15 @@ export function ChartDockBody() {
       data-chart-y={draft.y ?? ""}
       data-chart-color={draft.color ?? ""}
       data-chart-trendline={draft.trendline ? "1" : "0"}
+      data-identity={shownIdentity ?? ""}
+      data-identity-current={identity.key}
+      data-run-params={runParams ?? undefined}
     >
+      <IdentityStrip
+        identity={identity}
+        shownIdentity={shownIdentity}
+        editing={!!bench.pendingStep}
+      />
       <div className="chart-form">
         <label className="chart-field" htmlFor="chart-type">
           <span>Type</span>

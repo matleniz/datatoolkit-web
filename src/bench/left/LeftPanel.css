@@ -201,6 +201,20 @@
   font-weight: 500;
 }
 
+/* MAT-175: frame the suggestions were computed on. */
+.sug-identity {
+  font-size: 11px;
+  color: var(--dtk-muted);
+  margin: 0 0 8px;
+}
+
+.sug-identity.editing {
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: var(--dtk-accent-soft);
+  color: var(--dtk-accent-deep);
+}
+
 .sug-list {
   display: flex;
   flex-direction: column;

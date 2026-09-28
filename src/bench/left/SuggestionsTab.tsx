@@ -3,11 +3,16 @@ import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "../../api/client";
 import type { Result } from "../../api/types";
 import { EngineError } from "../../api/types";
-import { useAppDispatch, useAppState } from "../../state/AppStore";
+import {
+  ensureWorkspaceSaved,
+  useAppDispatch,
+  useAppState,
+} from "../../state/AppStore";
+import { identityLabel, identitySource, withRole } from "../dataIdentity";
 import type { CourseStage } from "../../state/reducer";
 import { toEngineParams } from "../presets";
 import { useWorkbenchData } from "../WorkbenchData";
-import { datasetSource, targetColumnOf } from "./datasetSource";
+import { targetColumnOf } from "./datasetSource";
 import { keyParamsFromSchema } from "./keyParams";
 import {
   STAGE_COLOR,
@@ -29,7 +34,12 @@ const STAGE_FILTERS: { id: CourseStage; label: string }[] = [
 export function SuggestionsTab() {
   const { workspace, sugStage } = useAppState();
   const dispatch = useAppDispatch();
-  const { loading: gridLoading, columns } = useWorkbenchData();
+  const {
+    loading: gridLoading,
+    columns,
+    identity: viewIdentity,
+    pendingStep,
+  } = useWorkbenchData();
   const [cards, setCards] = useState<SuggestionCard[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,10 +47,18 @@ export function SuggestionsTab() {
   const [subsetPicks, setSubsetPicks] = useState<Record<string, string[]>>({});
 
   const gridReady = !gridLoading && columns.length > 0;
-  // Identity for "workspace changed" without object-identity churn from saves.
-  const wsKey = workspace
-    ? `${workspace.name}|${workspace.steps.length}|${workspace.variables.length}|${workspace.datasets.train.x.path}`
-    : "";
+  /**
+   * Suggestions are fitted-step advice, so they always analyse train (with
+   * test for drift-aware keys) — at the version being viewed (MAT-175). The
+   * identity key includes every step's params, not just the step count.
+   */
+  const identity = useMemo(
+    () => withRole(workspace, viewIdentity, "train"),
+    [workspace, viewIdentity],
+  );
+  const identityKey = identity.key;
+  /** Identity the current cards were computed for. */
+  const [shownIdentity, setShownIdentity] = useState<string | null>(null);
   const rechecking = loading && cards.length > 0;
 
   useEffect(() => {
@@ -59,11 +77,9 @@ export function SuggestionsTab() {
       setLoading(true);
       setError(null);
       try {
-        if (window.__DTK_WORKSPACE_SAVED__) {
-          await window.__DTK_WORKSPACE_SAVED__;
-        }
+        await ensureWorkspaceSaved(workspace);
         if (cancelled) return;
-        const source = datasetSource(workspace, "train", true);
+        const source = identitySource(identity, true);
         let target = targetColumnOf(workspace);
         if (!target && workspace.datasets.train.y) {
           target = workspace.name === "churn" ? "churn" : "target";
@@ -71,7 +87,10 @@ export function SuggestionsTab() {
         const available: Record<string, unknown> = { source };
         if (target) available.target = target;
         if (workspace.datasets.test?.x) {
-          available.test = datasetSource(workspace, "test", false);
+          available.test = identitySource(
+            withRole(workspace, identity, "test"),
+            false,
+          );
         }
 
         // Parallel across keys (schema→run stays sequential per key).
@@ -106,6 +125,7 @@ export function SuggestionsTab() {
         }
         const next = mapSuggestionCards(results);
         setCards(next);
+        setShownIdentity(identity.key);
         dispatch({ type: "SET_SUG_COUNT", count: next.length });
         if (errors.length) {
           setError(errors.join("\n"));
@@ -116,6 +136,7 @@ export function SuggestionsTab() {
         if (cancelled) return;
         setError(e instanceof EngineError ? e.message : String(e));
         setCards([]);
+        setShownIdentity(identity.key);
         dispatch({ type: "SET_SUG_COUNT", count: 0 });
       } finally {
         if (!cancelled) setLoading(false);
@@ -129,7 +150,9 @@ export function SuggestionsTab() {
     return () => {
       cancelled = true;
     };
-  }, [wsKey, gridReady, workspace, dispatch]);
+    // identityKey stands for workspace content at the analysed version; the
+    // workspace object itself churns on unrelated edits (charts, variables).
+  }, [identityKey, gridReady, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const shown = useMemo(
     () => filterCardsByStage(cards, sugStage),
@@ -139,9 +162,27 @@ export function SuggestionsTab() {
   return (
     <div className="left-tab-body">
       <p className="left-help">
-        What the analysis keys flag on the latest train. A suggestion only
-        opens the editor: nothing changes until you apply.
+        What the analysis keys flag on train at the viewed version. A
+        suggestion only opens the editor: nothing changes until you apply.
       </p>
+      {workspace?.datasets.train.x.path ? (
+        <div
+          className={pendingStep ? "sug-identity editing" : "sug-identity"}
+          data-identity={shownIdentity ?? ""}
+          data-identity-current={identityKey}
+          data-identity-version={identity.version}
+          data-identity-editing={pendingStep ? "1" : "0"}
+        >
+          <span className="mono">{identityLabel(identity)}</span>
+          {pendingStep ? (
+            <span>
+              {" "}
+              · last applied version — the step being edited is not applied
+              yet
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <div className="chip-row" role="group" aria-label="Suggestion stage">
         {STAGE_FILTERS.map((s) => (
           <button
