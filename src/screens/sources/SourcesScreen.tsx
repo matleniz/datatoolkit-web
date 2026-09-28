@@ -32,6 +32,10 @@ import "./sources.css";
 const FIXTURE_BASE =
   "/home/matleniz/wt-datatoolkit-web/fxa-sources/e2e/fixtures";
 
+/** Shown when train has 0 columns / empty file (MAT-154). */
+const EMPTY_TRAIN_MESSAGE =
+  "This train file has no columns (empty or unreadable). Replace it before opening the workbench or checking alignment.";
+
 function engineMessage(err: unknown): string {
   if (err && typeof err === "object" && "message" in err) {
     const msg = (err as EngineError).message;
@@ -153,11 +157,15 @@ export function SourcesScreen() {
   const [previewColumns, setPreviewColumns] = useState<string[] | null>(null);
   const [engineTarget, setEngineTarget] = useState<string | null>(null);
   const [engineErrors, setEngineErrors] = useState<string[]>([]);
+  /** True while a workspace switch is still loading sources (MAT-149). */
+  const [sourcesLoading, setSourcesLoading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const persistSkip = useRef(true);
   const activeNameRef = useRef(activeWsName);
   activeNameRef.current = activeWsName;
+  /** Bumps on each workspace select so stale loadWorkspaceSources results are ignored. */
+  const selectGenRef = useRef(0);
 
   const currentSources = useCallback((): WorkspaceSourcesState => {
     return {
@@ -255,7 +263,11 @@ export function SourcesScreen() {
       name: string,
       ws: Workspace | null,
       cache: Record<string, WorkspaceSourcesState>,
+      gen: number,
     ) => {
+      const stillCurrent = () =>
+        gen === selectGenRef.current && activeNameRef.current === name;
+
       const cached = cache[name];
       const wsPaths = new Set<string>();
       if (ws?.datasets.train.x.path) wsPaths.add(ws.datasets.train.x.path);
@@ -270,6 +282,7 @@ export function SourcesScreen() {
           cached.files.some((f) => wsPaths.has(f.path) || wsPaths.has(f.spec.path)));
 
       if (cacheMatchesWs && cached) {
+        if (!stillCurrent()) return;
         applySources(cached);
         return;
       }
@@ -279,15 +292,18 @@ export function SourcesScreen() {
           const enriched = await Promise.all(
             base.files.map((f) => enrichFileItem(f)),
           );
+          if (!stillCurrent()) return;
           const next = { ...base, files: enriched };
           applySources(next);
           dispatch({ type: "SET_WORKSPACE_FILES", name, sources: next });
         } catch (err: unknown) {
+          if (!stillCurrent()) return;
           applySources(base);
           setEngineErrors([engineMessage(err)]);
         }
         return;
       }
+      if (!stillCurrent()) return;
       if (name === "churn") {
         const churn = defaultChurnSources(FIXTURE_BASE);
         applySources(churn);
@@ -314,9 +330,11 @@ export function SourcesScreen() {
         sources: previousSources,
       });
     }
+    const gen = ++selectGenRef.current;
     persistSkip.current = true;
     activeNameRef.current = name;
     setActiveWsName(name);
+    setSourcesLoading(true);
     // Clear immediately so previous workspace files cannot leak into the UI
     // or be re-persisted under the new name while we await the engine.
     applySources(emptyWorkspaceSources());
@@ -331,6 +349,7 @@ export function SourcesScreen() {
       const onDisk =
         listed ||
         (await apiClient.listWorkspaces()).some((w) => w.name === name);
+      if (gen !== selectGenRef.current) return;
       if (!onDisk) {
         const empty: Workspace = {
           name,
@@ -344,14 +363,16 @@ export function SourcesScreen() {
         };
         dispatch({ type: "SET_WORKSPACE", workspace: empty });
         rememberWorkspaceName(name);
-        await loadWorkspaceSources(name, null, cacheAfterSave);
+        await loadWorkspaceSources(name, null, cacheAfterSave, gen);
         return;
       }
       const ws = await apiClient.getWorkspace(name);
+      if (gen !== selectGenRef.current) return;
       dispatch({ type: "SET_WORKSPACE", workspace: ws });
       rememberWorkspaceName(name);
-      await loadWorkspaceSources(name, ws, cacheAfterSave);
+      await loadWorkspaceSources(name, ws, cacheAfterSave, gen);
     } catch (err: unknown) {
+      if (gen !== selectGenRef.current) return;
       const empty: Workspace = {
         name,
         datasets: {
@@ -367,7 +388,11 @@ export function SourcesScreen() {
       if (!/unknown workspace|not found/i.test(msg)) {
         setEngineErrors([msg]);
       }
-      await loadWorkspaceSources(name, null, cacheAfterSave);
+      await loadWorkspaceSources(name, null, cacheAfterSave, gen);
+    } finally {
+      if (gen === selectGenRef.current) {
+        setSourcesLoading(false);
+      }
     }
   };
 
@@ -549,6 +574,7 @@ export function SourcesScreen() {
       const remapped = mapFileInspect(inspectRes, shape);
       const id = `f_${Date.now()}`;
       const guessedRole = guessFileRole(file.name, roles);
+      const colCount = cols.length > 0 ? cols.length : (shape?.[1] ?? 0);
 
       const newItem: SourceFileItem = {
         id,
@@ -564,6 +590,10 @@ export function SourcesScreen() {
       setFiles((prev) => [...prev, newItem]);
       setRoles((prev) => ({ ...prev, [id]: guessedRole }));
       setGuessedMap((prev) => ({ ...prev, [id]: true }));
+
+      if (colCount === 0 || file.size === 0) {
+        setEngineErrors((prev) => [...prev, EMPTY_TRAIN_MESSAGE]);
+      }
     } catch (err: unknown) {
       setEngineErrors((prev) => [...prev, engineMessage(err)]);
     } finally {
@@ -587,7 +617,32 @@ export function SourcesScreen() {
   const resolvedTarget =
     engineTarget ?? buildResult.targetLabel ?? null;
 
+  const trainColumnCount =
+    trainPreviewShape != null
+      ? trainPreviewShape[1]
+      : (trainXFile?.cols.length ?? 0);
+  const trainHasPath = Boolean(trainXFile?.spec.path);
+  const trainReady = trainHasPath && trainColumnCount > 0;
+  const canNavigate = !sourcesLoading && trainReady;
+  const emptyTrainHint =
+    !sourcesLoading && trainHasPath && trainColumnCount === 0
+      ? EMPTY_TRAIN_MESSAGE
+      : sourcesLoading
+        ? "Loading workspace sources…"
+        : null;
+
   const handleSaveAndNavigate = async (screen: "align" | "bench") => {
+    // Never PUT a workspace built from an unloaded / empty sources state (MAT-149).
+    if (sourcesLoading) return;
+    const trainPath = buildResult.workspace.datasets.train.x.path;
+    if (!trainPath || trainColumnCount === 0) {
+      setEngineErrors((prev) =>
+        prev.includes(EMPTY_TRAIN_MESSAGE)
+          ? prev
+          : [...prev, EMPTY_TRAIN_MESSAGE],
+      );
+      return;
+    }
     const ws = buildResult.workspace;
     dispatch({
       type: "SET_WORKSPACE_FILES",
@@ -1056,12 +1111,26 @@ export function SourcesScreen() {
               {err}
             </div>
           ))}
+          {emptyTrainHint &&
+          !engineErrors.includes(emptyTrainHint) ? (
+            <div className="engine-error-box" role="status">
+              {emptyTrainHint}
+            </div>
+          ) : null}
         </section>
 
         <div className="sources-actions">
           <button
             type="button"
             className="btn-primary-action"
+            disabled={!canNavigate}
+            title={
+              sourcesLoading
+                ? "Loading workspace sources…"
+                : !trainReady
+                  ? EMPTY_TRAIN_MESSAGE
+                  : undefined
+            }
             onClick={() => void handleSaveAndNavigate("align")}
           >
             Check train / test alignment →
@@ -1069,6 +1138,14 @@ export function SourcesScreen() {
           <button
             type="button"
             className="btn-secondary-action"
+            disabled={!canNavigate}
+            title={
+              sourcesLoading
+                ? "Loading workspace sources…"
+                : !trainReady
+                  ? EMPTY_TRAIN_MESSAGE
+                  : undefined
+            }
             onClick={() => void handleSaveAndNavigate("bench")}
           >
             Open workbench
