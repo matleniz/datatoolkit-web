@@ -1,4 +1,4 @@
-import type { ColumnKind, JsonSchema, JsonValue } from "../api/types";
+import type { ColumnKind, JsonSchema } from "../api/types";
 import { isNumericKind } from "./kinds";
 
 export type FieldWidget =
@@ -38,7 +38,7 @@ export interface EditorField {
  * Resolve a local `#/$defs/...` or `#/definitions/...` ref inside `root`.
  * Returns the original prop when the ref is missing or non-local.
  */
-export function resolveLocalRef(
+function resolveLocalRef(
   prop: JsonSchema,
   root: JsonSchema,
 ): JsonSchema {
@@ -766,7 +766,7 @@ export interface StepEditorContext {
 }
 
 /** Feature ops that refuse columns with missing values (engine requires impute first). */
-export const FEATURE_OPS_NEED_IMPUTE = new Set([
+const FEATURE_OPS_NEED_IMPUTE = new Set([
   "polynomial",
   "power_transform",
   "quantile_transform",
@@ -851,14 +851,4 @@ export function stepEditorBlockers(
   }
 
   return null;
-}
-
-export function applySchemaDefault(
-  schema: JsonSchema,
-  key: string,
-): JsonValue | undefined {
-  const prop = schema.properties?.[key] as JsonSchema | undefined;
-  if (!prop) return undefined;
-  const resolved = resolveSchemaProp(prop);
-  return resolved.default as JsonValue | undefined;
 }
