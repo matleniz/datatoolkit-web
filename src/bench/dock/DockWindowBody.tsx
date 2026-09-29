@@ -135,13 +135,22 @@ function ScopeToggle({
   return (
     <button
       type="button"
-      className={scopeAll ? "chip on" : "chip"}
+      className={scopeAll ? "chip dock-scope-chip on" : "chip dock-scope-chip"}
       aria-pressed={scopeAll}
-      aria-label="Widen analysis to all columns"
+      aria-label={
+        scopeAll
+          ? "Restrict analysis to selected columns"
+          : "Widen analysis to all columns"
+      }
       data-scope-all={scopeAll ? "1" : "0"}
+      title={
+        scopeAll
+          ? "Scope: all columns (click to switch to selection)"
+          : "Scope: selection only (click to switch to all columns)"
+      }
       onClick={() => onChange(!scopeAll)}
     >
-      {scopeAll ? "All columns" : "Selection only"}
+      <span className="dock-scope-label">{scopeAll ? "All cols" : "Selection"}</span>
     </button>
   );
 }
@@ -660,9 +669,9 @@ export function DockWindowBody({ id }: { id: ToolId }) {
 
   const splitByBar =
     id === "dist" ? (
-      <div className="dock-split-by">
+      <div className="dock-split-by" title="Split by column">
         <label htmlFor="dock-split-by">
-          Split by
+          <span className="dock-split-label">By</span>
           <select
             id="dock-split-by"
             aria-label="Split by"
@@ -693,6 +702,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         identity={identity}
         shownIdentity={shownIdentity}
         editing={!!bench.pendingStep}
+        compact
       />
       {showScopeToggle ? (
         <ScopeToggle scopeAll={scopeAll} onChange={setScopeAll} />

@@ -90,7 +90,7 @@ export const TOOLS: ToolDef[] = [
 
 export const DOCK_SIZES = {
   S: { bottom: 220, right: 340 },
-  M: { bottom: 340, right: 440 },
+  M: { bottom: 390, right: 440 },
   L: { bottom: 440, right: 600 },
 } as const;
 

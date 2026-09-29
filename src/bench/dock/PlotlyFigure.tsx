@@ -73,6 +73,7 @@ export function PlotlyFigure({
   onPointClick?: (point: PlotPoint, ev: MouseEvent | undefined) => void;
 }) {
   const ref = useRef<PlotEl>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
   const clickRef = useRef(onPointClick);
   clickRef.current = onPointClick;
 
@@ -81,23 +82,27 @@ export function PlotlyFigure({
     (async () => {
       const Plotly = (await import("plotly.js-dist-min")).default;
       const el = ref.current;
+      const box = boxRef.current;
       if (cancelled || !el) return;
       const rawData = (plotly.data as object[]) ?? [];
       const data = applyDtkColorsToData(rawData);
       const rawLayout = (plotly.layout as Record<string, unknown>) ?? {};
       const template = (rawLayout.template as Record<string, unknown>) ?? {};
       const templateLayout = (template.layout as Record<string, unknown>) ?? {};
+      const targetHeight =
+        box && box.clientHeight > 0 ? box.clientHeight : el.clientHeight > 0 ? el.clientHeight : 180;
+      const targetWidth =
+        box && box.clientWidth > 0 ? box.clientWidth : el.clientWidth > 0 ? el.clientWidth : undefined;
       const layout = {
         ...rawLayout,
         autosize: true,
-        height: undefined,
-        width: undefined,
+        height: targetHeight,
+        width: targetWidth,
         margin: {
-          t: 24,
-          r: 12,
-          b: 36,
-          l: 44,
-          ...((rawLayout.margin as Record<string, unknown>) ?? {}),
+          t: 16,
+          r: 10,
+          b: 28,
+          l: 36,
         },
         paper_bgcolor: "transparent",
         plot_bgcolor: "transparent",
@@ -143,7 +148,8 @@ export function PlotlyFigure({
   // every pixel of a resize.
   useEffect(() => {
     const el = ref.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
+    const box = boxRef.current;
+    if (!el || !box || typeof ResizeObserver === "undefined") return;
     let timer: number | undefined;
     const settle = () => {
       if (el.closest(".react-grid-item.resizing")) {
@@ -151,8 +157,15 @@ export function PlotlyFigure({
         return;
       }
       if (!el.classList.contains("js-plotly-plot")) return;
+      const h = box.clientHeight > 0 ? box.clientHeight : el.clientHeight;
+      const w = box.clientWidth > 0 ? box.clientWidth : el.clientWidth;
       void import("plotly.js-dist-min")
-        .then(({ default: Plotly }) => Plotly.Plots.resize(el))
+        .then(({ default: Plotly }) => {
+          if (h > 0 && w > 0) {
+            return Plotly.relayout(el, { height: h, width: w });
+          }
+          return Plotly.Plots.resize(el);
+        })
         .catch(() => {
           /* best-effort, like the render */
         });
@@ -161,7 +174,7 @@ export function PlotlyFigure({
       window.clearTimeout(timer);
       timer = window.setTimeout(settle, FIGURE_RESIZE_MS);
     });
-    ro.observe(el);
+    ro.observe(box);
     return () => {
       ro.disconnect();
       window.clearTimeout(timer);
@@ -169,7 +182,7 @@ export function PlotlyFigure({
   }, []);
 
   return (
-    <div className="result-plot-box">
+    <div ref={boxRef} className="result-plot-box">
       <div ref={ref} className="result-plot" />
     </div>
   );

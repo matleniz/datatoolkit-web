@@ -32,14 +32,48 @@ function GripIcon() {
   );
 }
 
+/** Client size of an element (callback ref), tracked with a ResizeObserver. */
+function useElementSize<T extends HTMLElement>(): [
+  (el: T | null) => void,
+  { width: number; height: number },
+] {
+  const [el, setEl] = useState<T | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    if (!el) return;
+    const measure = () =>
+      setSize((prev) =>
+        prev.width === el.clientWidth && prev.height === el.clientHeight
+          ? prev
+          : { width: el.clientWidth, height: el.clientHeight },
+      );
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [el]);
+  return [setEl, size];
+}
+
 function DockWindow({ id }: { id: ToolId }) {
   const { dock } = useAppState();
   const dispatch = useAppDispatch();
   const def = toolDef(id);
   const maximized = dock.maximized === id;
+  const [ref, size] = useElementSize<HTMLElement>();
+  // MAT-246: headline is 1 line when window height is < 300px, 2 lines otherwise.
+  const isCompactHeight =
+    size.height > 0 ? size.height < 300 : !maximized && dock.size !== "L";
 
   return (
-    <section className="dock-window" aria-label={def.label} data-tool={id}>
+    <section
+      ref={ref}
+      className={`dock-window${isCompactHeight ? " compact-h" : ""}`}
+      data-compact-h={isCompactHeight ? "1" : "0"}
+      aria-label={def.label}
+      data-tool={id}
+    >
       <div className="dock-titlebar" data-drag="1" title="Drag to move">
         <GripIcon />
         <span className="dock-win-title">{def.label}</span>
@@ -91,30 +125,6 @@ function DockWindow({ id }: { id: ToolId }) {
       </div>
     </section>
   );
-}
-
-/** Client size of an element (callback ref), tracked with a ResizeObserver. */
-function useElementSize<T extends HTMLElement>(): [
-  (el: T | null) => void,
-  { width: number; height: number },
-] {
-  const [el, setEl] = useState<T | null>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  useLayoutEffect(() => {
-    if (!el) return;
-    const measure = () =>
-      setSize((prev) =>
-        prev.width === el.clientWidth && prev.height === el.clientHeight
-          ? prev
-          : { width: el.clientWidth, height: el.clientHeight },
-      );
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [el]);
-  return [setEl, size];
 }
 
 const GRID_MARGIN = 10;

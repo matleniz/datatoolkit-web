@@ -245,12 +245,39 @@ test("MAT-235: figure-first analysis windows", async ({ page }) => {
     await figureReady(page, id);
   }
   await waitForGridReady(page);
-  // MAT-246: default window size shows readable figures (height >= 160 px).
+  // MAT-246: default window size shows readable figures (height >= 180 px),
+  // completely contained inside the window (no scroll), with x axis rendered.
   for (const id of ["missing", "dist", "outliers"] as const) {
-    const plot = win(page, id).locator(".result-figure .js-plotly-plot").first();
-    const b = await box(plot);
-    expect(b.height).toBeGreaterThanOrEqual(160);
+    const w = win(page, id);
+    const wBox = await box(w);
+    const fig = w.locator(".result-figure").first();
+    const fBox = await box(fig);
+    // Bounding box of the figure is strictly contained in the window bounding box
+    expect(fBox.y).toBeGreaterThanOrEqual(wBox.y);
+    expect(fBox.y + fBox.height).toBeLessThanOrEqual(wBox.y + wBox.height + 1);
+    expect(fBox.height).toBeGreaterThanOrEqual(180);
+
+    // And the x axis is rendered
+    const xAxis = w.locator(".result-figure .xaxislayer-above, .result-figure .xtick, .result-figure .g-xtitle").first();
+    await expect(xAxis).toBeVisible();
+
+    // Window body has no vertical scroll (fits without scroll)
+    const hasScroll = await w
+      .locator(".dock-body")
+      .evaluate((el) => el.scrollHeight > el.clientHeight + 1);
+    expect(hasScroll).toBe(false);
   }
+
+  // MAT-246: Plotly mode bar is only visible on hover
+  const outliersFig = win(page, "outliers").locator(".result-figure").first();
+  const modeBar = outliersFig.locator(".modebar-container, .modebar").first();
+  await page.mouse.move(0, 0);
+  await expect(modeBar).toHaveCSS("opacity", "0");
+  await outliersFig.hover();
+  await expect(modeBar).toHaveCSS("opacity", "1");
+  await page.mouse.move(0, 0);
+  await expect(modeBar).toHaveCSS("opacity", "0");
+
   await captureFlowScreenshot(page, FLOW, "08-four-windows.png");
 
   // --- Click-through on a heatmap cell: its column pair is selected ---

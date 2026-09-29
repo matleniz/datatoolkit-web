@@ -15,7 +15,7 @@ describe("MAT-246 compact chrome & theme tokens", () => {
   });
 
   it("DOCK_SIZES gives readable window height at default size M", () => {
-    expect(DOCK_SIZES.M.bottom).toBe(340);
+    expect(DOCK_SIZES.M.bottom).toBe(390);
     expect(DOCK_SIZES.S.bottom).toBe(220);
     expect(DOCK_SIZES.L.bottom).toBe(440);
   });
