@@ -66,6 +66,8 @@ export function ResultView({
   );
 }
 
+const FIGURE_RESIZE_MS = 120;
+
 function PlotlyFigure({
   title,
   plotly,
@@ -109,6 +111,36 @@ function PlotlyFigure({
       cancelled = true;
     };
   }, [plotly, showModeBar, title]);
+
+  // Follow the dock window's size (MAT-234). Plotly's `responsive` only
+  // listens to window resizes; relayout once the grid drag has ended, not on
+  // every pixel of a resize.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let timer: number | undefined;
+    const settle = () => {
+      if (el.closest(".react-grid-item.resizing")) {
+        timer = window.setTimeout(settle, FIGURE_RESIZE_MS);
+        return;
+      }
+      if (!el.classList.contains("js-plotly-plot")) return;
+      void import("plotly.js-dist-min")
+        .then(({ default: Plotly }) => Plotly.Plots.resize(el))
+        .catch(() => {
+          /* best-effort, like the render */
+        });
+    };
+    const ro = new ResizeObserver(() => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(settle, FIGURE_RESIZE_MS);
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   return (
     <div className="result-figure">
