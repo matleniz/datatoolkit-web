@@ -94,7 +94,13 @@ export function DockParamsPanel({
   if (!ready && fields.length === 0) {
     return (
       <div className="dock-params" data-dock-params={keyId}>
-        <div className="dock-params-head muted">Parameters…</div>
+        <button
+          type="button"
+          className="chip dock-params-chip"
+          disabled
+        >
+          <span className="dock-params-title muted">Parameters…</span>
+        </button>
       </div>
     );
   }
@@ -126,20 +132,16 @@ export function DockParamsPanel({
       <div className="dock-params-head">
         <button
           type="button"
-          className="dock-params-toggle"
+          className={open ? "chip dock-params-chip on" : "chip dock-params-chip"}
           data-dock-params-toggle=""
           aria-expanded={open}
           onClick={onToggle}
+          title={summary ? `Parameters · ${summary}` : "Parameters"}
         >
           <span className="result-details-caret" aria-hidden="true">
             {open ? "▾" : "▸"}
           </span>
           <span className="dock-params-title">Parameters</span>
-          {!open && summary ? (
-            <span className="dock-params-summary mono" title={summary}>
-              {summary}
-            </span>
-          ) : null}
         </button>
         {open ? (
           <button

@@ -245,6 +245,12 @@ test("MAT-235: figure-first analysis windows", async ({ page }) => {
     await figureReady(page, id);
   }
   await waitForGridReady(page);
+  // MAT-246: default window size shows readable figures (height >= 160 px).
+  for (const id of ["missing", "dist", "outliers"] as const) {
+    const plot = win(page, id).locator(".result-figure .js-plotly-plot").first();
+    const b = await box(plot);
+    expect(b.height).toBeGreaterThanOrEqual(160);
+  }
   await captureFlowScreenshot(page, FLOW, "08-four-windows.png");
 
   // --- Click-through on a heatmap cell: its column pair is selected ---
