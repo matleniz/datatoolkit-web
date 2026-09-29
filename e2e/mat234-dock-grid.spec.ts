@@ -143,7 +143,7 @@ test("MAT-234: dock windows move and resize on a grid, layout survives reload", 
   const wins = [dist, missing, chart];
   // One figure-building key at a time: the engine's concurrent Plotly
   // figure construction can fail with "Invalid value" (engine-side race).
-  await expect(dist.locator(".result-table-block").first()).toBeVisible({
+  await expect(dist.locator(".result-figure .js-plotly-plot").first()).toBeVisible({
     timeout: 60_000,
   });
   await expect(page.locator(".dock-window:has-text('Loading…')")).toHaveCount(0, {
@@ -234,7 +234,7 @@ test("MAT-234: dock windows move and resize on a grid, layout survives reload", 
   });
   for (const w of wins) await expect(w).toBeVisible();
   expect(await dockLayout(page)).toEqual(layoutBefore);
-  await expect(dist.locator(".result-table-block").first()).toBeVisible({
+  await expect(dist.locator(".result-figure .js-plotly-plot").first()).toBeVisible({
     timeout: 60_000,
   });
   await expect(page.locator(".dock-window:has-text('Loading…')")).toHaveCount(0, {
@@ -253,7 +253,7 @@ test("MAT-234: dock windows move and resize on a grid, layout survives reload", 
     expect(Math.abs(a.width - b.width)).toBeLessThan(2);
     expect(Math.abs(a.height - b.height)).toBeLessThan(2);
   }
-  await expect(dist.locator(".result-table-block").first()).toBeVisible({
+  await expect(dist.locator(".result-figure .js-plotly-plot").first()).toBeVisible({
     timeout: 60_000,
   });
   await waitForGridReady(page);

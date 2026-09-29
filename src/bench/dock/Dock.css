@@ -247,6 +247,22 @@
   min-height: 0;
   overflow: auto;
   padding: 10px 12px;
+  /* MAT-235: the window's content stretches so its figure fills it. */
+  display: flex;
+  flex-direction: column;
+}
+
+.dock-body > .dock-identity-wrap,
+.dock-body > .chart-dock {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.dock-identity-wrap > .dock-result {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
 }
 
 /* MAT-175: the frame (role · version) a window's numbers come from. */
@@ -317,12 +333,44 @@
   background: var(--dtk-bg-subtle);
 }
 
+.dock-params {
+  padding: 4px 10px;
+}
+
+.dock-params.open {
+  padding: 8px 10px;
+}
+
 .dock-params-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.dock-params.open .dock-params-head {
   margin-bottom: 6px;
+}
+
+.dock-params-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  text-align: left;
+}
+
+.dock-params-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--dtk-muted);
 }
 
 .dock-params-title {
@@ -495,22 +543,190 @@
 .result-view {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
+/* ---- Analysis window frame (MAT-235): figure first ---- */
+.result-shell {
+  flex: 1 0 auto;
+}
+
+.result-headline {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--dtk-ink);
+}
+
+.result-main {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.result-main > .result-figure,
+.result-view-chart > .result-figure {
+  flex: 1 0 220px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The plot takes whatever height its box gets (Plotly autosize). */
+.result-plot-box {
+  position: relative;
+  flex: 1 0 200px;
+  min-width: 0;
+  /* Never paint over the view bar while a resize is settling. */
+  overflow: hidden;
+}
+
+.result-plot {
+  position: absolute;
+  inset: 0;
+}
+
+.result-figure.clickable .nsewdrag {
+  cursor: pointer !important;
+}
+
+.result-tables {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.result-tables .result-table-scroll {
+  max-height: none;
+}
+
+.result-viewbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding-top: 6px;
+  border-top: 1px solid var(--dtk-hairline);
+}
+
+.result-viewbar-spacer {
+  flex: 1;
+}
+
+.result-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.result-tab {
+  max-width: 220px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--dtk-border-strong);
+  border-radius: 12px;
+  background: var(--dtk-surface);
+  color: var(--dtk-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result-tab.on {
+  background: var(--dtk-accent-soft);
+  border-color: var(--dtk-accent-border);
+  color: var(--dtk-accent-deep);
+  font-weight: 600;
+}
+
+.result-display {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.result-display select {
+  height: 24px;
+  border: 1px solid var(--dtk-border-strong);
+  border-radius: 5px;
+  background: var(--dtk-bg);
+  color: var(--dtk-ink);
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+.result-display .chart-check {
+  margin-bottom: 0;
+}
+
+.result-details {
+  border-top: 1px solid var(--dtk-hairline);
+  padding-top: 4px;
+}
+
+.result-details-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 0;
+  border: none;
+  background: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dtk-ink);
+}
+
+.result-details-toggle .muted {
+  font-weight: 400;
+}
+
+.result-details-caret {
+  width: 10px;
+  color: var(--dtk-muted);
+}
+
+.result-details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 6px 0 4px;
+}
+
+/* Metrics as small stat tiles. */
 .result-metrics {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px 12px;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 6px;
 }
 
 .result-metric {
   display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 12px;
-  border-bottom: 1px dotted var(--dtk-border-strong);
-  padding-bottom: 2px;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--dtk-border);
+  border-radius: 6px;
+  background: var(--dtk-bg-subtle);
+}
+
+.result-metric .muted {
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-metric .mono {
+  font-size: 13px;
+  color: var(--dtk-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .result-table-title {
@@ -521,7 +737,7 @@
 
 .result-table-scroll {
   overflow: auto;
-  max-height: 160px;
+  max-height: 260px;
 }
 
 .result-table-scroll table {
@@ -536,6 +752,49 @@
   padding: 2px 6px;
   text-align: left;
   white-space: nowrap;
+}
+
+.result-table-scroll th {
+  position: sticky;
+  top: 0;
+  background: var(--dtk-surface);
+  padding: 0;
+}
+
+.result-th-btn {
+  width: 100%;
+  padding: 3px 6px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  color: var(--dtk-ink);
+  cursor: pointer;
+}
+
+.result-th-btn:hover {
+  color: var(--dtk-accent);
+}
+
+.result-pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.result-pager button {
+  min-width: 22px;
+  height: 20px;
+  border: 1px solid var(--dtk-border-strong);
+  border-radius: 4px;
+  background: var(--dtk-surface);
+  color: var(--dtk-ink);
+}
+
+.result-pager button:disabled {
+  opacity: 0.4;
 }
 
 .result-text {
@@ -571,6 +830,10 @@
   gap: 8px;
   min-height: 0;
   padding: 2px 0;
+}
+
+.chart-dock > .result-view-chart {
+  flex: 1 0 auto;
 }
 
 .chart-form {

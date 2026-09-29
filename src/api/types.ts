@@ -114,6 +114,8 @@ export interface ResultFigure {
   title: string;
   plotly: Record<string, unknown>;
   group?: string | null;
+  /** Figure the window opens by default (MAT-244); none → the first. */
+  main?: boolean;
 }
 
 export interface Result {
@@ -121,6 +123,8 @@ export interface Result {
   tables: ResultTable[];
   figures: ResultFigure[];
   text: string;
+  /** One-sentence takeaway (MAT-244); absent or empty → no line. */
+  headline?: string;
 }
 
 /* ---------- Keys / transforms ---------- */

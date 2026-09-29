@@ -19,6 +19,7 @@ import type {
   Workspace,
   WorkspaceRows,
 } from "../src/api/types";
+import { TABLE_PAGE_SIZE } from "../src/bench/dock/resultTable";
 import { keyParamsFromSchema } from "../src/bench/left/keyParams";
 import {
   SUGGESTION_KEYS,
@@ -164,7 +165,7 @@ function tableTexts(result: Result): { title: string; cells: string[][] }[] {
     return {
       title: t.title,
       cells: t.records
-        .slice(0, 40)
+        .slice(0, TABLE_PAGE_SIZE)
         .map((row) => heads.map((h) => String(row[h] ?? ""))),
     };
   });
@@ -307,6 +308,15 @@ async function checkWindow(
           return JSON.stringify(titles) === JSON.stringify(want)
             ? "ok"
             : `chart figures ${JSON.stringify(titles)} vs ${JSON.stringify(want)}`;
+        }
+        // Tables live in the collapsed Details drawer (MAT-235).
+        const details = page.locator(`${scope} .result-details-toggle`);
+        if (
+          (await details.count()) > 0 &&
+          (await details.getAttribute("aria-expanded")) !== "true"
+        ) {
+          await details.click();
+          return `${tool}: opening details`;
         }
         const dom = JSON.stringify(await domTables(page, scope));
         const exp = JSON.stringify(tableTexts(direct));

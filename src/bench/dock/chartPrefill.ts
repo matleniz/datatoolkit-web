@@ -119,6 +119,35 @@ export function chartPrefillFromSelection(cols: PrefillCol[]): ChartDraft {
   };
 }
 
+/** Scatter-matrix cap: beyond this a matrix of panels is unreadable. */
+const WINDOW_MATRIX_MAX = 6;
+
+/**
+ * "Open in Chart" from an analysis window (MAT-235): the columns the window
+ * ran on, plus its split. A split becomes the colour of the single-column
+ * chart; three or more numeric columns open a scatter matrix; otherwise the
+ * selection heuristics above.
+ */
+export function chartPrefillForWindow(
+  cols: PrefillCol[],
+  splitBy: string | null,
+): ChartDraft {
+  if (splitBy && cols.length > 0) {
+    const first = cols.find((c) => c.name !== splitBy);
+    if (first) {
+      return { ...chartPrefillFromSelection([first]), color: splitBy };
+    }
+  }
+  if (cols.length >= 3 && cols.every((c) => isNumericKind(c.kind))) {
+    return {
+      ...DEFAULT_CHART_DRAFT,
+      chart: "scatter_matrix",
+      columns: cols.slice(0, WINDOW_MATRIX_MAX).map((c) => c.name),
+    };
+  }
+  return chartPrefillFromSelection(cols);
+}
+
 /** Params object for run_key / ChartSpec (no `source`). */
 export function chartDraftToParams(
   draft: ChartDraft,

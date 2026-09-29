@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   captureFlowScreenshot,
   clearFlowScreenshots,
+  openDetails,
   openWorkbench,
   waitForGridReady,
 } from "./helpers";
@@ -42,6 +43,7 @@ test("MAT-146 / MAT-159: Outliers window follows column selection via engine col
   await expect(outliers.locator('[data-engine-key="outliers"]')).toBeVisible({
     timeout: 30_000,
   });
+  await openDetails(outliers);
   await expect(outliers.getByText("outliers_per_column")).toBeVisible();
   const scopedTable = outliers.locator(".result-table-block", {
     hasText: "outliers_per_column",
@@ -99,6 +101,7 @@ test("MAT-146 / MAT-159: Outliers window follows column selection via engine col
   await expect(outliers.locator('[data-engine-key="outliers"]')).toBeVisible({
     timeout: 30_000,
   });
+  await openDetails(outliers);
   await expect(outliers.getByText("outliers_per_column")).toBeVisible();
   const allTable = outliers.locator(".result-table-block", {
     hasText: "outliers_per_column",

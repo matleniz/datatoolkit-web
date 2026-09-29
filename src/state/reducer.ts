@@ -24,6 +24,7 @@ import {
   type DockRect,
 } from "../bench/dock/dockLayout";
 import { loadStoredDock, saveStoredDock } from "../bench/dock/dockStorage";
+import type { ToolViewState } from "../bench/dock/windowView";
 import type { WorkspaceSourcesState } from "../screens/sources/sourcesLogic";
 
 export type ScreenId = "sources" | "align" | "bench";
@@ -117,6 +118,11 @@ export interface AppState {
    * Keys are `toolId` or `toolId::column` (see `toolParamsKey`).
    */
   toolParams: Record<string, Record<string, unknown>>;
+  /**
+   * Per-window view choices (MAT-235): selected figure / Table view, display
+   * controls, Details drawer. Keyed by tool id, stored like `toolParams`.
+   */
+  toolViews: Record<string, ToolViewState>;
   /** Current Chart tool draft (MAT-172); null until first open / prefill. */
   chartDraft: ChartDraft | null;
   /** Last engine error message while replaying / previewing (verbatim). */
@@ -168,6 +174,7 @@ export const initialState: AppState = {
   targetColumn: "churn",
   distBy: null,
   toolParams: {},
+  toolViews: {},
   chartDraft: null,
   benchError: null,
   filesByWorkspace: {},
@@ -249,6 +256,7 @@ export type AppAction =
       params: Record<string, unknown>;
     }
   | { type: "CLEAR_TOOL_PARAMS"; key: string }
+  | { type: "PATCH_TOOL_VIEW"; key: string; patch: ToolViewState }
   | { type: "SET_CHART_DRAFT"; draft: ChartDraft | null }
   | { type: "PATCH_CHART_DRAFT"; patch: Partial<ChartDraft> }
   | { type: "ADD_CHART"; chart: ChartSpec }
@@ -647,6 +655,22 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const next = { ...state.toolParams };
       delete next[action.key];
       return { ...state, toolParams: next };
+    }
+    case "PATCH_TOOL_VIEW": {
+      const prev = state.toolViews[action.key] ?? {};
+      return {
+        ...state,
+        toolViews: {
+          ...state.toolViews,
+          [action.key]: {
+            ...prev,
+            ...action.patch,
+            display: action.patch.display
+              ? { ...prev.display, ...action.patch.display }
+              : prev.display,
+          },
+        },
+      };
     }
     case "SET_CHART_DRAFT":
       return { ...state, chartDraft: action.draft };

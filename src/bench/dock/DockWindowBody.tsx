@@ -27,9 +27,10 @@ import {
   selectedNumericColumns,
 } from "./columnScope";
 import { EMPTY_DATA_ROWS_MSG } from "../format";
+import { AnalysisResultView } from "./AnalysisResultView";
+import { chartPrefillForWindow } from "./chartPrefill";
 import { DockParamsPanel } from "./DockParamsPanel";
 import { IdentityStrip } from "./IdentityStrip";
-import { ResultView } from "./ResultView";
 
 function pearson(
   rows: WorkspaceRow[],
@@ -146,7 +147,8 @@ function ScopeToggle({
 }
 
 export function DockWindowBody({ id }: { id: ToolId }) {
-  const { workspace, selection, role, distBy, toolParams } = useAppState();
+  const { workspace, selection, role, distBy, toolParams, toolViews } =
+    useAppState();
   const dispatch = useAppDispatch();
   const bench = useWorkbenchData();
   const [profiles, setProfiles] = useState<ColumnProfile[]>([]);
@@ -587,6 +589,55 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     () => profiles.map((p) => ({ name: p.name, kind: p.kind })),
     [profiles],
   );
+  const columnNames = useMemo(() => profiles.map((p) => p.name), [profiles]);
+
+  /**
+   * Click-through (MAT-235): a column clicked in a figure becomes the grid
+   * selection, so the other windows follow. A window showing all columns
+   * keeps showing them (widens its scope) instead of narrowing to the click.
+   */
+  const onColumnsClick = (cols: string[], add: boolean) => {
+    const scopedToSelection =
+      id === "corr"
+        ? selCols.filter((c) => {
+            const k = profileByName.get(c)?.kind;
+            return !!k && isNumericKind(k) && c !== target;
+          }).length >= 2
+        : selCols.length > 0;
+    if (SCOPEABLE_TOOLS.has(id) && !scopedToSelection) setScopeAll(true);
+    if (!add) dispatch({ type: "CLEAR_SELECTION" });
+    for (const name of cols) {
+      if (!add || !selCols.includes(name)) {
+        dispatch({ type: "PICK_COL", name, add: true });
+      }
+    }
+  };
+
+  /** Open in Chart (MAT-235): the columns / split the key actually ran on. */
+  const openInChart = () => {
+    let params: Record<string, unknown> = {};
+    try {
+      params = runParams ? (JSON.parse(runParams) as Record<string, unknown>) : {};
+    } catch {
+      /* no run params: fall back to the selection */
+    }
+    let names = Array.isArray(params.columns)
+      ? params.columns.filter((c): c is string => typeof c === "string")
+      : scopeAll
+        ? []
+        : [...selCols];
+    if (id === "target" && typeof params.target === "string") {
+      const feature = names.find((n) => n !== params.target);
+      names = feature ? [feature, params.target] : [params.target];
+    }
+    const by = typeof params.by === "string" ? params.by : null;
+    const cols = names.map((name) => ({
+      name,
+      kind: profileByName.get(name)?.kind ?? "text",
+    }));
+    dispatch({ type: "SET_CHART_DRAFT", draft: chartPrefillForWindow(cols, by) });
+    dispatch({ type: "OPEN_TOOL", id: "chart" });
+  };
 
   const paramsPanel =
     showParamsPanel && workspace?.datasets.train.x.path ? (
@@ -596,6 +647,14 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         params={userParams}
         columns={columnKinds}
         profile={focusProfile}
+        open={toolViews[id]?.params === true}
+        onToggle={() =>
+          dispatch({
+            type: "PATCH_TOOL_VIEW",
+            key: id,
+            patch: { params: toolViews[id]?.params !== true },
+          })
+        }
       />
     ) : null;
 
@@ -774,6 +833,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
       id === "missing" && !scopeAll && selCols.length > 0 ? selCols : null;
     return wrap(
       <div
+        className="dock-result"
         data-scope-mode={scopeAll ? "all" : "selection"}
         data-engine-key={def.key}
         data-has-columns-param={hasColumnsParam ? "1" : "0"}
@@ -827,7 +887,13 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         {scopeBar}
         {paramsPanel}
         {bound ? <div className="dock-bound muted">{bound}</div> : null}
-        <ResultView result={result} />
+        <AnalysisResultView
+          result={result}
+          viewKey={id}
+          columns={columnNames}
+          onColumnsClick={onColumnsClick}
+          onOpenChart={openInChart}
+        />
       </div>
     );
   }

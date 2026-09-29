@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   captureFlowScreenshot,
   clearFlowScreenshots,
+  openDetails,
   openWorkspaceBench,
   titanicWorkspace,
   titanicYFileWorkspace,
@@ -65,6 +66,8 @@ test("MAT-147: Distribution by target / by column (Titanic) + outliers scoped", 
     window.__DTK_DISPATCH__!({ type: "TOGGLE_TOOL", id: "dist" });
   });
   dist = await openDistBy(page, "Sex", "Survived");
+  // Tables live in the collapsed Details drawer since MAT-235.
+  await openDetails(dist);
   await expect(dist.getByText("value_counts")).toBeVisible({
     timeout: 30_000,
   });
@@ -88,6 +91,7 @@ test("MAT-147: Distribution by target / by column (Titanic) + outliers scoped", 
     window.__DTK_DISPATCH__!({ type: "TOGGLE_TOOL", id: "dist" });
   });
   dist = await openDistBy(page, "Age", "Fare");
+  await openDetails(dist);
   await expect(dist.locator(".result-metric", { hasText: "pearson" })).toBeVisible({
     timeout: 30_000,
   });
@@ -113,6 +117,7 @@ test("MAT-147: Distribution by target / by column (Titanic) + outliers scoped", 
     "data-outliers-col",
     "Age",
   );
+  await openDetails(outliers);
   await expect(outliers.getByText("outliers_per_column")).toBeVisible();
   const table = outliers.locator(".result-table-block", {
     hasText: "outliers_per_column",

@@ -4,6 +4,7 @@ import {
   clearFlowScreenshots,
   highMissingWorkspace,
   messySurveyWorkspace,
+  openDetails,
   openWorkspaceBench,
   waitForGridReady,
 } from "./helpers";
@@ -164,6 +165,7 @@ test.describe("MAT-160 cleaning ops", () => {
     const missWin = page.locator('[data-tool="missing"]');
     await expect(missWin).toBeVisible();
     await expect(missWin.locator(".result-view")).toBeVisible({ timeout: 45_000 });
+    await openDetails(missWin);
     await expect(missWin.locator(".result-metrics")).toContainText("n_missing_cells");
     await expect(missWin.locator(".result-metrics")).toContainText(
       "pct_missing_cells",

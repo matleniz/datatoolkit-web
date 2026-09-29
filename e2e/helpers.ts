@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -350,4 +350,30 @@ export async function openWorkspaceBench(
   await expect(page.locator(".grid-th", { hasText: readyCol })).toBeVisible({
     timeout: 30_000,
   });
+}
+
+/**
+ * Open an analysis window's Details drawer (MAT-235): metrics and tables
+ * live there, collapsed, under the figure. No-op when already open.
+ */
+export async function openDetails(win: Locator): Promise<void> {
+  const toggle = win.locator(".result-details-toggle");
+  await expect(toggle).toBeVisible({ timeout: 60_000 });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+}
+
+/**
+ * Expand a window's Parameters panel (collapsed to a one-line summary by
+ * default since MAT-235). No-op when already open.
+ */
+export async function openParams(win: Locator): Promise<void> {
+  const toggle = win.locator("[data-dock-params-toggle]");
+  await expect(toggle).toBeVisible({ timeout: 60_000 });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
 }
