@@ -217,24 +217,87 @@
   max-width: 260px;
 }
 
-/* Narrow window: icon-only tiles, tighter selects. */
+/* Engine metrics as one quiet line: the figure is the answer. */
+.chart-dock .result-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 10px;
+}
+
+.chart-dock .result-metric {
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.chart-dock .result-metric .mono {
+  font-size: 10px;
+  color: var(--dtk-muted);
+}
+
+.chart-dock .result-table-title {
+  margin-bottom: 0;
+}
+
+/* Narrow window: icon-only tiles on one row, inline labels. */
 @container chart-dock (max-width: 460px) {
+  .chart-dock {
+    gap: 4px;
+  }
+
   .chart-tiles {
-    grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
-    gap: 3px;
+    grid-template-columns: repeat(auto-fill, minmax(22px, 1fr));
+    gap: 2px;
   }
 
   .chart-tile {
-    height: 32px;
+    height: 28px;
     padding: 0;
+  }
+
+  .chart-tile svg {
+    width: 18px;
+    height: 18px;
   }
 
   .chart-tile-label {
     display: none;
   }
 
+  .chart-tile[data-recommended="1"]::after {
+    top: 2px;
+    right: 2px;
+    width: 5px;
+    height: 5px;
+  }
+
+  .chart-encode {
+    gap: 4px 6px;
+    align-items: center;
+  }
+
+  .chart-encode .chart-field {
+    flex-direction: row;
+    align-items: center;
+    gap: 3px;
+  }
+
   .chart-field select {
-    min-width: 72px;
-    max-width: 110px;
+    min-width: 64px;
+    max-width: 96px;
+  }
+
+  .chart-more-toggle {
+    margin-left: 0;
+    padding: 0 7px;
+  }
+
+  .chart-dock .result-metrics {
+    flex-wrap: nowrap;
+    overflow: hidden;
   }
 }
