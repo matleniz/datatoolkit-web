@@ -10,11 +10,16 @@ import {
   hydrateWorkspaceCharts,
   saveStoredCharts,
 } from "../bench/dock/chartStorage";
+import {
+  loadPanels,
+  savePanels,
+  type PanelSide,
+  type PanelsState,
+} from "./panelStorage";
 import type { WorkspaceSourcesState } from "../screens/sources/sourcesLogic";
 
 export type ScreenId = "sources" | "align" | "bench";
 export type Role = "train" | "test";
-export type LeftTab = "vars" | "suggestions" | "recipe";
 export type DockPos = "bottom" | "right";
 export type DockSize = "S" | "M" | "L";
 export type ToolId =
@@ -78,7 +83,8 @@ export interface AppState {
   selection: SelectionState;
   editor: EditorState | null;
   dock: DockState;
-  leftTab: LeftTab;
+  /** Collapsed side panels (MAT-232), persisted in localStorage. */
+  panels: PanelsState;
   ctx: CtxMenuState | null;
   /** Source of a dock drag reorder (mirrors prototype `_drag`). */
   dockDragFrom: ToolId | null;
@@ -145,7 +151,7 @@ export const initialState: AppState = {
     size: "M",
     maximized: null,
   },
-  leftTab: "vars",
+  panels: loadPanels(),
   ctx: null,
   dockDragFrom: null,
   showExport: false,
@@ -173,7 +179,7 @@ export type AppAction =
   | { type: "SET_SCREEN"; screen: ScreenId }
   | { type: "SET_ROLE"; role: Role }
   | { type: "SET_VIEW_VERSION"; version: number | null }
-  | { type: "SET_LEFT_TAB"; tab: LeftTab }
+  | { type: "SET_PANEL_COLLAPSED"; side: PanelSide; collapsed: boolean }
   | { type: "SET_STEPS"; steps: Step[] }
   | { type: "TOGGLE_MULTI" }
   | {
@@ -314,8 +320,16 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, role: action.role };
     case "SET_VIEW_VERSION":
       return { ...state, viewVersion: action.version };
-    case "SET_LEFT_TAB":
-      return { ...state, leftTab: action.tab };
+    case "SET_PANEL_COLLAPSED": {
+      // An unapplied step edit lives in the right slot: never collapse it.
+      if (action.side === "right" && action.collapsed && state.editor) {
+        return state;
+      }
+      if (state.panels[action.side] === action.collapsed) return state;
+      const panels = { ...state.panels, [action.side]: action.collapsed };
+      savePanels(panels);
+      return { ...state, panels };
+    }
     case "SET_STEPS": {
       if (!state.workspace) return state;
       return {

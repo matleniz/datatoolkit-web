@@ -75,6 +75,7 @@
   --dtk-left-w: 280px;
   --dtk-inspector-w: 318px;
   --dtk-toolrail-w: 56px;
+  --dtk-strip-w: 32px;
 
   /* Typography */
   --dtk-font-sans: "IBM Plex Sans", system-ui, sans-serif;

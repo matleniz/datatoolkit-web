@@ -407,13 +407,6 @@ export function Inspector() {
         { tool: true },
       ),
     ];
-    if (k1 === "number") {
-      analyse.push(
-        btn("+ Variable", () =>
-          dispatch({ type: "SET_LEFT_TAB", tab: "vars" }),
-        ),
-      );
-    }
 
     const transform: ReactNode[] = [];
     if (isTextKind(k1) && pr?.looks_like_dates) {

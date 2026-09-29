@@ -8,26 +8,68 @@
   min-height: 0;
 }
 
-.left-tabs {
+.left-body {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  gap: 2px;
-  padding: 10px 12px 0;
+  flex-direction: column;
+}
+
+.left-body[hidden] {
+  display: none;
+}
+
+.left-panel.collapsed {
+  width: var(--dtk-strip-w);
+  align-items: center;
+  padding-top: 8px;
+}
+
+.left-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
   border-bottom: 1px solid var(--dtk-border);
 }
 
-.left-tab {
-  height: 32px;
-  padding: 0 10px;
-  border: none;
-  border-bottom: 2px solid transparent;
-  background: none;
+.left-title {
   font-size: 12px;
-  font-weight: 400;
-  color: var(--dtk-muted);
+  font-weight: 600;
+  color: var(--dtk-ink);
 }
 
-.left-tab.on {
-  border-bottom-color: var(--dtk-ink);
+.panel-toggle {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: 1px solid var(--dtk-border);
+  border-radius: 6px;
+  background: var(--dtk-bg);
+  color: var(--dtk-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.panel-toggle:hover:not(:disabled) {
+  color: var(--dtk-ink);
+  border-color: var(--dtk-ink);
+}
+
+.panel-toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.panel-toggle-badge {
+  position: absolute;
+  top: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
   font-weight: 600;
   color: var(--dtk-ink);
 }
@@ -92,43 +134,6 @@
   color: var(--dtk-accent);
 }
 
-.var-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.var-card {
-  padding: 8px 10px;
-  background: var(--dtk-surface);
-  border: 1px solid var(--dtk-border);
-  border-radius: 6px;
-}
-
-.var-card-top {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.var-name {
-  font-family: var(--dtk-font-mono);
-  font-weight: 600;
-  color: var(--dtk-accent);
-}
-
-.var-value {
-  margin-left: auto;
-  font-weight: 500;
-}
-
-.var-card-bottom {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 3px;
-}
-
 .link-btn {
   margin-left: auto;
   border: none;
@@ -141,64 +146,6 @@
 .link-btn.danger {
   margin-left: 0;
   color: var(--dtk-removed-fg);
-}
-
-.var-form {
-  margin-top: 6px;
-  padding: 10px;
-  background: var(--dtk-surface);
-  border: 1px solid var(--dtk-border);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.var-form-title {
-  font-weight: 600;
-}
-
-.var-form label,
-.field-label {
-  font-size: 11px;
-  color: var(--dtk-muted);
-}
-
-.var-form input {
-  height: 30px;
-  padding: 0 8px;
-  border: 1px solid var(--dtk-border-strong);
-  border-radius: 5px;
-  font-family: var(--dtk-font-mono);
-  font-size: 12px;
-}
-
-.preview {
-  font-size: 12px;
-}
-
-.primary-btn {
-  height: 32px;
-  border: none;
-  border-radius: 6px;
-  font-weight: 500;
-  background: var(--dtk-ink);
-  color: #ffffff;
-}
-
-.primary-btn:disabled {
-  background: var(--dtk-border-strong);
-}
-
-.formula-btn {
-  margin-top: 4px;
-  width: 100%;
-  height: 34px;
-  border: 1px solid var(--dtk-stage-custom);
-  border-radius: 6px;
-  background: var(--dtk-stage-custom-soft);
-  color: var(--dtk-stage-custom-ink);
-  font-weight: 500;
 }
 
 /* MAT-175: frame the suggestions were computed on. */
@@ -279,50 +226,6 @@
   border: 1px dashed var(--dtk-kind-id);
   border-radius: 8px;
   color: var(--dtk-muted);
-}
-
-.recipe-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.recipe-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  align-items: flex-start;
-  padding: 7px 10px;
-  text-align: left;
-  border-radius: 6px;
-  border: 1px solid var(--dtk-border);
-  border-left: 3px solid var(--dtk-stage-transform);
-  background: var(--dtk-surface);
-  width: 100%;
-}
-
-.recipe-item.on {
-  border-color: var(--dtk-ink);
-}
-
-.recipe-row {
-  display: flex;
-  gap: 6px;
-  align-items: baseline;
-  width: 100%;
-}
-
-.recipe-title {
-  font-weight: 500;
-}
-
-.recipe-badge {
-  margin-left: auto;
-  font-size: 10px;
-}
-
-.recipe-sub {
-  font-size: 11px;
 }
 
 .leak-line {

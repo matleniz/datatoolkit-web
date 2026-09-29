@@ -169,8 +169,7 @@ test.describe("MAT-160 cleaning ops", () => {
       "pct_missing_cells",
     );
 
-    // Suggestions tab: drop_high_missing card opens editor.
-    await page.getByRole("tab", { name: /Suggestions/i }).click();
+    // Suggestions panel: drop_high_missing card opens editor.
     const dropCard = page.locator(
       '.sug-card[data-sug-id*="suggested_steps"], .sug-card[data-sug-id*="missing_values:suggested_steps"]',
     ).first();

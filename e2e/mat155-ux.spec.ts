@@ -23,7 +23,6 @@ test.describe("MAT-155 Studio UX", () => {
     page,
   }) => {
     await openWorkspaceBench(page, stationsPartialWorkspace(), "station_id");
-    await page.getByRole("tab", { name: /Suggestions/i }).click();
     const subsetCard = page.locator("[data-sug-subset]").first();
     await expect(subsetCard).toBeVisible({ timeout: 90_000 });
     await subsetCard.getByRole("button", { name: "station_id" }).click();
@@ -50,7 +49,7 @@ test.describe("MAT-155 Studio UX", () => {
     await waitForGridReady(page);
 
     await page.getByRole("button", { name: "+ Step" }).click();
-    await page.getByRole("button", { name: "Drop duplicates" }).click();
+    await page.getByRole("button", { name: "Drop duplicates", exact: true }).click();
     const editor = page.getByLabel("Step editor");
     await expect(editor).toBeVisible();
 

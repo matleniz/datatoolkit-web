@@ -5,6 +5,7 @@ import { ExportPanel } from "./export/ExportPanel";
 import { Grid } from "./grid/Grid";
 import { Inspector } from "./inspector/Inspector";
 import { LeftPanel } from "./left/LeftPanel";
+import { PanelToggle } from "./PanelToggle";
 import { PipelineBar } from "./pipeline/PipelineBar";
 import { ToolRail } from "./toolrail/ToolRail";
 import { WorkbenchDataProvider } from "./WorkbenchData";
@@ -17,7 +18,7 @@ import "./Workbench.css";
  * W3 = left/dock/export/toolrail.
  */
 export function Workbench() {
-  const { editor, dock } = useAppState();
+  const { editor, dock, panels } = useAppState();
   const dockOpen = dock.tools.length > 0;
   const maximized = !!(dock.maximized && dock.tools.includes(dock.maximized));
   const right = dock.pos === "right" && dockOpen;
@@ -40,7 +41,28 @@ export function Workbench() {
               <Dock />
             </div>
           </main>
-          {editor ? <StepEditor /> : <Inspector />}
+          {/* An open step editor is never collapsed: unapplied edits stay put. */}
+          {panels.right && !editor ? (
+            <div className="side-strip right">
+              <PanelToggle side="right" collapsed label="inspector" />
+            </div>
+          ) : (
+            <div className="side-slot right">
+              <div className="side-head">
+                <PanelToggle
+                  side="right"
+                  collapsed={false}
+                  label={editor ? "step editor" : "inspector"}
+                  disabledReason={
+                    editor
+                      ? "Apply or discard the step edit before collapsing"
+                      : undefined
+                  }
+                />
+              </div>
+              {editor ? <StepEditor /> : <Inspector />}
+            </div>
+          )}
           <ToolRail />
         </div>
         <ContextMenu />

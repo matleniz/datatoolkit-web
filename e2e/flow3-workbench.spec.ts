@@ -102,9 +102,9 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
       { timeout: 30_000 },
     )
     .toBeGreaterThan(0);
-  await expect(
-    page.getByRole("tab", { name: /Suggestions · [1-9]/ }),
-  ).toBeVisible();
+  await expect(page.locator(".left-title")).toHaveText(
+    /Suggestions · [1-9]/,
+  );
 
   // Screenshot 01: initial grid with alignment steps and suggestions
   await waitForGridReady(page);

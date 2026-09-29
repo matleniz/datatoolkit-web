@@ -16,7 +16,6 @@ export {
 export type {
   ScreenId,
   Role,
-  LeftTab,
   DockPos,
   DockSize,
   ToolId,
@@ -26,3 +25,4 @@ export type {
   DockState,
   CtxMenuState,
 } from "./reducer";
+export type { PanelSide, PanelsState } from "./panelStorage";

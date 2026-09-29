@@ -1,18 +1,5 @@
 import type { JsonValue, WorkspaceRow } from "../../api/types";
 
-export const VARIABLE_STATS = [
-  "mean",
-  "median",
-  "std",
-  "min",
-  "max",
-  "q25",
-  "q75",
-  "count",
-] as const;
-
-export type VariableStat = (typeof VARIABLE_STATS)[number];
-
 function isNull(v: JsonValue | undefined): boolean {
   return v === null || v === undefined;
 }
