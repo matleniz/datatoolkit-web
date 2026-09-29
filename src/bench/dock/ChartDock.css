@@ -1,0 +1,240 @@
+/* ---- Chart window (MAT-172, reworked MAT-240) ----
+ * Icon tiles → one compact encoding row → "More" drawer → the figure filling
+ * the window → a slim save bar. Container queries shrink the chrome in
+ * narrow windows so the figure keeps the room.
+ */
+.chart-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  padding: 2px 0;
+  container-type: inline-size;
+  container-name: chart-dock;
+}
+
+.chart-dock > .result-view-chart {
+  flex: 1 0 auto;
+}
+
+/* Chart type tiles (Tableau "Show Me" style). */
+.chart-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+  gap: 4px;
+}
+
+.chart-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  height: 44px;
+  padding: 2px 0 0;
+  border: 1px solid var(--dtk-border);
+  border-radius: 6px;
+  background: var(--dtk-surface);
+  color: var(--dtk-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.chart-tile:hover {
+  border-color: var(--dtk-accent-border);
+  color: var(--dtk-accent);
+}
+
+.chart-tile:focus-visible {
+  outline: 2px solid var(--dtk-accent);
+  outline-offset: 1px;
+}
+
+.chart-tile[aria-checked="true"] {
+  border-color: var(--dtk-accent);
+  background: var(--dtk-accent-soft);
+  color: var(--dtk-accent-deep);
+}
+
+.chart-tile[aria-disabled="true"] {
+  color: var(--dtk-border-strong);
+  background: var(--dtk-bg-subtle);
+  border-style: dashed;
+  cursor: not-allowed;
+}
+
+.chart-tile[aria-disabled="true"]:hover {
+  border-color: var(--dtk-border-strong);
+  color: var(--dtk-border-strong);
+}
+
+/* Recommended for the selected columns (Excel "Recommended charts"). */
+.chart-tile[data-recommended="1"]::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dtk-stage-clean);
+}
+
+.chart-tile-label {
+  font-size: 10px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+/* Encoding row: x / y / colour + target pill + More. */
+.chart-encode {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: flex-end;
+}
+
+.chart-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: flex-end;
+}
+
+.chart-more {
+  padding: 6px 8px;
+  border: 1px solid var(--dtk-hairline);
+  border-radius: 6px;
+  background: var(--dtk-bg-subtle);
+}
+
+.chart-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--dtk-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.chart-field select,
+.chart-field input[type="number"],
+.chart-field input[type="text"],
+.chart-save-name,
+.chart-open-saved {
+  height: 24px;
+  min-width: 88px;
+  max-width: 150px;
+  border: 1px solid var(--dtk-border-strong);
+  border-radius: 5px;
+  background: var(--dtk-bg);
+  color: var(--dtk-ink);
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 0 6px;
+}
+
+.chart-matrix-cols {
+  align-self: center;
+  max-width: 260px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chart-pill,
+.chart-more-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--dtk-border-strong);
+  border-radius: 12px;
+  background: var(--dtk-surface);
+  color: var(--dtk-ink);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chart-pill:hover,
+.chart-more-toggle:hover {
+  border-color: var(--dtk-accent-border);
+}
+
+.chart-pill.on {
+  border-color: var(--dtk-accent);
+  background: var(--dtk-accent);
+  color: #ffffff;
+}
+
+.chart-pill-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: linear-gradient(
+    90deg,
+    var(--dtk-accent) 0 50%,
+    var(--dtk-stage-clean) 50% 100%
+  );
+}
+
+.chart-pill.on .chart-pill-swatch {
+  box-shadow: 0 0 0 1px #ffffff;
+}
+
+.chart-more-toggle {
+  margin-left: auto;
+  color: var(--dtk-muted);
+}
+
+.chart-more-toggle svg {
+  transition: transform 120ms ease;
+}
+
+.chart-more-toggle.open svg {
+  transform: rotate(180deg);
+}
+
+/* Save / open saved specs, under the figure. */
+.chart-saved-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding-top: 4px;
+  border-top: 1px solid var(--dtk-hairline);
+}
+
+.chart-save-name {
+  flex: 1;
+  min-width: 120px;
+  max-width: 260px;
+}
+
+/* Narrow window: icon-only tiles, tighter selects. */
+@container chart-dock (max-width: 460px) {
+  .chart-tiles {
+    grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
+    gap: 3px;
+  }
+
+  .chart-tile {
+    height: 32px;
+    padding: 0;
+  }
+
+  .chart-tile-label {
+    display: none;
+  }
+
+  .chart-field select {
+    min-width: 72px;
+    max-width: 110px;
+  }
+}
