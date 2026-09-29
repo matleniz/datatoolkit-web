@@ -16,7 +16,7 @@ import {
 
 const FLOW = "mat240-chart-picker";
 
-async function figureDrawn(page: Page, chart: Locator) {
+async function figureDrawn(chart: Locator) {
   await expect(chart.locator(".result-figure .js-plotly-plot").first()).toBeVisible({
     timeout: 60_000,
   });
@@ -92,7 +92,7 @@ test("MAT-240: icon chart picker, scatter by target in 3 clicks", async ({ page 
   await click(byTarget);
   await expect(byTarget).toHaveAttribute("aria-pressed", "true");
   await expect(body).toHaveAttribute("data-chart-color", "Survived");
-  await figureDrawn(page, chart);
+  await figureDrawn(chart);
   await expect
     .poll(async () => runChart(page), { timeout: 60_000 })
     .toMatchObject({ chart: "scatter", x: "Age", y: "Fare", color: "Survived" });
@@ -137,7 +137,7 @@ test("MAT-240: icon chart picker, scatter by target in 3 clicks", async ({ page 
   await expect(chart.locator("#chart-more")).toBeVisible();
   await chart.getByLabel("Trendline").check();
   await expect(body).toHaveAttribute("data-chart-trendline", "1");
-  await figureDrawn(page, chart);
+  await figureDrawn(chart);
   await expect(chart.locator("[data-chart-more]")).toContainText("More · 1");
   await captureFlowScreenshot(page, FLOW, "02-maximized-more-open.png");
 
@@ -147,7 +147,7 @@ test("MAT-240: icon chart picker, scatter by target in 3 clicks", async ({ page 
   await expect(body).toHaveAttribute("data-chart-x", "Age");
   await expect(body).toHaveAttribute("data-chart-y", "");
   await expect(body).toHaveAttribute("data-chart-color", "Survived");
-  await figureDrawn(page, chart);
+  await figureDrawn(chart);
 
   // Back to the dock layout; a text-only selection greys the numeric types.
   await page.evaluate(() => {
