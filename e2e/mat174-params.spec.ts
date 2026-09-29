@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 import {
   captureFlowScreenshot,
   clearFlowScreenshots,
+  openDetails,
+  openParams,
   openWorkspaceBench,
   titanicWorkspace,
   waitForGridReady,
@@ -42,6 +44,8 @@ test("MAT-174: dock Parameters — bins, contamination, per-column defaults", as
   ).toBeVisible({ timeout: 60_000 });
   await expect(dist.locator('[data-dock-params="column_distribution"]')).toBeVisible();
 
+  await openDetails(dist);
+  await openParams(dist);
   const histTable = dist.locator(".result-table-block", {
     hasText: "histograms",
   });
@@ -85,6 +89,7 @@ test("MAT-174: dock Parameters — bins, contamination, per-column defaults", as
   await expect(
     distPclass.locator('[data-engine-key="column_distribution"]'),
   ).toBeVisible({ timeout: 60_000 });
+  await openParams(distPclass);
   // Wait until Reset/seed applied a numeric bins suggestion (not blank).
   const pclassBins = distPclass.locator('[data-dock-param="bins"] input');
   await expect
@@ -108,6 +113,7 @@ test("MAT-174: dock Parameters — bins, contamination, per-column defaults", as
   await expect(
     distFare.locator('[data-engine-key="column_distribution"]'),
   ).toBeVisible({ timeout: 60_000 });
+  await openParams(distFare);
   await distFare.locator("[data-dock-params-reset]").click();
   const fareBins = distFare.locator('[data-dock-param="bins"] input');
   await expect
@@ -134,6 +140,8 @@ test("MAT-174: dock Parameters — bins, contamination, per-column defaults", as
   ).toBeVisible({ timeout: 60_000 });
   await expect(outliers.locator('[data-dock-params="outliers"]')).toBeVisible();
 
+  await openDetails(outliers);
+  await openParams(outliers);
   const flaggedMetric = outliers.locator(".result-metric", {
     hasText: "n_rows_flagged",
   });

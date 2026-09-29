@@ -9,10 +9,19 @@ import { keySchemaDefaults, keyTunableFields } from "../left/keyTunable";
 import { DockParamField } from "./DockParamField";
 import { defaultsWithSuggested } from "./suggestedParams";
 
+/** One-line `key=value` summary of the current params (collapsed panel). */
+function paramsSummary(params: Record<string, unknown>): string {
+  return Object.entries(params)
+    .filter(([, v]) => v !== null && v !== undefined && v !== "")
+    .map(([k, v]) => `${k}=${Array.isArray(v) ? v.join(",") : String(v)}`)
+    .join(" · ");
+}
+
 /**
  * Compact Parameters panel driven by GET /keys/{id}/schema (MAT-174).
  * Mapping reuses `schemaToFields` via `keyTunableFields`. Parent owns
- * persistence (`toolParams`) and debounced key re-runs.
+ * persistence (`toolParams`) and debounced key re-runs. Collapsed to a
+ * one-line summary unless `open` (MAT-235: the figure comes first).
  */
 export function DockParamsPanel({
   keyId,
@@ -20,7 +29,11 @@ export function DockParamsPanel({
   params,
   columns,
   profile,
+  open,
+  onToggle,
 }: {
+  open: boolean;
+  onToggle: () => void;
   keyId: string;
   storageKey: string;
   params: Record<string, unknown>;
@@ -103,30 +116,55 @@ export function DockParamsPanel({
     });
   };
 
+  const summary = paramsSummary(params);
   return (
-    <div className="dock-params" data-dock-params={keyId}>
+    <div
+      className={open ? "dock-params open" : "dock-params"}
+      data-dock-params={keyId}
+      data-dock-params-open={open ? "1" : "0"}
+    >
       <div className="dock-params-head">
-        <span className="dock-params-title">Parameters</span>
         <button
           type="button"
-          className="link-btn"
-          data-dock-params-reset=""
-          onClick={reset}
+          className="dock-params-toggle"
+          data-dock-params-toggle=""
+          aria-expanded={open}
+          onClick={onToggle}
         >
-          Reset to defaults
+          <span className="result-details-caret" aria-hidden="true">
+            {open ? "▾" : "▸"}
+          </span>
+          <span className="dock-params-title">Parameters</span>
+          {!open && summary ? (
+            <span className="dock-params-summary mono" title={summary}>
+              {summary}
+            </span>
+          ) : null}
         </button>
+        {open ? (
+          <button
+            type="button"
+            className="link-btn"
+            data-dock-params-reset=""
+            onClick={reset}
+          >
+            Reset to defaults
+          </button>
+        ) : null}
       </div>
-      <div className="dock-params-fields">
-        {fields.map((field) => (
-          <DockParamField
-            key={field.key}
-            field={field}
-            params={params}
-            columns={columns}
-            onChange={setField}
-          />
-        ))}
-      </div>
+      {open ? (
+        <div className="dock-params-fields">
+          {fields.map((field) => (
+            <DockParamField
+              key={field.key}
+              field={field}
+              params={params}
+              columns={columns}
+              onChange={setField}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

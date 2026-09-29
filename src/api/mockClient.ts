@@ -181,11 +181,41 @@ export class MockApiClient implements ApiClient {
         text: "",
       });
     }
+    // Filled cells per column: one per-column bar figure (the `main` one,
+    // MAT-244) after a secondary figure, so the default view is exercised.
+    const filled = TRAIN.columns.map(
+      (_, i) => TRAIN.rows.filter((r) => r[i] !== "" && r[i] != null).length,
+    );
     return Promise.resolve({
       metrics: { rows: TRAIN.rows.length, columns: TRAIN.columns.length },
-      tables: [],
-      figures: [],
+      tables: [
+        {
+          title: "filled_per_column",
+          records: TRAIN.columns.map((column, i) => ({
+            column,
+            n_filled: filled[i]!,
+          })),
+        },
+      ],
+      figures: [
+        {
+          title: "Rows",
+          plotly: {
+            data: [{ type: "bar", x: ["rows"], y: [TRAIN.rows.length] }],
+            layout: {},
+          },
+        },
+        {
+          title: "Filled cells per column",
+          main: true,
+          plotly: {
+            data: [{ type: "bar", x: TRAIN.columns, y: filled }],
+            layout: {},
+          },
+        },
+      ],
       text: "mock result",
+      headline: `${id}: ${TRAIN.columns.length} columns, ${TRAIN.rows.length} rows.`,
     });
   }
 

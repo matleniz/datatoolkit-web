@@ -401,7 +401,7 @@ export function ChartDockBody() {
       ) : null}
       {!ready ? <div className="dock-msg muted">Loading…</div> : null}
       {ready && result ? (
-        <ResultView result={result} showModeBar />
+        <ResultView result={result} />
       ) : null}
       {ready && !result && !error ? (
         <div className="dock-msg muted">Pick columns and a chart type.</div>
