@@ -1,7 +1,7 @@
 import type { ColumnKind } from "../../api/types";
 import { isNumericKind } from "../kinds";
 
-export const CHART_TYPES = [
+const CHART_TYPES = [
   "histogram",
   "box",
   "violin",
