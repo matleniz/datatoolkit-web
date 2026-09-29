@@ -1,4 +1,5 @@
 import { useAppDispatch, useAppState } from "../../state/AppStore";
+import { openStepPicker } from "../toolrail/tools";
 import {
   FITTING_OPS,
   STAGE_COLOR,
@@ -248,9 +249,7 @@ export function PipelineBar() {
         <button
           type="button"
           className="pipeline-add"
-          onClick={() =>
-            dispatch({ type: "OPEN_EDITOR", op: null })
-          }
+          onClick={() => openStepPicker(dispatch)}
         >
           + Step
         </button>
