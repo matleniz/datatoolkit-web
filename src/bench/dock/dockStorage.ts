@@ -7,7 +7,10 @@ const keyFor = (workspaceName: string) => `dtk.dock.${workspaceName}`;
 /** What survives a reload: open windows, position, size and grid layout. */
 type StoredDock = Pick<DockState, "tools" | "pos" | "size" | "layouts">;
 
-const KNOWN_TOOLS: ToolId[] = TOOLS.map((t) => t.id);
+/** Dock windows only; the rail's Transform entry opens the step picker, never a window. */
+const KNOWN_TOOLS: ToolId[] = TOOLS.flatMap((t) =>
+  t.id === "transform" ? [] : [t.id],
+);
 
 function parseStoredDock(raw: unknown, maxTools: number): StoredDock | null {
   if (typeof raw !== "object" || raw === null) return null;
