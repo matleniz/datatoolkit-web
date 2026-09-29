@@ -293,14 +293,6 @@ export function ContextMenu() {
     items.push({ kind: "sep" });
   }
 
-  if (kind === "number") {
-    items.push({
-      kind: "item",
-      text: `New variable: mean(${col})`,
-      hint: "@var",
-      run: () => dispatch({ type: "SET_LEFT_TAB", tab: "vars" }),
-    });
-  }
   if (isNumericKind(kind) && !multiNumeric.length) {
     items.push({
       kind: "item",

@@ -956,7 +956,7 @@ function Field({
         <span className="ed-help">
           {vars.length
             ? `${vars.length} variable(s) from the workspace will be frozen on train.`
-            : "Insert @variables from the Variables tab; they are frozen when the step is fitted."}
+            : "@variables of the workspace are frozen on train when the step is fitted."}
         </span>
       </div>
     );

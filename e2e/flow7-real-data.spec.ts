@@ -189,9 +189,9 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
       { timeout: 45_000 },
     )
     .toBeGreaterThan(0);
-  await expect(
-    page.getByRole("tab", { name: /Suggestions · [1-9]/ }),
-  ).toBeVisible();
+  await expect(page.locator(".left-title")).toHaveText(
+    /Suggestions · [1-9]/,
+  );
 
   // Export Parkinson: default out_dir is absolute; run and show manifest paths
   await page.getByRole("button", { name: "Export", exact: true }).click();

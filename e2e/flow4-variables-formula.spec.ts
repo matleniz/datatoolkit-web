@@ -1,53 +1,55 @@
 import { expect, test } from "@playwright/test";
 import {
   captureFlowScreenshot,
+  churnWorkspace,
   clearFlowScreenshots,
-  openWorkbench,
+  openWorkspaceBench,
   waitForGridReady,
 } from "./helpers";
 
-test("Flow 4: variables + formula (create @spend_median, formula step, syntax error shown, value visible on Test view)", async ({
+test("Flow 4: formula with a saved workspace @variable (@spend_median, formula step, syntax error shown, value visible on Test view)", async ({
   page,
 }) => {
   test.setTimeout(120_000);
   clearFlowScreenshots("4-variables-formula");
   await page.setViewportSize({ width: 1440, height: 900 });
 
-  // 1. Open workbench with reset
-  await openWorkbench(page, true);
+  // 1. Open a workspace that already carries @spend_median (MAT-231: the
+  // Variables UI is gone, but stored variables must still load and replay).
+  await openWorkspaceBench(
+    page,
+    {
+      ...churnWorkspace(),
+      variables: [
+        { name: "spend_median", stat: "median", column: "monthly_spend" },
+      ],
+    },
+    "monthly_spend",
+  );
 
-  // 2. Open Variables tab and create @spend_median
-  await page.getByRole("tab", { name: "Variables" }).click();
-  await expect(page.getByText("New variable")).toBeVisible();
-
-  await page.getByRole("button", { name: "median", exact: true }).click();
-  await page
-    .getByRole("button", { name: "monthly_spend", exact: true })
-    .click();
-  await page.locator("#nv-name").fill("spend_median");
-  await page.getByRole("button", { name: "Add variable" }).click();
-
-  // Assert variable appears with train-fitted value from the engine
-  await expect(page.getByText("@spend_median")).toBeVisible({
-    timeout: 15_000,
-  });
-  const varCard = page.locator(".var-card", { hasText: "@spend_median" });
-  await expect(varCard).toBeVisible();
-  await expect(varCard.locator(".var-value")).toHaveText("38.75", {
-    timeout: 15_000,
-  });
+  // 2. No Variables / Recipe tabs: the left panel is Suggestions only
+  await expect(page.getByRole("tab")).toHaveCount(0);
+  await expect(page.getByText("New variable")).toHaveCount(0);
+  await expect(page.getByRole("complementary", { name: "Suggestions" })).toBeVisible();
 
   await waitForGridReady(page);
   await captureFlowScreenshot(
     page,
     "4-variables-formula",
-    "01-variable-created.png",
+    "01-workspace-with-variable.png",
   );
 
-  // 3. Open formula editor with @spend_median
-  await varCard.getByRole("button", { name: "Use in formula" }).click();
+  // 3. Open the formula editor from the column menu; the stored variable is
+  // offered next to the palette
+  await page
+    .getByRole("button", { name: "monthly_spend, number" })
+    .click({ button: "right" });
+  await page.getByRole("menuitem", { name: /Use in formula/ }).click();
   await expect(page.getByLabel("Step editor")).toBeVisible();
   await expect(page.locator(".ed-kicker")).toContainText("Custom formula");
+  await expect(
+    page.getByLabel("Step editor").getByText("@spend_median"),
+  ).toBeVisible();
 
   // 4. Test syntax error shown
   const nameInput = page.getByLabel("Step editor").getByLabel("Name");
@@ -116,9 +118,6 @@ test("Flow 4: variables + formula (create @spend_median, formula step, syntax er
     .last();
   await expect(testFirstCell).toBeVisible();
   await expect(testFirstCell).toHaveText("2.25");
-
-  // Variable card still shows the train statistic (not the test median 26.75)
-  await expect(varCard.locator(".var-value")).toHaveText("38.75");
 
   await waitForGridReady(page);
   await captureFlowScreenshot(
