@@ -6,7 +6,7 @@ import {
   waitForGridReady,
 } from "./helpers";
 
-test("Flow 5: compare + correlation windows, drag reorder, dock right, maximize (no loading states)", async ({
+test("Flow 5: compare + correlation windows, drag to move, dock right, maximize (no loading states)", async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -77,13 +77,19 @@ test("Flow 5: compare + correlation windows, drag reorder, dock right, maximize 
     "01-dock-corr-compare.png",
   );
 
-  // 4. Drag reorder
+  // 4. Drag Compare's title bar onto Correlation's slot (grid move, MAT-234)
   const corrBar = page.locator('[data-tool="corr"] [data-drag="1"]');
   const compareBar = page.locator('[data-tool="compare"] [data-drag="1"]');
-  await corrBar.dragTo(compareBar);
+  await compareBar.dragTo(corrBar, {
+    sourcePosition: { x: 40, y: 17 },
+    targetPosition: { x: 40, y: 17 },
+    steps: 15,
+  });
   await expect
-    .poll(async () => page.evaluate(() => window.__DTK_STATE__?.()?.dock.tools[0]))
-    .toBe("corr");
+    .poll(async () =>
+      page.evaluate(() => window.__DTK_STATE__?.()?.dock.layouts.bottom.compare?.x),
+    )
+    .toBe(0);
 
   await expect(page.locator(".dock-window:has-text('Loading…')")).toHaveCount(0);
   await waitForGridReady(page);

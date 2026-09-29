@@ -89,30 +89,12 @@ describe("dock tools (open / toggle / move / drop)", () => {
     expect(s.dock.tools).toEqual(["compare", "dist"]);
   });
 
-  it("moveTool swaps with neighbour", () => {
-    let s = withDock(["compare", "corr", "dist"]);
-    s = appReducer(s, { type: "MOVE_TOOL", id: "corr", delta: -1 });
-    expect(s.dock.tools).toEqual(["corr", "compare", "dist"]);
-    s = appReducer(s, { type: "MOVE_TOOL", id: "corr", delta: -1 });
-    expect(s.dock.tools).toEqual(["corr", "compare", "dist"]);
-  });
-
-  it("dropTool reorders like the prototype", () => {
-    let s = withDock(["compare", "corr", "dist"]);
-    s = appReducer(s, { type: "DRAG_TOOL", id: "dist" });
-    s = appReducer(s, { type: "DROP_TOOL", id: "compare" });
-    expect(s.dock.tools).toEqual(["dist", "compare", "corr"]);
-    expect(s.dockDragFrom).toBeNull();
-  });
-
-  it("SET_DOCK_POS / SIZE / TOGGLE_WIDE / SET_MAXIMIZED", () => {
+  it("SET_DOCK_POS / SIZE / SET_MAXIMIZED", () => {
     let s = withDock(["compare", "corr"]);
     s = appReducer(s, { type: "SET_DOCK_POS", pos: "right" });
     expect(s.dock.pos).toBe("right");
     s = appReducer(s, { type: "SET_DOCK_SIZE", size: "L" });
     expect(s.dock.size).toBe("L");
-    s = appReducer(s, { type: "TOGGLE_WIDE", id: "compare" });
-    expect(s.dock.wide.compare).toBe(true);
     s = appReducer(s, { type: "SET_MAXIMIZED", id: "corr" });
     expect(s.dock.maximized).toBe("corr");
   });

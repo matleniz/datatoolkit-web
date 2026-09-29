@@ -16,6 +16,14 @@ import {
   type PanelSide,
   type PanelsState,
 } from "./panelStorage";
+import {
+  applyGridLayout,
+  emptyDockLayouts,
+  syncDockLayouts,
+  type DockLayouts,
+  type DockRect,
+} from "../bench/dock/dockLayout";
+import { loadStoredDock, saveStoredDock } from "../bench/dock/dockStorage";
 import type { WorkspaceSourcesState } from "../screens/sources/sourcesLogic";
 
 export type ScreenId = "sources" | "align" | "bench";
@@ -62,10 +70,11 @@ export interface EditorState {
 
 export interface DockState {
   tools: ToolId[];
-  wide: Partial<Record<ToolId, boolean>>;
   pos: DockPos;
   size: DockSize;
   maximized: ToolId | null;
+  /** Grid rect per open window and dock position (MAT-234). */
+  layouts: DockLayouts;
 }
 
 export interface CtxMenuState {
@@ -86,8 +95,6 @@ export interface AppState {
   /** Collapsed side panels (MAT-232), persisted in localStorage. */
   panels: PanelsState;
   ctx: CtxMenuState | null;
-  /** Source of a dock drag reorder (mirrors prototype `_drag`). */
-  dockDragFrom: ToolId | null;
   /* ---- W3: side panels / export (MAT-135) ---- */
   showExport: boolean;
   sugStage: CourseStage;
@@ -146,14 +153,13 @@ export const initialState: AppState = {
   editor: null,
   dock: {
     tools: [],
-    wide: {},
     pos: "bottom",
     size: "M",
     maximized: null,
+    layouts: emptyDockLayouts(),
   },
   panels: loadPanels(),
   ctx: null,
-  dockDragFrom: null,
   showExport: false,
   sugStage: "all",
   sugCount: 0,
@@ -204,12 +210,14 @@ export type AppAction =
   | { type: "CLOSE_EDITOR" }
   | { type: "OPEN_TOOL"; id: ToolId }
   | { type: "TOGGLE_TOOL"; id: ToolId }
-  | { type: "MOVE_TOOL"; id: ToolId; delta: number }
-  | { type: "DRAG_TOOL"; id: ToolId }
-  | { type: "DROP_TOOL"; id: ToolId }
   | { type: "SET_DOCK_POS"; pos: DockPos }
   | { type: "SET_DOCK_SIZE"; size: DockSize }
-  | { type: "TOGGLE_WIDE"; id: ToolId }
+  | {
+      type: "SET_DOCK_LAYOUT";
+      pos: DockPos;
+      /** react-grid-layout items after a drag / resize (`i` = tool id). */
+      items: ({ i: string } & DockRect)[];
+    }
   | { type: "SET_MAXIMIZED"; id: ToolId | null }
   /* ---- W3 actions (MAT-135) ---- */
   | { type: "SET_SHOW_EXPORT"; show: boolean }
@@ -257,6 +265,34 @@ function openTool(tools: ToolId[], id: ToolId): ToolId[] {
     if (next.length > MAX_DOCK_TOOLS) next.shift();
   }
   return next;
+}
+
+/** Apply a dock change, keep layouts in step with open tools, persist. */
+function withDock(state: AppState, patch: Partial<DockState>): AppState {
+  const merged = { ...state.dock, ...patch };
+  const dock = {
+    ...merged,
+    layouts: syncDockLayouts(merged.layouts, merged.tools),
+  };
+  if (state.workspace) saveStoredDock(state.workspace.name, dock);
+  return { ...state, dock };
+}
+
+/**
+ * Dock for a newly opened workspace: its stored layout when there is one
+ * (MAT-234), otherwise the current dock (also covers renames).
+ */
+function dockForWorkspace(
+  state: AppState,
+  ws: Workspace | null,
+): DockState {
+  if (!ws || ws.name === state.workspace?.name) return state.dock;
+  const stored = loadStoredDock(ws.name, MAX_DOCK_TOOLS);
+  const dock = stored
+    ? { ...state.dock, ...stored, maximized: null }
+    : state.dock;
+  saveStoredDock(ws.name, dock);
+  return dock;
 }
 
 /**
@@ -312,7 +348,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       } else if (!ws) {
         targetColumn = null;
       }
-      return { ...state, workspace: ws, sugCount: 0, targetColumn };
+      return {
+        ...state,
+        workspace: ws,
+        sugCount: 0,
+        targetColumn,
+        dock: dockForWorkspace(state, ws),
+      };
     }
     case "SET_SCREEN":
       return { ...state, screen: action.screen, ctx: null };
@@ -432,67 +474,35 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, editor: null };
     case "OPEN_TOOL":
       return {
-        ...state,
-        dock: { ...state.dock, tools: openTool(state.dock.tools, action.id) },
+        ...withDock(state, { tools: openTool(state.dock.tools, action.id) }),
         ctx: null,
       };
     case "TOGGLE_TOOL": {
-      const i = state.dock.tools.indexOf(action.id);
-      if (i >= 0) {
-        const tools = state.dock.tools.filter((t) => t !== action.id);
-        return {
-          ...state,
-          dock: {
-            ...state.dock,
-            tools,
-            maximized:
-              state.dock.maximized === action.id ? null : state.dock.maximized,
-          },
-        };
+      if (state.dock.tools.includes(action.id)) {
+        return withDock(state, {
+          tools: state.dock.tools.filter((t) => t !== action.id),
+          maximized:
+            state.dock.maximized === action.id ? null : state.dock.maximized,
+        });
       }
       return {
-        ...state,
-        dock: { ...state.dock, tools: openTool(state.dock.tools, action.id) },
+        ...withDock(state, { tools: openTool(state.dock.tools, action.id) }),
         ctx: null,
       };
     }
-    case "MOVE_TOOL": {
-      const tools = [...state.dock.tools];
-      const i = tools.indexOf(action.id);
-      const j = i + action.delta;
-      if (i < 0 || j < 0 || j >= tools.length) return state;
-      const [item] = tools.splice(i, 1);
-      if (item === undefined) return state;
-      tools.splice(j, 0, item);
-      return { ...state, dock: { ...state.dock, tools } };
-    }
-    case "DRAG_TOOL":
-      return { ...state, dockDragFrom: action.id };
-    case "DROP_TOOL": {
-      const from = state.dockDragFrom;
-      if (!from || from === action.id) {
-        return { ...state, dockDragFrom: null };
-      }
-      const tools = [...state.dock.tools];
-      const fromIx = tools.indexOf(from);
-      const toIx = tools.indexOf(action.id);
-      if (fromIx < 0 || toIx < 0) {
-        return { ...state, dockDragFrom: null };
-      }
-      tools.splice(fromIx, 1);
-      const insertAt = tools.indexOf(action.id);
-      tools.splice(insertAt, 0, from);
-      return { ...state, dock: { ...state.dock, tools }, dockDragFrom: null };
-    }
     case "SET_DOCK_POS":
-      return { ...state, dock: { ...state.dock, pos: action.pos } };
+      return withDock(state, { pos: action.pos });
     case "SET_DOCK_SIZE":
-      return { ...state, dock: { ...state.dock, size: action.size } };
-    case "TOGGLE_WIDE": {
-      const wide = { ...state.dock.wide };
-      wide[action.id] = !wide[action.id];
-      return { ...state, dock: { ...state.dock, wide } };
-    }
+      return withDock(state, { size: action.size });
+    case "SET_DOCK_LAYOUT":
+      return withDock(state, {
+        layouts: applyGridLayout(
+          state.dock.layouts,
+          action.pos,
+          action.items,
+          state.dock.tools,
+        ),
+      });
     case "SET_MAXIMIZED":
       return { ...state, dock: { ...state.dock, maximized: action.id } };
 

@@ -31,6 +31,17 @@
   color: var(--dtk-muted);
 }
 
+.dock-hint {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dock-right .dock-hint {
+  display: none;
+}
+
 .dock-chrome-label {
   font-weight: 600;
   text-transform: uppercase;
@@ -39,6 +50,7 @@
 
 .seg {
   display: flex;
+  flex-shrink: 0;
   border: 1px solid var(--dtk-border-strong);
   border-radius: 5px;
   overflow: hidden;
@@ -61,8 +73,107 @@
 .dock-wins {
   flex: 1;
   min-height: 0;
-  display: grid;
-  gap: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.dock-wins-max {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dock-wins-max > .dock-window {
+  flex: 1;
+}
+
+/* ---- Window grid (react-grid-layout, MAT-234). The library ships no
+   look of its own here: only these rules, on the theme tokens. ---- */
+.dock-grid {
+  position: relative;
+  transition: height 160ms ease;
+}
+
+.dock-grid .react-grid-item {
+  transition: transform 160ms ease, width 160ms ease, height 160ms ease;
+}
+
+.dock-grid .react-grid-item.resizing,
+.dock-grid .react-grid-item.react-draggable-dragging {
+  transition: none;
+  z-index: 3;
+  will-change: transform, width, height;
+}
+
+.dock-grid .react-grid-item.react-draggable-dragging .dock-window {
+  box-shadow: 0 8px 24px rgba(28, 27, 24, 0.14);
+  border-color: var(--dtk-accent-border);
+}
+
+.dock-grid .react-grid-item.react-draggable-dragging .dock-titlebar {
+  cursor: grabbing;
+}
+
+.dock-grid .react-grid-placeholder {
+  background: var(--dtk-accent-soft);
+  border: 1px dashed var(--dtk-accent-mid);
+  border-radius: 8px;
+  transition-duration: 100ms;
+  z-index: 2;
+  user-select: none;
+}
+
+.dock-cell > .dock-window {
+  height: 100%;
+}
+
+.dock-grid .react-resizable-handle {
+  position: absolute;
+  z-index: 4;
+}
+
+.dock-grid .react-resizable-handle-se {
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+}
+
+.dock-grid .react-resizable-handle-se::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--dtk-border-strong);
+  border-bottom: 1.5px solid var(--dtk-border-strong);
+}
+
+.dock-grid .react-resizable-handle-e {
+  top: 34px;
+  right: 0;
+  bottom: 16px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.dock-grid .react-resizable-handle-s {
+  left: 0;
+  right: 16px;
+  bottom: 0;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.dock-grid .react-grid-item:hover > .react-resizable-handle-se::after,
+.dock-grid .react-grid-item.resizing > .react-resizable-handle-se::after {
+  border-color: var(--dtk-accent);
+}
+
+.dock-grid .react-grid-item.resizing > .dock-window {
+  border-color: var(--dtk-accent-border);
 }
 
 .dock-window {
@@ -76,10 +187,6 @@
   overflow: hidden;
 }
 
-.dock-window.wide {
-  grid-column: span 2;
-}
-
 .dock-titlebar {
   height: 34px;
   flex-shrink: 0;
@@ -90,14 +197,28 @@
   border-bottom: 1px solid var(--dtk-drag-line);
   background: var(--dtk-bg-subtle);
   cursor: grab;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dock-titlebar > svg {
+  flex-shrink: 0;
 }
 
 .dock-win-title {
   font-weight: 600;
   white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dock-key {
+  min-width: 0;
+  flex-shrink: 100;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 10px;
   color: var(--dtk-muted);
   padding: 1px 5px;
@@ -110,6 +231,7 @@
 }
 
 .dock-icon-btn {
+  flex-shrink: 0;
   width: 24px;
   height: 24px;
   padding: 0;

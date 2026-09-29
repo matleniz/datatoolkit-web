@@ -1,9 +1,19 @@
-import type { CSSProperties, DragEvent } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
+import GridLayout, {
+  type Layout,
+  type ResizeHandleAxis,
+} from "react-grid-layout";
 
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import type { DockPos, DockSize, ToolId } from "../../state/reducer";
 import { DOCK_SIZES, toolDef } from "../toolrail/tools";
 import { ChartDockBody } from "./ChartDockBody";
+import { DOCK_GRID, dockRowHeight, toGridItems } from "./dockLayout";
 import { DockWindowBody } from "./DockWindowBody";
 import "./Dock.css";
 
@@ -26,92 +36,15 @@ function DockWindow({ id }: { id: ToolId }) {
   const { dock } = useAppState();
   const dispatch = useAppDispatch();
   const def = toolDef(id);
-  const wide = !!dock.wide[id] && dock.pos === "bottom" && !dock.maximized;
   const maximized = dock.maximized === id;
 
-  const onDragStart = (e: DragEvent) => {
-    dispatch({ type: "DRAG_TOOL", id });
-    try {
-      e.dataTransfer.setData("text/plain", id);
-      e.dataTransfer.effectAllowed = "move";
-    } catch {
-      /* ignore */
-    }
-  };
-
   return (
-    <section
-      className={wide ? "dock-window wide" : "dock-window"}
-      aria-label={def.label}
-      data-tool={id}
-    >
-      <div
-        className="dock-titlebar"
-        data-drag="1"
-        draggable
-        onDragStart={onDragStart}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          dispatch({ type: "DROP_TOOL", id });
-        }}
-      >
+    <section className="dock-window" aria-label={def.label} data-tool={id}>
+      <div className="dock-titlebar" data-drag="1" title="Drag to move">
         <GripIcon />
         <span className="dock-win-title">{def.label}</span>
         <span className="dock-key mono">{def.key}</span>
         <span className="dock-title-spacer" />
-        <button
-          type="button"
-          aria-label="Move window earlier"
-          title="Move earlier"
-          className="dock-icon-btn"
-          onClick={() => dispatch({ type: "MOVE_TOOL", id, delta: -1 })}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-            <path
-              d="M7.5 2.5 4 6l3.5 3.5"
-              fill="none"
-              stroke="#5b5850"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-        <button
-          type="button"
-          aria-label="Move window later"
-          title="Move later"
-          className="dock-icon-btn"
-          onClick={() => dispatch({ type: "MOVE_TOOL", id, delta: 1 })}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-            <path
-              d="M4.5 2.5 8 6 4.5 9.5"
-              fill="none"
-              stroke="#5b5850"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-        <button
-          type="button"
-          aria-label="Toggle wide"
-          title={wide ? "Normal width" : "Span two columns"}
-          className="dock-icon-btn"
-          onClick={() => dispatch({ type: "TOGGLE_WIDE", id })}
-        >
-          <svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true">
-            <path
-              d="M1 6h12M4 3 1 6l3 3M10 3l3 3-3 3"
-              fill="none"
-              stroke="#5b5850"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
         <button
           type="button"
           aria-label="Maximize or restore"
@@ -160,27 +93,69 @@ function DockWindow({ id }: { id: ToolId }) {
   );
 }
 
-/** W3 — analysis tool dock. */
+/** Client size of an element (callback ref), tracked with a ResizeObserver. */
+function useElementSize<T extends HTMLElement>(): [
+  (el: T | null) => void,
+  { width: number; height: number },
+] {
+  const [el, setEl] = useState<T | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    if (!el) return;
+    const measure = () =>
+      setSize((prev) =>
+        prev.width === el.clientWidth && prev.height === el.clientHeight
+          ? prev
+          : { width: el.clientWidth, height: el.clientHeight },
+      );
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [el]);
+  return [setEl, size];
+}
+
+const GRID_MARGIN = 10;
+const DRAG_CONFIG = { handle: ".dock-titlebar", cancel: "button" };
+const RESIZE_CONFIG = { handles: ["se", "e", "s"] as ResizeHandleAxis[] };
+
+/**
+ * W3 — analysis tool dock. Windows live on a snap-to-grid layout
+ * (react-grid-layout, MAT-234): drag the title bar to move, the corner or
+ * right / bottom edge to resize; windows never overlap and float up.
+ */
 export function Dock() {
   const { dock } = useAppState();
   const dispatch = useAppDispatch();
+  const [winsRef, winsSize] = useElementSize<HTMLDivElement>();
+
+  const maximizedId =
+    dock.maximized && dock.tools.includes(dock.maximized)
+      ? dock.maximized
+      : null;
+  const pos = dock.pos;
+  const items = useMemo(
+    () => toGridItems(dock.layouts, pos, dock.tools),
+    [dock.layouts, pos, dock.tools],
+  );
+  const children = useMemo(
+    () =>
+      dock.tools.map((id) => (
+        <div key={id} className="dock-cell">
+          <DockWindow id={id} />
+        </div>
+      )),
+    [dock.tools],
+  );
 
   if (!dock.tools.length) return null;
 
-  const visible =
-    dock.maximized && dock.tools.includes(dock.maximized)
-      ? [dock.maximized]
-      : dock.tools;
-
-  const right = dock.pos === "right";
+  const right = pos === "right";
   const sizes = DOCK_SIZES[dock.size];
-  const maximized = !!dock.maximized && visible.length > 0;
-  const span = visible.reduce(
-    (a, id) => a + (dock.wide[id] && dock.pos === "bottom" && !maximized ? 2 : 1),
-    0,
-  );
 
-  const style: CSSProperties = maximized
+  const style: CSSProperties = maximizedId
     ? { flexGrow: 1, minHeight: 0 }
     : right
       ? {
@@ -194,22 +169,19 @@ export function Dock() {
         }
       : { height: sizes.bottom, flexShrink: 0 };
 
-  const winsStyle: CSSProperties =
-    right || maximized
-      ? {
-          gridTemplateColumns: "minmax(0, 1fr)",
-          gridAutoRows: "minmax(0, 1fr)",
-        }
-      : {
-          gridTemplateColumns: `repeat(${Math.max(1, span)}, minmax(0, 1fr))`,
-        };
+  const onLayoutDone = (layout: Layout) =>
+    dispatch({
+      type: "SET_DOCK_LAYOUT",
+      pos,
+      items: layout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })),
+    });
 
   return (
     <section
       className={
         right
           ? "dock dock-right"
-          : maximized
+          : maximizedId
             ? "dock dock-max"
             : "dock dock-bottom"
       }
@@ -243,12 +215,35 @@ export function Dock() {
             </button>
           ))}
         </div>
-        <span className="muted">Drag a title bar to reorder</span>
+        <span className="muted dock-hint">
+          Drag a title bar to move, a corner or edge to resize
+        </span>
       </div>
-      <div className="dock-wins" style={winsStyle}>
-        {visible.map((id) => (
-          <DockWindow key={id} id={id} />
-        ))}
+      <div
+        ref={winsRef}
+        className={maximizedId ? "dock-wins dock-wins-max" : "dock-wins"}
+      >
+        {maximizedId ? (
+          <DockWindow id={maximizedId} />
+        ) : winsSize.width > 0 ? (
+          <GridLayout
+            className="dock-grid"
+            width={winsSize.width}
+            layout={items}
+            gridConfig={{
+              cols: DOCK_GRID[pos].cols,
+              rowHeight: dockRowHeight(winsSize.height, pos, GRID_MARGIN),
+              margin: [GRID_MARGIN, GRID_MARGIN],
+              containerPadding: [0, 0],
+            }}
+            dragConfig={DRAG_CONFIG}
+            resizeConfig={RESIZE_CONFIG}
+            onDragStop={onLayoutDone}
+            onResizeStop={onLayoutDone}
+          >
+            {children}
+          </GridLayout>
+        ) : null}
       </div>
     </section>
   );
