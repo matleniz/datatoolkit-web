@@ -135,13 +135,22 @@ function ScopeToggle({
   return (
     <button
       type="button"
-      className={scopeAll ? "chip on" : "chip"}
+      className={scopeAll ? "chip dock-scope-chip on" : "chip dock-scope-chip"}
       aria-pressed={scopeAll}
-      aria-label="Widen analysis to all columns"
+      aria-label={
+        scopeAll
+          ? "Restrict analysis to selected columns"
+          : "Widen analysis to all columns"
+      }
       data-scope-all={scopeAll ? "1" : "0"}
+      title={
+        scopeAll
+          ? "Scope: all columns (click to switch to selection)"
+          : "Scope: selection only (click to switch to all columns)"
+      }
       onClick={() => onChange(!scopeAll)}
     >
-      {scopeAll ? "All columns" : "Selection only"}
+      <span className="dock-scope-label">{scopeAll ? "All cols" : "Selection"}</span>
     </button>
   );
 }
@@ -660,9 +669,9 @@ export function DockWindowBody({ id }: { id: ToolId }) {
 
   const splitByBar =
     id === "dist" ? (
-      <div className="dock-split-by">
+      <div className="dock-split-by" title="Split by column">
         <label htmlFor="dock-split-by">
-          Split by
+          <span className="dock-split-label">By</span>
           <select
             id="dock-split-by"
             aria-label="Split by"
@@ -687,15 +696,26 @@ export function DockWindowBody({ id }: { id: ToolId }) {
       </div>
     ) : null;
 
-  const scopeBar =
-    showScopeToggle || splitByBar ? (
-      <div className="dock-scope-bar">
-        {showScopeToggle ? (
-          <ScopeToggle scopeAll={scopeAll} onChange={setScopeAll} />
-        ) : null}
-        {splitByBar}
-      </div>
-    ) : null;
+  const subchrome = (
+    <div className="dock-subchrome">
+      <IdentityStrip
+        identity={identity}
+        shownIdentity={shownIdentity}
+        editing={!!bench.pendingStep}
+        compact
+      />
+      {showScopeToggle ? (
+        <ScopeToggle scopeAll={scopeAll} onChange={setScopeAll} />
+      ) : null}
+      {splitByBar}
+      {paramsPanel}
+      {bound ? (
+        <span className="dock-bound muted" title={bound}>
+          {bound}
+        </span>
+      ) : null}
+    </div>
+  );
 
   // Every branch carries the identity it shows (MAT-175): `data-identity`
   // is the frame the rendered numbers come from; the strip says which
@@ -707,11 +727,6 @@ export function DockWindowBody({ id }: { id: ToolId }) {
       data-identity-current={identity.key}
       data-run-params={runParams ?? undefined}
     >
-      <IdentityStrip
-        identity={identity}
-        shownIdentity={shownIdentity}
-        editing={!!bench.pendingStep}
-      />
       {node}
     </div>
   );
@@ -719,8 +734,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
   if (error) {
     return wrap(
       <div>
-        {scopeBar}
-        {paramsPanel}
+        {subchrome}
         <div className="engine-error" role="alert">
           {error}
         </div>
@@ -730,8 +744,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
   if (!ready) {
     return wrap(
       <div>
-        {scopeBar}
-        {paramsPanel}
+        {subchrome}
         <div className="dock-msg muted">Loading…</div>
       </div>
     );
@@ -745,8 +758,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
   ) {
     return wrap(
       <div data-empty-rows="1">
-        {scopeBar}
-        {paramsPanel}
+        {subchrome}
         <div className="dock-empty-state" role="status">
           {EMPTY_DATA_ROWS_MSG}
         </div>
@@ -775,9 +787,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
             }
           : {})}
       >
-        {scopeBar}
-        {paramsPanel}
-        {bound ? <div className="dock-bound muted">{bound}</div> : null}
+        {subchrome}
         <div className="dock-msg">{msg}</div>
       </div>
     );
@@ -787,20 +797,26 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     const cs = selCols.filter((c) => profileByName.has(c)).slice(0, 6);
     if (cs.length < 2) {
       return wrap(
-        <div className="dock-msg">
-          Select two or more columns (shift-click headers, or right-click → Add
-          to selection).
+        <div>
+          {subchrome}
+          <div className="dock-msg">
+            Select two or more columns (shift-click headers, or right-click → Add
+            to selection).
+          </div>
         </div>
       );
     }
     return wrap(
-      <CompareNative
-        cols={cs}
-        profiles={profileByName}
-        rows={rows}
-        target={target}
-        bound={bound}
-      />
+      <div>
+        {subchrome}
+        <CompareNative
+          cols={cs}
+          profiles={profileByName}
+          rows={rows}
+          target={target}
+          bound=""
+        />
+      </div>
     );
   }
 
@@ -815,9 +831,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
             : profiles.map((c) => c.name).join(",")
         }
       >
-        {scopeBar}
-        {paramsPanel}
-        {bound ? <div className="dock-bound muted">{bound}</div> : null}
+        {subchrome}
         <div className="dock-msg muted">Loading…</div>
       </div>
     );
@@ -884,9 +898,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
             }
           : {})}
       >
-        {scopeBar}
-        {paramsPanel}
-        {bound ? <div className="dock-bound muted">{bound}</div> : null}
+        {subchrome}
         <AnalysisResultView
           result={result}
           viewKey={id}
@@ -897,10 +909,9 @@ export function DockWindowBody({ id }: { id: ToolId }) {
       </div>
     );
   }
-  return (
+  return wrap(
     <div>
-      {scopeBar}
-      {paramsPanel}
+      {subchrome}
       <div className="dock-msg muted">Loading…</div>
     </div>
   );

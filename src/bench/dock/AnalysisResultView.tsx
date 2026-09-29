@@ -188,7 +188,7 @@ export function AnalysisResultView({
   return (
     <div className="result-view result-shell" data-view={viewId}>
       {headline ? (
-        <p className="result-headline" data-result-headline="">
+        <p className="result-headline" data-result-headline="" title={headline}>
           {headline}
         </p>
       ) : null}

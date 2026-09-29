@@ -10,10 +10,56 @@ type PlotEl = HTMLDivElement & {
   removeAllListeners?: (event: string) => void;
 };
 
+export const DTK_COLORWAY = [
+  "#1d5b86", // --dtk-accent
+  "#b4460f", // --dtk-stage-clean
+  "#2f6b3a", // --dtk-stage-select
+  "#6b5ea8", // --dtk-stage-import
+  "#a8844a", // category/kind warm
+  "#4e3a8a", // --dtk-outlier-fg
+  "#8fb0c9", // --dtk-kind-num
+  "#b3a6d6", // --dtk-kind-date
+];
+
+/**
+ * Replace Plotly default blues (#636efa) with DTK accent, aligning colors
+ * with src/theme/tokens.css purely on the front-end layout/template without recalculation.
+ */
+function applyDtkColorsToData(data: object[]): object[] {
+  return data.map((item) => {
+    if (typeof item !== "object" || item === null) return item;
+    const trace = { ...(item as Record<string, unknown>) };
+    const marker = trace.marker as Record<string, unknown> | undefined;
+    if (marker && typeof marker === "object") {
+      const color = marker.color;
+      if (typeof color === "string" && color.toLowerCase() === "#636efa") {
+        trace.marker = { ...marker, color: DTK_COLORWAY[0] };
+      } else if (Array.isArray(color)) {
+        trace.marker = {
+          ...marker,
+          color: color.map((c) =>
+            typeof c === "string" && c.toLowerCase() === "#636efa"
+              ? DTK_COLORWAY[0]
+              : c,
+          ),
+        };
+      }
+    }
+    const line = trace.line as Record<string, unknown> | undefined;
+    if (line && typeof line === "object") {
+      if (typeof line.color === "string" && line.color.toLowerCase() === "#636efa") {
+        trace.line = { ...line, color: DTK_COLORWAY[0] };
+      }
+    }
+    return trace;
+  });
+}
+
 /**
  * One engine Plotly figure, sized by its container (MAT-235): the parent box
  * decides the height (the window fills), the plot follows window and grid
- * resizes (MAT-234). Mode bar (PNG / SVG export) on every figure.
+ * resizes (MAT-234). Mode bar visible on hover only (MAT-246).
+ * Theme colors aligned with tokens.css.
  * plotly.js-dist-min is loaded lazily.
  */
 export function PlotlyFigure({
@@ -27,6 +73,7 @@ export function PlotlyFigure({
   onPointClick?: (point: PlotPoint, ev: MouseEvent | undefined) => void;
 }) {
   const ref = useRef<PlotEl>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
   const clickRef = useRef(onPointClick);
   clickRef.current = onPointClick;
 
@@ -35,20 +82,47 @@ export function PlotlyFigure({
     (async () => {
       const Plotly = (await import("plotly.js-dist-min")).default;
       const el = ref.current;
+      const box = boxRef.current;
       if (cancelled || !el) return;
-      const data = (plotly.data as object[]) ?? [];
+      const rawData = (plotly.data as object[]) ?? [];
+      const data = applyDtkColorsToData(rawData);
+      const rawLayout = (plotly.layout as Record<string, unknown>) ?? {};
+      const template = (rawLayout.template as Record<string, unknown>) ?? {};
+      const templateLayout = (template.layout as Record<string, unknown>) ?? {};
+      const targetHeight =
+        box && box.clientHeight > 0 ? box.clientHeight : el.clientHeight > 0 ? el.clientHeight : 180;
+      const targetWidth =
+        box && box.clientWidth > 0 ? box.clientWidth : el.clientWidth > 0 ? el.clientWidth : undefined;
       const layout = {
-        ...((plotly.layout as Record<string, unknown>) ?? {}),
+        ...rawLayout,
         autosize: true,
-        height: undefined,
-        width: undefined,
-        margin: { t: 24, r: 12, b: 36, l: 44 },
+        height: targetHeight,
+        width: targetWidth,
+        margin: {
+          t: 16,
+          r: 10,
+          b: 28,
+          l: 36,
+        },
         paper_bgcolor: "transparent",
         plot_bgcolor: "transparent",
-        font: { size: 10, family: "IBM Plex Sans, sans-serif" },
+        font: {
+          size: 10,
+          family: "IBM Plex Sans, sans-serif",
+          color: "#1c1b18",
+          ...((rawLayout.font as Record<string, unknown>) ?? {}),
+        },
+        colorway: DTK_COLORWAY,
+        template: {
+          ...template,
+          layout: {
+            ...templateLayout,
+            colorway: DTK_COLORWAY,
+          },
+        },
       };
       await Plotly.newPlot(el, data, layout, {
-        displayModeBar: true,
+        displayModeBar: "hover",
         displaylogo: false,
         responsive: true,
         modeBarButtonsToRemove: ["lasso2d", "select2d", "autoScale2d"],
@@ -74,7 +148,8 @@ export function PlotlyFigure({
   // every pixel of a resize.
   useEffect(() => {
     const el = ref.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
+    const box = boxRef.current;
+    if (!el || !box || typeof ResizeObserver === "undefined") return;
     let timer: number | undefined;
     const settle = () => {
       if (el.closest(".react-grid-item.resizing")) {
@@ -82,8 +157,15 @@ export function PlotlyFigure({
         return;
       }
       if (!el.classList.contains("js-plotly-plot")) return;
+      const h = box.clientHeight > 0 ? box.clientHeight : el.clientHeight;
+      const w = box.clientWidth > 0 ? box.clientWidth : el.clientWidth;
       void import("plotly.js-dist-min")
-        .then(({ default: Plotly }) => Plotly.Plots.resize(el))
+        .then(({ default: Plotly }) => {
+          if (h > 0 && w > 0) {
+            return Plotly.relayout(el, { height: h, width: w });
+          }
+          return Plotly.Plots.resize(el);
+        })
         .catch(() => {
           /* best-effort, like the render */
         });
@@ -92,7 +174,7 @@ export function PlotlyFigure({
       window.clearTimeout(timer);
       timer = window.setTimeout(settle, FIGURE_RESIZE_MS);
     });
-    ro.observe(el);
+    ro.observe(box);
     return () => {
       ro.disconnect();
       window.clearTimeout(timer);
@@ -100,7 +182,7 @@ export function PlotlyFigure({
   }, []);
 
   return (
-    <div className="result-plot-box">
+    <div ref={boxRef} className="result-plot-box">
       <div ref={ref} className="result-plot" />
     </div>
   );

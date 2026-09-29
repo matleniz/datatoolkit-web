@@ -89,9 +89,9 @@ export const TOOLS: ToolDef[] = [
 ];
 
 export const DOCK_SIZES = {
-  S: { bottom: 190, right: 340 },
-  M: { bottom: 270, right: 440 },
-  L: { bottom: 400, right: 600 },
+  S: { bottom: 220, right: 340 },
+  M: { bottom: 390, right: 440 },
+  L: { bottom: 440, right: 600 },
 } as const;
 
 export function toolDef(id: RailToolId): ToolDef {
