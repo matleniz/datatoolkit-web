@@ -1,7 +1,14 @@
-import type { ToolId } from "../../state/reducer";
+import type { AppAction, ToolId } from "../../state/reducer";
+
+export type RailToolId = ToolId | "transform";
+
+/** Opens the step picker in the workbench right panel. */
+export function openStepPicker(dispatch: (action: AppAction) => void) {
+  dispatch({ type: "OPEN_EDITOR", op: null });
+}
 
 export interface ToolDef {
-  id: ToolId;
+  id: RailToolId;
   label: string;
   key: string;
   ariaLabel: string;
@@ -9,6 +16,13 @@ export interface ToolDef {
 }
 
 export const TOOLS: ToolDef[] = [
+  {
+    id: "transform",
+    label: "Transform",
+    key: "transform",
+    ariaLabel: "Transform",
+    title: "Transform · add step",
+  },
   {
     id: "compare",
     label: "Compare columns",
@@ -80,6 +94,6 @@ export const DOCK_SIZES = {
   L: { bottom: 400, right: 600 },
 } as const;
 
-export function toolDef(id: ToolId): ToolDef {
+export function toolDef(id: RailToolId): ToolDef {
   return TOOLS.find((t) => t.id === id)!;
 }

@@ -1,10 +1,34 @@
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import type { ToolId } from "../../state/reducer";
-import { TOOLS } from "./tools";
+import { TOOLS, openStepPicker, type RailToolId } from "./tools";
 import "./ToolRail.css";
 
-function ToolIcon({ id }: { id: ToolId }) {
+function ToolIcon({ id }: { id: RailToolId }) {
   switch (id) {
+    case "transform":
+      return (
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 20 20"
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3 17l9-9" />
+          <path d="M14 4l2 2" />
+          <path
+            d="M12 2.5l.8 1.7 1.7.8-1.7.8-.8 1.7-.8-1.7-1.7-.8 1.7-.8.8-1.7z"
+            fill="currentColor"
+            stroke="none"
+          />
+          <circle cx="16.5" cy="9.5" r="1.2" fill="currentColor" stroke="none" />
+          <circle cx="7.5" cy="3.5" r="1.2" fill="currentColor" stroke="none" />
+        </svg>
+      );
     case "compare":
       return (
         <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -80,25 +104,48 @@ function ToolIcon({ id }: { id: ToolId }) {
 
 /** W3 — analysis tool rail (56px). */
 export function ToolRail() {
-  const { dock } = useAppState();
+  const { dock, editor } = useAppState();
   const dispatch = useAppDispatch();
 
   return (
     <nav className="tool-rail" aria-label="Analysis tools" data-owner="W3">
       <span className="tool-rail-label">Tools</span>
       {TOOLS.map((t) => {
-        const on = dock.tools.includes(t.id);
+        if (t.id === "transform") {
+          const on = Boolean(editor);
+          return (
+            <button
+              key={t.id}
+              type="button"
+              className={on ? "tool-btn on" : "tool-btn"}
+              aria-label={t.ariaLabel}
+              aria-pressed={on}
+              title={t.title}
+              onClick={() => {
+                if (editor?.op === null) {
+                  dispatch({ type: "CLOSE_EDITOR" });
+                } else {
+                  openStepPicker(dispatch);
+                }
+              }}
+            >
+              <ToolIcon id={t.id} />
+            </button>
+          );
+        }
+        const toolId = t.id as ToolId;
+        const on = dock.tools.includes(toolId);
         return (
           <button
-            key={t.id}
+            key={toolId}
             type="button"
             className={on ? "tool-btn on" : "tool-btn"}
             aria-label={t.ariaLabel}
             aria-pressed={on}
             title={t.title}
-            onClick={() => dispatch({ type: "TOGGLE_TOOL", id: t.id })}
+            onClick={() => dispatch({ type: "TOGGLE_TOOL", id: toolId })}
           >
-            <ToolIcon id={t.id} />
+            <ToolIcon id={toolId} />
           </button>
         );
       })}
