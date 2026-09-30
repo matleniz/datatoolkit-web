@@ -53,7 +53,7 @@ test("MAT-147: Distribution by target / by column (Titanic) + outliers scoped", 
 
   // Age by Survived (numeric × categorical target)
   let dist = await openDistBy(page, "Age", "Survived");
-  await expect(dist.getByText(/split by Survived/)).toBeVisible();
+  await expect(dist.locator(".dock-bound")).toHaveAttribute("title", /split by Survived/);
   await expect(dist.locator(".result-figure").first()).toBeVisible({
     timeout: 30_000,
   });
@@ -79,7 +79,7 @@ test("MAT-147: Distribution by target / by column (Titanic) + outliers scoped", 
     window.__DTK_DISPATCH__!({ type: "TOGGLE_TOOL", id: "dist" });
   });
   dist = await openDistBy(page, "Fare", "Pclass");
-  await expect(dist.getByText(/split by Pclass/)).toBeVisible();
+  await expect(dist.locator(".dock-bound")).toHaveAttribute("title", /split by Pclass/);
   await expect(dist.locator(".result-figure").first()).toBeVisible({
     timeout: 30_000,
   });
@@ -97,7 +97,7 @@ test("MAT-147: Distribution by target / by column (Titanic) + outliers scoped", 
   });
   await expect(dist.locator(".result-metric", { hasText: "spearman" })).toBeVisible();
   await expect(dist.getByText("vs_by")).toBeVisible();
-  await expect(dist.getByText("Age vs Fare")).toBeVisible();
+  await expect(dist.locator('[data-view-tab="figure:1"]')).toHaveAttribute("title", "Age vs Fare");
   await waitForGridReady(page);
   await captureFlowScreenshot(page, "9-dist-by", "04-age-vs-fare.png");
 
@@ -162,7 +162,7 @@ test("MAT-147: Distribution by target from y file", async ({ page }) => {
     .toBe("target");
 
   const dist = await openDistBy(page, "Age", "target");
-  await expect(dist.getByText(/split by target/)).toBeVisible();
+  await expect(dist.locator(".dock-bound")).toHaveAttribute("title", /split by target/);
   await expect(
     dist.locator('[data-engine-key="column_distribution"]'),
   ).toBeVisible();

@@ -74,6 +74,23 @@ async function clickCentre(page: Page, loc: Locator) {
   await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
 }
 
+/** Switch view via its tab, or via the compact select when the bar folds (MAT-247). */
+async function pickView(win: Locator, id: string) {
+  const tab = win.locator(`[data-view-tab="${id}"]`);
+  if (await tab.isVisible()) await tab.click();
+  else await win.locator("[data-view-select]").selectOption(id);
+}
+
+/** Where "Cabin" sits among the category ticks (either axis: bars may be horizontal). */
+async function cabinEnd(figure: Locator): Promise<"first" | "last" | "mid" | "none"> {
+  const labels = (await figure.locator(".xtick text, .ytick text").allTextContents())
+    .map((t) => t.trim())
+    .filter((t) => t && !/^[-\d.,%kM\s−]+$/.test(t));
+  const i = labels.indexOf("Cabin");
+  if (i < 0) return "none";
+  return i === 0 ? "first" : i === labels.length - 1 ? "last" : "mid";
+}
+
 test("MAT-235: figure-first analysis windows", async ({ page }) => {
   test.setTimeout(360_000);
   clearFlowScreenshots(FLOW);
@@ -104,7 +121,12 @@ test("MAT-235: figure-first analysis windows", async ({ page }) => {
   expect(mainIdx).toBeGreaterThanOrEqual(0);
   await expect(shell).toHaveAttribute("data-view", `figure:${mainIdx}`);
   // Default = the `main` figure, else the first.
-  await expect(missing.locator('[data-view-tab="table"]')).toBeVisible();
+  // Table view is offered: as a tab, or as an option once the bar folds (MAT-247).
+  if (await missing.locator(".result-tabs").isVisible()) {
+    await expect(missing.locator('[data-view-tab="table"]')).toBeVisible();
+  } else {
+    await expect(missing.locator('[data-view-select] option[value="table"]')).toHaveCount(1);
+  }
   const details = missing.locator(".result-details");
   await expect(details).toHaveAttribute("data-details-open", "0");
   await expect(missing.locator(".result-table-block")).toHaveCount(0);
@@ -138,11 +160,12 @@ test("MAT-235: figure-first analysis windows", async ({ page }) => {
   // Front-only display: sorting re-draws without re-running the key.
   const before = runs.length;
   await missing.getByLabel("Sort bars").selectOption("desc");
-  await expect(figure.locator(".xtick text").first()).toHaveText("Cabin");
+  await expect.poll(() => cabinEnd(figure)).toMatch(/^(first|last)$/);
+  const descEnd = await cabinEnd(figure);
   await missing.getByLabel("Sort bars").selectOption("asc");
-  await expect(figure.locator(".xtick text").first()).not.toHaveText("Cabin");
+  await expect.poll(() => cabinEnd(figure)).not.toBe(descEnd);
   await missing.getByLabel("Sort bars").selectOption("desc");
-  await expect(figure.locator(".xtick text").first()).toHaveText("Cabin");
+  await expect.poll(() => cabinEnd(figure)).toBe(descEnd);
   await missing.getByRole("checkbox", { name: "Log" }).check();
   await expect(figure.locator(".main-svg").first()).toBeVisible();
   await missing.getByRole("checkbox", { name: "Log" }).uncheck();
@@ -158,7 +181,7 @@ test("MAT-235: figure-first analysis windows", async ({ page }) => {
   await expect(missing.locator(".result-figure .main-svg").first()).toBeVisible();
   await captureFlowScreenshot(page, FLOW, "02-missing-after-view-change.png");
 
-  await missing.locator('[data-view-tab="table"]').click();
+  await pickView(missing, "table");
   await expect(shell).toHaveAttribute("data-view", "table");
   const rates = missing.locator(".result-main .result-table-block", {
     hasText: "missing_rates",
@@ -183,7 +206,7 @@ test("MAT-235: figure-first analysis windows", async ({ page }) => {
   });
 
   // Back to the default figure; Details drawer: metric tiles + tables.
-  await missing.locator(`[data-view-tab="${initialView}"]`).click();
+  await pickView(missing, initialView!);
   await expect(shell).toHaveAttribute("data-view", initialView!);
   await maximize(page, "missing");
   await openDetails(missing);
@@ -196,9 +219,9 @@ test("MAT-235: figure-first analysis windows", async ({ page }) => {
   await expect(details).toHaveAttribute("data-details-open", "0");
 
   // --- Click-through: a bar named after a column selects it in the grid ---
-  await missing.locator(`[data-view-tab="${initialView}"]`).click();
+  await pickView(missing, initialView!);
   await missing.getByLabel("Sort bars").selectOption("desc");
-  await expect(figure.locator(".xtick text").first()).toHaveText("Cabin");
+  await expect.poll(() => cabinEnd(figure)).toBe(descEnd);
   await clickCentre(page, figure.locator(".bars .point path").first());
   await expect.poll(() => selection(page)).toEqual(["Cabin"]);
   // The clicked window keeps showing every column (scope widened).
@@ -266,6 +289,33 @@ test("MAT-235: figure-first analysis windows", async ({ page }) => {
       .locator(".dock-body")
       .evaluate((el) => el.scrollHeight > el.clientHeight + 1);
     expect(hasScroll).toBe(false);
+
+    // MAT-247: the Parameters chip and the bound label never overlap.
+    const chip = w.locator(".dock-subchrome .dock-params-chip").first();
+    if (await chip.isVisible()) {
+      const cBox = await box(chip);
+      const bound = w.locator(".dock-subchrome .dock-bound").first();
+      if ((await bound.count()) > 0 && (await bound.isVisible())) {
+        const bBox = await box(bound);
+        expect(cBox.x + cBox.width).toBeLessThanOrEqual(bBox.x + 0.5);
+      }
+    }
+
+    // MAT-247: view choices are readable (>= 3 visible characters) or folded
+    // into a select / "..." menu — never 1-2 letter chips.
+    const tabs = w.locator('.result-tabs [role="tab"]');
+    if (await w.locator(".result-tabs").isVisible()) {
+      for (const t of await tabs.all()) {
+        const txt = ((await t.textContent()) ?? "").trim();
+        const tb = await box(t);
+        expect(tb.width).toBeGreaterThan(24);
+        expect(txt.length >= 3 || tb.width >= 40).toBe(true);
+        const clipped = await t.evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+        expect(clipped).toBe(false);
+      }
+    } else {
+      await expect(w.locator("[data-view-select]")).toBeVisible();
+    }
   }
 
   // MAT-246: Plotly mode bar is only visible on hover
