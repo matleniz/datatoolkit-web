@@ -3,6 +3,7 @@ name: docker
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -10,7 +11,70 @@ permissions:
   packages: write
 
 jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # ./datatoolkit-data is deliberately NOT pre-created: the daemon creates it
+      # as root and the engine entrypoint must chown it to uid 1000.
+      - name: Build and start the stack
+        run: docker compose up -d --build
+      - name: Wait for services
+        run: |
+          for _ in $(seq 1 60); do
+            engine=$(docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q engine)" 2>/dev/null || echo none)
+            web=$(docker inspect --format '{{.State.Status}}' "$(docker compose ps -q web)" 2>/dev/null || echo none)
+            echo "engine: $engine, web: $web"
+            if [ "$engine" = healthy ] && [ "$web" = running ]; then exit 0; fi
+            sleep 2
+          done
+          docker compose ps
+          docker compose logs
+          exit 1
+      - name: Studio serves index.html
+        run: |
+          curl -fsS http://127.0.0.1:8080/ | tee index.out | grep -q 'datatoolkit Studio'
+      - name: SPA fallback on a deep route
+        run: |
+          curl -fsS http://127.0.0.1:8080/some/deep/route | grep -q 'datatoolkit Studio'
+      - name: Key list through nginx
+        run: curl -fsS http://127.0.0.1:8080/api/keys | grep -q dataset_overview
+      - name: Upload ~3 MB CSV through nginx
+        run: |
+          python3 -c "
+          import random
+          random.seed(0)
+          print('id,x,y,label')
+          for i in range(90000):
+              print(f'{i},{random.random():.6f},{random.random():.6f},{random.choice(\"abc\")}')
+          " > smoke.csv
+          ls -l smoke.csv
+          [ "$(stat -c %s smoke.csv)" -gt 2500000 ]
+          curl -fsS -X PUT --data-binary @smoke.csv http://127.0.0.1:8080/api/uploads/smoke.csv | tee upload.json
+      - name: Run dataset_overview on the upload
+        run: |
+          path=$(python3 -c "import json; print(json.load(open('upload.json'))['path'])")
+          code=$(curl -sS -o run.json -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+            -d "{\"params\": {\"source\": {\"kind\": \"csv\", \"path\": \"$path\"}}}" \
+            http://127.0.0.1:8080/api/keys/dataset_overview/run)
+          head -c 500 run.json; echo
+          [ "$code" = 200 ]
+      - name: Upload lands on the host with uid 1000
+        run: |
+          f=$(ls datatoolkit-data/uploads/*/smoke.csv)
+          stat -c '%u %n' "$f"
+          [ "$(stat -c %u "$f")" = 1000 ]
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
   image:
+    needs: smoke
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +90,7 @@ jobs:
         with:
           images: ghcr.io/matleniz/datatoolkit-web
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=sha-,format=short
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
