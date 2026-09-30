@@ -34,6 +34,29 @@ export const DOCK_GRID: Record<DockPos, DockGridSpec> = {
   right: { cols: 2, rows: 12, w: 2, h: 6, minW: 1, minH: 3 },
 };
 
+/** Default window size in grid units per tool and dock position (MAT-252). */
+export const TOOL_DEFAULT_SIZES: Partial<
+  Record<ToolId, Partial<Record<DockPos, { w: number; h: number }>>>
+> = {
+  chart: {
+    // Bottom dock: ~half dock width (6 of 12 cols) and full dock height (8 rows).
+    bottom: { w: 6, h: 8 },
+    // Right dock: full pane width (2 of 2 cols).
+    right: { w: 2, h: 6 },
+  },
+};
+
+/** Default size of a newly opened window for a tool at a dock position. */
+export function defaultWindowSize(
+  id: ToolId,
+  pos: DockPos,
+): { w: number; h: number } {
+  const custom = TOOL_DEFAULT_SIZES[id]?.[pos];
+  if (custom) return custom;
+  const spec = DOCK_GRID[pos];
+  return { w: spec.w, h: spec.h };
+}
+
 /** Upper bound on stored rows so a corrupt entry cannot blow up the grid. */
 const MAX_ROWS = 200;
 
@@ -93,8 +116,9 @@ export function syncDockLayouts(
     }
     for (const id of tools) {
       if (out[id]) continue;
-      const { x, y } = findSpot(out, spec.cols, spec.w, spec.h);
-      out[id] = { x, y, w: spec.w, h: spec.h };
+      const size = defaultWindowSize(id, pos);
+      const { x, y } = findSpot(out, spec.cols, size.w, size.h);
+      out[id] = { x, y, w: size.w, h: size.h };
     }
     next[pos] = out;
   }

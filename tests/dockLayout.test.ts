@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Workspace } from "../src/api/types";
 import {
   DOCK_GRID,
+  TOOL_DEFAULT_SIZES,
   applyGridLayout,
+  defaultWindowSize,
   dockRowHeight,
   emptyDockLayouts,
   findSpot,
@@ -125,6 +127,51 @@ describe("dockLayout helpers (MAT-234)", () => {
     // bottom: 8 rows, 7 gaps of 10 px.
     expect(dockRowHeight(470, "bottom", 10)).toBe(50);
     expect(dockRowHeight(10, "bottom", 10)).toBe(24);
+  });
+
+  describe("per-tool default sizes (MAT-252)", () => {
+    it("defaultWindowSize gives Chart a larger default size and keeps standard for others", () => {
+      expect(TOOL_DEFAULT_SIZES.chart?.bottom).toEqual({ w: 6, h: 8 });
+      expect(TOOL_DEFAULT_SIZES.chart?.right).toEqual({ w: 2, h: 6 });
+      expect(defaultWindowSize("chart", "bottom")).toEqual({ w: 6, h: 8 });
+      expect(defaultWindowSize("chart", "right")).toEqual({ w: 2, h: 6 });
+
+      // Other tools keep standard grid defaults (4x8 in bottom, 2x6 in right).
+      expect(defaultWindowSize("dist", "bottom")).toEqual({ w: 4, h: 8 });
+      expect(defaultWindowSize("compare", "bottom")).toEqual({ w: 4, h: 8 });
+      expect(defaultWindowSize("dist", "right")).toEqual({ w: 2, h: 6 });
+    });
+
+    it("syncDockLayouts opens Chart at half width and places adjacent tools at first free spot", () => {
+      // Chart alone takes the left half.
+      const one = syncDockLayouts(emptyDockLayouts(), ["chart"]);
+      expect(one.bottom.chart).toEqual({ x: 0, y: 0, w: 6, h: 8 });
+
+      // Chart opened after dist: dist takes 4 cols (0..3), chart takes 6 cols (4..9).
+      const distThenChart = syncDockLayouts(emptyDockLayouts(), ["dist", "chart"]);
+      expect(distThenChart.bottom.dist).toEqual({ x: 0, y: 0, w: 4, h: 8 });
+      expect(distThenChart.bottom.chart).toEqual({ x: 4, y: 0, w: 6, h: 8 });
+
+      // Chart opened before dist: chart takes 6 cols (0..5), dist takes 4 cols (6..9).
+      const chartThenDist = syncDockLayouts(emptyDockLayouts(), ["chart", "dist"]);
+      expect(chartThenDist.bottom.chart).toEqual({ x: 0, y: 0, w: 6, h: 8 });
+      expect(chartThenDist.bottom.dist).toEqual({ x: 6, y: 0, w: 4, h: 8 });
+
+      // Two standard tools take 8 cols (0..7); Chart needs 6 cols so it wraps to row y=8.
+      const twoThenChart = syncDockLayouts(emptyDockLayouts(), ["dist", "missing", "chart"]);
+      expect(twoThenChart.bottom.dist).toEqual({ x: 0, y: 0, w: 4, h: 8 });
+      expect(twoThenChart.bottom.missing).toEqual({ x: 4, y: 0, w: 4, h: 8 });
+      expect(twoThenChart.bottom.chart).toEqual({ x: 0, y: 8, w: 6, h: 8 });
+    });
+
+    it("syncDockLayouts preserves saved/stored layouts even for Chart", () => {
+      const stored = {
+        bottom: { chart: { x: 8, y: 0, w: 4, h: 4 } },
+        right: {},
+      };
+      const synced = syncDockLayouts(stored, ["chart"]);
+      expect(synced.bottom.chart).toEqual({ x: 8, y: 0, w: 4, h: 4 });
+    });
   });
 });
 
