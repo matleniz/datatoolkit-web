@@ -14,3 +14,6 @@ e2e/screenshots
 *.tsbuildinfo
 .cursor
 
+
+# docker compose data volume
+datatoolkit-data/
