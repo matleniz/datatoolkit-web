@@ -10,10 +10,43 @@ export interface FormulaPaletteItem {
   label: string;
   /** One-line help for title / aria. */
   help: string;
-  kind: "func" | "op" | "const";
+  kind: "func" | "op" | "const" | "example";
+  /** numpy spelling of the function (e.g. "np.log1p"), when it has one. */
+  numpy?: string;
 }
 
-export const FORMULA_FUNCS: FormulaPaletteItem[] = [
+/** Bare formula name → numpy attribute, where the two differ. */
+const NUMPY_NAME: Record<string, string> = {
+  isnull: "isnan",
+  min: "minimum",
+  max: "maximum",
+};
+
+/** Attributes accepted after `np.` / `numpy.` (engine whitelist, MAT-241). */
+export const NUMPY_FUNCS = [
+  "log",
+  "log1p",
+  "log2",
+  "log10",
+  "exp",
+  "sqrt",
+  "abs",
+  "round",
+  "floor",
+  "ceil",
+  "sign",
+  "square",
+  "sin",
+  "cos",
+  "tanh",
+  "clip",
+  "where",
+  "minimum",
+  "maximum",
+  "isnan",
+] as const;
+
+const BASE_FUNCS: FormulaPaletteItem[] = [
   {
     insert: "where(",
     label: "where",
@@ -136,6 +169,52 @@ export const FORMULA_FUNCS: FormulaPaletteItem[] = [
   },
 ];
 
+/** Palette functions, each with its numpy form in the help text. */
+export const FORMULA_FUNCS: FormulaPaletteItem[] = BASE_FUNCS.map((f) => {
+  const numpy = `np.${NUMPY_NAME[f.label] ?? f.label}`;
+  const [sig, ...desc] = f.help.split(" — ");
+  const npSig = `${numpy}${sig!.slice(f.label.length)}`;
+  return {
+    ...f,
+    numpy,
+    help: [`${sig} · ${npSig}`, ...desc].join(" — "),
+  };
+});
+
+/** Insertable Python-style examples (MAT-241). */
+export const FORMULA_PY_EXAMPLES: FormulaPaletteItem[] = [
+  {
+    insert: "1 if Age < 18 else 0",
+    label: "1 if Age < 18 else 0",
+    help: "Conditional expression — same as where(Age < 18, 1, 0)",
+    kind: "example",
+  },
+  {
+    insert: "np.where(Age > 60, 1, 0)",
+    label: "np.where(Age > 60, 1, 0)",
+    help: "numpy where — a if cond else b",
+    kind: "example",
+  },
+  {
+    insert: "18 <= Age < 65",
+    label: "18 <= Age < 65",
+    help: "Chained comparison (and / or / not and & | ~ also work)",
+    kind: "example",
+  },
+  {
+    insert: "np.log1p(Fare)",
+    label: "np.log1p(Fare)",
+    help: "numpy functions: np.<f> or numpy.<f>",
+    kind: "example",
+  },
+  {
+    insert: 'df["Nom col"] * 2',
+    label: 'df["Nom col"] * 2',
+    help: 'Column whose name is not an identifier: df["Nom col"]',
+    kind: "example",
+  },
+];
+
 export const FORMULA_OPS: FormulaPaletteItem[] = [
   { insert: "+", label: "+", help: "Addition", kind: "op" },
   { insert: "-", label: "−", help: "Subtraction", kind: "op" },
@@ -159,11 +238,35 @@ export function formulaTokenAt(
   caret: number,
 ): { start: number; end: number; token: string } | null {
   const left = expr.slice(0, Math.max(0, Math.min(caret, expr.length)));
-  const m = left.match(/(@?[A-Za-z_][A-Za-z0-9_]*)$/);
+  const m = left.match(
+    /(df\[\s*["'][^"'\]]*|(?<![\w.])(?:np|numpy)\.\w*|@?[A-Za-z_][A-Za-z0-9_]*)$/,
+  );
   if (!m) return null;
   const token = m[1]!;
   const start = left.length - token.length;
   return { start, end: caret, token };
+}
+
+const PY_KEYWORDS = new Set([
+  "and",
+  "or",
+  "not",
+  "if",
+  "else",
+  "in",
+  "is",
+  "lambda",
+  "np",
+  "numpy",
+  "df",
+  "pi",
+]);
+
+/** How a column is written in a formula: bare identifier, else df["name"]. */
+export function formulaColumnRef(name: string): string {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !PY_KEYWORDS.has(name)
+    ? name
+    : `df[${JSON.stringify(name)}]`;
 }
 
 /** Ranked autocomplete candidates for the current token. */
@@ -174,13 +277,34 @@ export function formulaAutocomplete(
   limit = 8,
 ): string[] {
   if (!token) return [];
+  const npm = token.match(/^(np|numpy)\.(\w*)$/);
+  if (npm) {
+    const pre = npm[1]!;
+    const n = npm[2]!.toLowerCase();
+    const fns = NUMPY_FUNCS.filter((f) => f.startsWith(n)).map(
+      (f) => `${pre}.${f}(`,
+    );
+    if ("pi".startsWith(n)) fns.push(`${pre}.pi`);
+    return fns.slice(0, limit);
+  }
+  const dfm = token.match(/^df\[\s*["']([^"'\]]*)$/);
+  if (dfm) {
+    const n = dfm[1]!.toLowerCase();
+    return columns
+      .filter((c) => c.toLowerCase().includes(n))
+      .slice(0, limit)
+      .map((c) => `df[${JSON.stringify(c)}]`);
+  }
   const lower = token.toLowerCase();
   const wantAt = token.startsWith("@");
   const needle = wantAt ? lower.slice(1) : lower;
   const out: string[] = [];
   if (wantAt || token.startsWith("@")) {
     for (const v of variables) {
-      if (v.toLowerCase().startsWith(needle) || v.toLowerCase().includes(needle)) {
+      if (
+        v.toLowerCase().startsWith(needle) ||
+        v.toLowerCase().includes(needle)
+      ) {
         out.push(`@${v}`);
       }
       if (out.length >= limit) return out;
@@ -188,17 +312,23 @@ export function formulaAutocomplete(
     return out;
   }
   for (const c of columns) {
-    if (c.toLowerCase().startsWith(needle)) out.push(c);
+    if (c.toLowerCase().startsWith(needle)) out.push(formulaColumnRef(c));
     if (out.length >= limit) return out;
   }
   for (const c of columns) {
-    if (!c.toLowerCase().startsWith(needle) && c.toLowerCase().includes(needle)) {
-      out.push(c);
+    if (
+      !c.toLowerCase().startsWith(needle) &&
+      c.toLowerCase().includes(needle)
+    ) {
+      out.push(formulaColumnRef(c));
     }
     if (out.length >= limit) return out;
   }
   for (const v of variables) {
-    if (v.toLowerCase().startsWith(needle) || `@${v}`.toLowerCase().startsWith(lower)) {
+    if (
+      v.toLowerCase().startsWith(needle) ||
+      `@${v}`.toLowerCase().startsWith(lower)
+    ) {
       out.push(`@${v}`);
     }
     if (out.length >= limit) return out;

@@ -15,6 +15,8 @@ import { formulaPlaceholder } from "./formulaPlaceholder";
 import {
   FORMULA_FUNCS,
   FORMULA_OPS,
+  FORMULA_PY_EXAMPLES,
+  formulaColumnRef,
   applyFormulaAutocomplete,
   formulaAutocomplete,
   formulaTokenAt,
@@ -65,7 +67,8 @@ export function FormulaField({
       const after = expr.slice(end);
       const padBefore =
         withSpace && before.length > 0 && !/\s$/.test(before) ? " " : "";
-      const padAfter = withSpace && after.length > 0 && !/^\s/.test(after) ? " " : "";
+      const padAfter =
+        withSpace && after.length > 0 && !/^\s/.test(after) ? " " : "";
       const next = `${before}${padBefore}${txt}${padAfter}${after}`;
       const newCaret = before.length + padBefore.length + txt.length;
       onExprChange(next);
@@ -134,7 +137,7 @@ export function FormulaField({
   };
 
   let status =
-    "Columns, numbers, @variables, comparisons, and functions from the palette.";
+    "Columns, numbers, @variables, np.<f>(…), a if cond else b, and/or/not, comparisons.";
   let statusClass = "formula-status muted";
   if (previewError) {
     status = previewError;
@@ -214,7 +217,7 @@ export function FormulaField({
               type="button"
               className={isSel ? "tiny-chip on" : "tiny-chip"}
               title={isSel ? "From selection" : undefined}
-              onClick={() => insertAtCaret(name)}
+              onClick={() => insertAtCaret(formulaColumnRef(name))}
             >
               {name}
             </button>
@@ -253,6 +256,22 @@ export function FormulaField({
             title={f.help}
             aria-label={f.help}
             onClick={() => insertAtCaret(f.insert, false)}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      <span className="ed-help">Python</span>
+      <div className="chip-row formula-palette" data-formula-py-palette="">
+        {FORMULA_PY_EXAMPLES.map((f) => (
+          <button
+            key={f.insert}
+            type="button"
+            className="tiny-chip"
+            title={f.help}
+            aria-label={`Insert ${f.label}`}
+            onClick={() => insertAtCaret(f.insert)}
           >
             {f.label}
           </button>

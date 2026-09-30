@@ -53,14 +53,14 @@ describe("formulaPlaceholder", () => {
         ],
         [{ name: "age_med" }],
       ),
-    ).toBe("age - @age_med");
+    ).toBe("1 if age > @age_med else 0");
   });
 
   it("falls back to a generic pattern", () => {
-    expect(formulaPlaceholder([], [])).toBe("col - @var");
+    expect(formulaPlaceholder([], [])).toBe("np.log1p(col)");
     expect(
       formulaPlaceholder([{ name: "spend", kind: "number" }], []),
-    ).toBe("spend - @spend_med");
+    ).toBe("np.log1p(spend)");
   });
 });
 
