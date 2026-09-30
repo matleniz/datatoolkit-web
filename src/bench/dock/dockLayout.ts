@@ -89,6 +89,29 @@ export function findSpot(
   return { x: 0, y: maxY };
 }
 
+/**
+ * First top-left slot within the dock's visible rows where a `w`×`h` rect
+ * fits without overlap. Returns null if no visible slot exists.
+ */
+export function findVisibleSpot(
+  layout: DockLayout,
+  cols: number,
+  rows: number,
+  w: number,
+  h: number,
+): { x: number; y: number } | null {
+  const rects = Object.values(layout).filter((r): r is DockRect => !!r);
+  const width = Math.min(w, cols);
+  const height = Math.min(h, rows);
+  for (let y = 0; y + height <= rows; y++) {
+    for (let x = 0; x + width <= cols; x++) {
+      const cand = { x, y, w: width, h: height };
+      if (!rects.some((r) => overlaps(r, cand))) return { x, y };
+    }
+  }
+  return null;
+}
+
 function clampRect(rect: DockRect, spec: DockGridSpec): DockRect {
   const w = Math.max(spec.minW, Math.min(spec.cols, Math.round(rect.w)));
   const h = Math.max(spec.minH, Math.min(MAX_ROWS, Math.round(rect.h)));
@@ -99,8 +122,16 @@ function clampRect(rect: DockRect, spec: DockGridSpec): DockRect {
 
 /**
  * Keep exactly the open `tools` in every position's layout: drop closed
- * windows, give new ones the default size at the first free slot (in `tools`
- * order, so the oldest window stays top-left).
+ * windows, give new ones their default size or fit them in the visible dock
+ * area without scroll.
+ *
+ * Sizing strategy for new windows (MAT-252):
+ * 1. Try the tool's default size in any free visible slot (y + h <= rows).
+ * 2. If no visible slot accommodates it, reduce width to the free visible
+ *    space (minimum 4 columns in bottom dock).
+ * 3. Otherwise, redistribute / rearrange open windows evenly across visible
+ *    space so every window remains visible on screen without scroll, with a
+ *    fallback to the top-right corner at minimum width.
  */
 export function syncDockLayouts(
   layouts: DockLayouts,
@@ -117,8 +148,86 @@ export function syncDockLayouts(
     for (const id of tools) {
       if (out[id]) continue;
       const size = defaultWindowSize(id, pos);
-      const { x, y } = findSpot(out, spec.cols, size.w, size.h);
-      out[id] = { x, y, w: size.w, h: size.h };
+
+      // 1. Try tool's default size in visible dock area.
+      let placed = false;
+      const visibleSpot = findVisibleSpot(
+        out,
+        spec.cols,
+        spec.rows,
+        size.w,
+        size.h,
+      );
+      if (visibleSpot) {
+        out[id] = { x: visibleSpot.x, y: visibleSpot.y, w: size.w, h: size.h };
+        placed = true;
+      }
+
+      // 2. If no visible spot, reduce width to available visible free space
+      //    (minimum 4 columns for bottom dock, minW for narrow panes).
+      if (!placed) {
+        const minW = pos === "bottom" ? Math.max(spec.minW, 4) : spec.minW;
+        for (let candidateW = size.w - 1; candidateW >= minW; candidateW--) {
+          const reducedSpot = findVisibleSpot(
+            out,
+            spec.cols,
+            spec.rows,
+            candidateW,
+            size.h,
+          );
+          if (reducedSpot) {
+            out[id] = {
+              x: reducedSpot.x,
+              y: reducedSpot.y,
+              w: candidateW,
+              h: size.h,
+            };
+            placed = true;
+            break;
+          }
+        }
+      }
+
+      // 3. Otherwise reduce/rearrange open windows so everything fits visible without scroll.
+      if (!placed) {
+        if (pos === "bottom" && tools.length > 0) {
+          const baseW = Math.floor(spec.cols / tools.length);
+          if (baseW >= spec.minW) {
+            const rem = spec.cols % tools.length;
+            let curX = 0;
+            tools.forEach((tid, i) => {
+              const itemW = baseW + (i < rem ? 1 : 0);
+              out[tid] = { x: curX, y: 0, w: itemW, h: spec.rows };
+              curX += itemW;
+            });
+            placed = true;
+          }
+        } else if (pos === "right" && tools.length > 0) {
+          const baseH = Math.floor(spec.rows / tools.length);
+          if (baseH >= spec.minH) {
+            const rem = spec.rows % tools.length;
+            let curY = 0;
+            tools.forEach((tid, i) => {
+              const itemH = baseH + (i < rem ? 1 : 0);
+              out[tid] = { x: 0, y: curY, w: spec.cols, h: itemH };
+              curY += itemH;
+            });
+            placed = true;
+          }
+        }
+
+        // Fallback: place top-right in minimum width
+        if (!placed) {
+          const fallbackW = spec.minW;
+          const fallbackH = Math.min(size.h, spec.rows);
+          out[id] = {
+            x: Math.max(0, spec.cols - fallbackW),
+            y: 0,
+            w: fallbackW,
+            h: fallbackH,
+          };
+        }
+      }
     }
     next[pos] = out;
   }

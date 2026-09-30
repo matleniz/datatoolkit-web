@@ -158,12 +158,22 @@ test("MAT-234: dock windows move and resize on a grid, layout survives reload", 
   });
 
   // Default grid: three equal windows side by side, filling the dock height.
+  // Chart (default w=6) reduces to w=4 to fit the remaining visible 4 columns.
   expect(await dockLayout(page)).toEqual({
     dist: { x: 0, y: 0, w: 4, h: 8 },
     missing: { x: 4, y: 0, w: 4, h: 8 },
     chart: { x: 8, y: 0, w: 4, h: 8 },
   });
   await expectNoOverlap(wins);
+
+  // The newly opened Chart window must be fully visible within the dock without scroll (MAT-252).
+  const dockB = await box(dock);
+  const chartB = await box(chart);
+  expect(chartB.y).toBeGreaterThanOrEqual(dockB.y - 1);
+  expect(chartB.y + chartB.height).toBeLessThanOrEqual(dockB.y + dockB.height + 2);
+  expect(chartB.x).toBeGreaterThanOrEqual(dockB.x - 1);
+  expect(chartB.x + chartB.width).toBeLessThanOrEqual(dockB.x + dockB.width + 2);
+
   await waitForGridReady(page);
   await captureFlowScreenshot(page, FLOW, "01-default-grid.png");
 
