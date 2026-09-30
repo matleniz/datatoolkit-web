@@ -3,10 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Workspace } from "../src/api/types";
 import {
   DOCK_GRID,
+  TOOL_DEFAULT_SIZES,
   applyGridLayout,
+  defaultWindowSize,
   dockRowHeight,
   emptyDockLayouts,
   findSpot,
+  findVisibleSpot,
   sanitizeDockLayouts,
   syncDockLayouts,
   toGridItems,
@@ -125,6 +128,94 @@ describe("dockLayout helpers (MAT-234)", () => {
     // bottom: 8 rows, 7 gaps of 10 px.
     expect(dockRowHeight(470, "bottom", 10)).toBe(50);
     expect(dockRowHeight(10, "bottom", 10)).toBe(24);
+  });
+
+  it("findVisibleSpot finds slots within the visible rows only", () => {
+    const two = {
+      dist: { x: 0, y: 0, w: 4, h: 8 },
+      missing: { x: 4, y: 0, w: 4, h: 8 },
+    };
+    // 6 cols wide does not fit on row 0 (only 4 cols left); row 8 is offscreen.
+    expect(findVisibleSpot(two, 12, 8, 6, 8)).toBeNull();
+    // 4 cols wide fits on row 0.
+    expect(findVisibleSpot(two, 12, 8, 4, 8)).toEqual({ x: 8, y: 0 });
+  });
+
+  describe("per-tool default sizes (MAT-252)", () => {
+    it("defaultWindowSize gives Chart a larger default size and keeps standard for others", () => {
+      expect(TOOL_DEFAULT_SIZES.chart?.bottom).toEqual({ w: 6, h: 8 });
+      expect(TOOL_DEFAULT_SIZES.chart?.right).toEqual({ w: 2, h: 6 });
+      expect(defaultWindowSize("chart", "bottom")).toEqual({ w: 6, h: 8 });
+      expect(defaultWindowSize("chart", "right")).toEqual({ w: 2, h: 6 });
+
+      // Other tools keep standard grid defaults (4x8 in bottom, 2x6 in right).
+      expect(defaultWindowSize("dist", "bottom")).toEqual({ w: 4, h: 8 });
+      expect(defaultWindowSize("compare", "bottom")).toEqual({ w: 4, h: 8 });
+      expect(defaultWindowSize("dist", "right")).toEqual({ w: 2, h: 6 });
+    });
+
+    it("syncDockLayouts opens Chart 1st at half width, then adapts cleanly as more windows open", () => {
+      // 1 window: Chart alone takes the left half (6 cols) and full height (8 rows).
+      const one = syncDockLayouts(emptyDockLayouts(), ["chart"]);
+      expect(one.bottom.chart).toEqual({ x: 0, y: 0, w: 6, h: 8 });
+
+      // 2 windows: Chart (w6) and dist (w4) fit side by side on row 0 (6+4=10 <= 12).
+      const two = syncDockLayouts(emptyDockLayouts(), ["chart", "dist"]);
+      expect(two.bottom.chart).toEqual({ x: 0, y: 0, w: 6, h: 8 });
+      expect(two.bottom.dist).toEqual({ x: 6, y: 0, w: 4, h: 8 });
+
+      // 3 windows: 3rd window cannot fit at >=4 cols in remaining 2 cols, so windows
+      // redistribute evenly to 4 cols each (full height, all visible without scroll).
+      const three = syncDockLayouts(emptyDockLayouts(), ["chart", "dist", "missing"]);
+      expect(three.bottom.chart).toEqual({ x: 0, y: 0, w: 4, h: 8 });
+      expect(three.bottom.dist).toEqual({ x: 4, y: 0, w: 4, h: 8 });
+      expect(three.bottom.missing).toEqual({ x: 8, y: 0, w: 4, h: 8 });
+
+      // 4 windows: windows redistribute evenly to 3 cols each (all visible without scroll).
+      const four = syncDockLayouts(emptyDockLayouts(), ["chart", "dist", "missing", "corr"]);
+      expect(four.bottom.chart).toEqual({ x: 0, y: 0, w: 3, h: 8 });
+      expect(four.bottom.dist).toEqual({ x: 3, y: 0, w: 3, h: 8 });
+      expect(four.bottom.missing).toEqual({ x: 6, y: 0, w: 3, h: 8 });
+      expect(four.bottom.corr).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    });
+
+    it("syncDockLayouts places Chart 3rd by reducing to visible free space (4 cols)", () => {
+      // Chart opened after dist: dist takes 4 cols (0..3), chart takes 6 cols (4..9).
+      const distThenChart = syncDockLayouts(emptyDockLayouts(), ["dist", "chart"]);
+      expect(distThenChart.bottom.dist).toEqual({ x: 0, y: 0, w: 4, h: 8 });
+      expect(distThenChart.bottom.chart).toEqual({ x: 4, y: 0, w: 6, h: 8 });
+
+      // Two standard tools take 8 cols (0..7); Chart reduces from w=6 to visible
+      // free space (w=4) so it stays completely visible on row 0 without scroll.
+      const twoThenChart = syncDockLayouts(emptyDockLayouts(), ["dist", "missing", "chart"]);
+      expect(twoThenChart.bottom.dist).toEqual({ x: 0, y: 0, w: 4, h: 8 });
+      expect(twoThenChart.bottom.missing).toEqual({ x: 4, y: 0, w: 4, h: 8 });
+      expect(twoThenChart.bottom.chart).toEqual({ x: 8, y: 0, w: 4, h: 8 });
+    });
+
+    it("syncDockLayouts places Chart 4th by rearranging all 4 windows into 3 cols each", () => {
+      // Three standard tools take all 12 cols (4x3); opening Chart 4th redistributes
+      // all 4 windows into 3 cols each (3x4 = 12 cols), visible on row 0 without scroll.
+      const fourTools = syncDockLayouts(emptyDockLayouts(), [
+        "dist",
+        "missing",
+        "corr",
+        "chart",
+      ]);
+      expect(fourTools.bottom.dist).toEqual({ x: 0, y: 0, w: 3, h: 8 });
+      expect(fourTools.bottom.missing).toEqual({ x: 3, y: 0, w: 3, h: 8 });
+      expect(fourTools.bottom.corr).toEqual({ x: 6, y: 0, w: 3, h: 8 });
+      expect(fourTools.bottom.chart).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    });
+
+    it("syncDockLayouts preserves saved/stored layouts even for Chart", () => {
+      const stored = {
+        bottom: { chart: { x: 8, y: 0, w: 4, h: 4 } },
+        right: {},
+      };
+      const synced = syncDockLayouts(stored, ["chart"]);
+      expect(synced.bottom.chart).toEqual({ x: 8, y: 0, w: 4, h: 4 });
+    });
   });
 });
 
