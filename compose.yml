@@ -1,0 +1,20 @@
+# datatoolkit: engine (HTTP API) + Studio (web), one command:
+#   docker compose up -d   ->   http://localhost:8080
+services:
+  engine:
+    image: ghcr.io/matleniz/datatoolkit-engine:latest
+    build: https://github.com/matleniz/datatoolkit.git#main
+    volumes:
+      - ${DTK_DATA:-./datatoolkit-data}:/data
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/matleniz/datatoolkit-web:latest
+    build: .
+    ports:
+      # Localhost only on purpose: the engine reads files and SQL URLs.
+      - "127.0.0.1:${DTK_PORT:-8080}:80"
+    depends_on:
+      engine:
+        condition: service_healthy
+    restart: unless-stopped

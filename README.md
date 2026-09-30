@@ -26,6 +26,24 @@ npm run dev
 Open http://127.0.0.1:5173. Override the API base with `VITE_API_URL`
 (default `/api`).
 
+## Run with Docker
+
+Engine + Studio in one command (images from GHCR):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/compose.yml -o datatoolkit.yml && docker compose -f datatoolkit.yml up -d
+```
+
+PowerShell: `curl.exe -fsSL https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/compose.yml -o datatoolkit.yml; docker compose -f datatoolkit.yml up -d`
+
+Then open http://localhost:8080 (bound to localhost only; change with
+`DTK_PORT`). Update with `docker compose -f datatoolkit.yml pull && docker
+compose -f datatoolkit.yml up -d`. Workspaces, uploads and exports live in
+`./datatoolkit-data` (override with `DTK_DATA`). Sources given as host absolute
+paths are not visible inside the container: use upload instead.
+
+From a checkout, `docker compose up -d --build` builds both images locally.
+
 ## Scripts
 
 | Script | Purpose |
