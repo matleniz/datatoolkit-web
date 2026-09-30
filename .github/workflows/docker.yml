@@ -46,11 +46,11 @@ jobs:
           import random
           random.seed(0)
           print('id,x,y,label')
-          for i in range(90000):
+          for i in range(120000):
               print(f'{i},{random.random():.6f},{random.random():.6f},{random.choice(\"abc\")}')
           " > smoke.csv
           ls -l smoke.csv
-          [ "$(stat -c %s smoke.csv)" -gt 2500000 ]
+          [ "$(stat -c %s smoke.csv)" -gt 3000000 ]
           curl -fsS -X PUT --data-binary @smoke.csv http://127.0.0.1:8080/api/uploads/smoke.csv | tee upload.json
       - name: Run dataset_overview on the upload
         run: |
