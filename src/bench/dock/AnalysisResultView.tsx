@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import type { Result } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
@@ -41,7 +41,9 @@ function DisplayControls({
   caps,
   display,
   onChange,
+  open,
 }: {
+  open: boolean;
   caps: ReturnType<typeof figureCaps>;
   display: FigureDisplay;
   onChange: (patch: Partial<FigureDisplay>) => void;
@@ -50,7 +52,12 @@ function DisplayControls({
     return null;
   }
   return (
-    <div className="result-display" role="group" aria-label="Display">
+    <div
+      className="result-display"
+      role="group"
+      aria-label="Display"
+      data-open={open ? "1" : "0"}
+    >
       {caps.sortable ? (
         <>
           <select
@@ -150,6 +157,7 @@ export function AnalysisResultView({
   const detailsOpen = state?.details === true;
   const patch = (p: ToolViewState) =>
     dispatch({ type: "PATCH_TOOL_VIEW", key: viewKey, patch: p });
+  const [displayOpen, setDisplayOpen] = useState(false);
   const select = (v: WindowView) => patch({ view: storedViewFor(result, v) });
 
   const figure = view.kind === "figure" ? result.figures[view.index] : undefined;
@@ -269,12 +277,51 @@ export function AnalysisResultView({
               ) : null}
             </div>
           ) : null}
+          {result.figures.length > 0 ? (
+            <select
+              className="result-view-select"
+              aria-label="View"
+              data-view-select=""
+              value={viewId}
+              onChange={(e) => {
+                const v = e.target.value;
+                select(
+                  v === "table"
+                    ? { kind: "table" }
+                    : { kind: "figure", index: Number(v.split(":")[1]) },
+                );
+              }}
+            >
+              {result.figures.map((f, i) => (
+                <option key={`${f.title}-${i}`} value={`figure:${i}`}>
+                  {f.title}
+                </option>
+              ))}
+              {hasTables ? <option value="table">Table</option> : null}
+            </select>
+          ) : null}
           {caps ? (
-            <DisplayControls
-              caps={caps}
-              display={display}
-              onChange={(d) => patch({ display: d })}
-            />
+            <>
+              <DisplayControls
+                caps={caps}
+                display={display}
+                onChange={(d) => patch({ display: d })}
+                open={displayOpen}
+              />
+              {caps.sortable || caps.percent || caps.log || caps.annotations ? (
+                <button
+                  type="button"
+                  className="chip result-display-toggle"
+                  data-display-toggle=""
+                  aria-label="Display options"
+                  aria-expanded={displayOpen}
+                  title="Display options"
+                  onClick={() => setDisplayOpen((o) => !o)}
+                >
+                  ⋯
+                </button>
+              ) : null}
+            </>
           ) : null}
           <span className="result-viewbar-spacer" />
           {onOpenChart ? (

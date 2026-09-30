@@ -358,12 +358,11 @@
 .dock-subchrome .dock-params {
   display: inline-flex;
   align-items: center;
-  flex-shrink: 1;
+  flex-shrink: 0;
   margin: 0;
   padding: 0;
   border: none;
   background: none;
-  min-width: 22px;
 }
 
 .dock-subchrome .dock-params-chip {
@@ -371,15 +370,11 @@
   padding: 0 5px;
   font-size: 10px;
   border-radius: 10px;
-  flex-shrink: 1;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   gap: 3px;
   white-space: nowrap;
-  max-width: 85px;
-  min-width: 22px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .dock-subchrome .dock-params-title {
@@ -392,8 +387,8 @@
 
 .dock-subchrome .dock-bound {
   margin: 0;
-  flex: 1 1 50px;
-  min-width: 40px;
+  flex: 1 1 0;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -775,6 +770,8 @@
 }
 
 .result-viewbar {
+  container-type: inline-size;
+  position: relative;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
@@ -1034,3 +1031,60 @@
 }
 
 /* Chart builder styles: ChartDock.css (MAT-240). */
+
+/* MAT-247: view choices never truncate to a letter — below the width where
+   the tabs and display controls fit, they fold into a select and a "⋯" menu. */
+.result-view-select,
+.result-display-toggle {
+  display: none;
+}
+
+.result-view-select {
+  height: 20px;
+  max-width: 140px;
+  min-width: 0;
+  border: 1px solid var(--dtk-border-strong);
+  border-radius: 4px;
+  background: var(--dtk-bg);
+  color: var(--dtk-ink);
+  font-size: 10px;
+  padding: 0 3px;
+}
+
+.result-display-toggle {
+  height: 20px;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.result-tab {
+  flex-shrink: 0;
+}
+
+@container (max-width: 560px) {
+  .result-tabs {
+    display: none;
+  }
+  .result-view-select,
+  .result-display-toggle {
+    display: inline-flex;
+  }
+  .result-display {
+    display: none;
+  }
+  .result-display[data-open="1"] {
+    display: flex;
+    flex-wrap: wrap;
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    z-index: 5;
+    padding: 6px;
+    background: var(--dtk-surface);
+    border: 1px solid var(--dtk-border-strong);
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+}
