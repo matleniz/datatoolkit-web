@@ -82,6 +82,18 @@ test.describe("MAT-241 python-style formulas", () => {
       /method calls like \.apply\(\.\.\.\) are not allowed/,
       { timeout: 20_000 },
     );
+    // Issue #12: the error sits right under the Expr field (next sibling of
+    // its wrapper, close to it), and the field is outlined in red.
+    const adjacent = expr.locator(
+      "xpath=ancestor::div[contains(@class,'formula-input-wrap')]/following-sibling::*[1]",
+    );
+    await expect(adjacent).toHaveAttribute("data-formula-status", "");
+    await expect(adjacent).toHaveClass(/err/);
+    await expect(expr).toHaveAttribute("aria-invalid", "true");
+    const exprBox = (await expr.boundingBox())!;
+    const errBox = (await err.boundingBox())!;
+    expect(errBox.y).toBeGreaterThanOrEqual(exprBox.y + exprBox.height - 1);
+    expect(errBox.y - (exprBox.y + exprBox.height)).toBeLessThan(16);
     await captureFlowScreenshot(page, FLOW, "04-engine-error.png");
   });
 });

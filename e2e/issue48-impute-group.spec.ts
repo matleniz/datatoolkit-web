@@ -41,6 +41,17 @@ test.describe("issue #48 impute group strategies", () => {
     await expect(field("by")).toHaveCount(0);
     await expect(field("fill_value")).toHaveCount(0);
 
+    // Issue #12: an engine error shows right under the Expr field.
+    const exprInput = editor.getByLabel("Expression");
+    await exprInput.fill("bmi.apply(abs)");
+    const exprErr = exprInput.locator(
+      "xpath=ancestor::div[contains(@class,'formula-input-wrap')]/following-sibling::*[1]",
+    );
+    await expect(exprErr).toHaveClass(/err/, { timeout: 20_000 });
+    await expect(exprErr).toContainText(/not allowed/);
+    await expect(exprInput).toHaveAttribute("aria-invalid", "true");
+    await exprInput.fill("");
+
     // group_interp → by (prefilled from the group_id column) + order + fallback.
     await editor
       .getByRole("button", { name: "group_interp", exact: true })

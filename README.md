@@ -127,7 +127,9 @@ a param only while every listed sibling has one of those values (e.g. impute's
 empty `x-dtk-semantic` param (e.g. `impute.by`, `ffill.by` = `group_id`) is
 prefilled when the editor opens with the frame's column whose `workspace_rows`
 `semantic` matches, only when exactly one column does. The formula palette and
-autocomplete also offer `group_mean` / `group_prev` / `group_interp`.
+autocomplete also offer `group_mean` / `group_prev` / `group_interp`. An engine error on the formula
+(`formula` and `impute(strategy=formula)`) is shown right under the Expr field,
+which gets a red outline, not at the bottom of the panel.
 
 No router: the three screens (Sources, Alignment, Workbench) are reducer
 state (`SET_SCREEN`); nginx serves `index.html` for any path.

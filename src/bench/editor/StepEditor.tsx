@@ -141,6 +141,17 @@ function kickerText(editIndex: number | undefined, stageName: string): string {
     : `Edit step v${editIndex + 1} · ${stageName}`;
 }
 
+/** True when the formula field itself shows the engine error (under Expr). */
+function errorShownInline(
+  previewError: string | null,
+  editorBlocker: string | null,
+  fields: EditorField[],
+  params: Record<string, unknown>,
+): boolean {
+  if (!previewError || editorBlocker) return false;
+  return fields.some((f) => f.widget === "formula" && fieldActive(f, params));
+}
+
 /** W2 — step editor (replaces inspector when open). */
 export function StepEditor() {
   const { editor, workspace } = useAppState();
@@ -185,6 +196,13 @@ export function StepEditor() {
     previewError ||
     (!paramsValid.ok ? paramsValid.missing : null) ||
     null;
+  // The formula field shows the engine error right under the Expr input.
+  const errorInline = errorShownInline(
+    previewError,
+    editorBlocker,
+    schemaFields,
+    editor.params,
+  );
   // Wait for schema + successful preview before Apply (slow Parkinson-sized
   // frames used to allow Apply during previewLoading — MAT-177).
   const canApply =
@@ -298,7 +316,7 @@ export function StepEditor() {
         </div>
       </div>
 
-      {(formError && !schemaError) || editorBlocker ? (
+      {((formError && !schemaError) || editorBlocker) && !errorInline ? (
         <div className="ed-error" role="alert" data-ed-disabled-reason="">
           <div>{editorBlocker || previewError || paramsValid.missing}</div>
           {needImputeCols.length > 0 ? (

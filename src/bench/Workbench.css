@@ -1165,6 +1165,13 @@
   max-width: 100%;
 }
 
+.formula-input-wrap + .formula-status {
+  margin-top: 4px;
+}
+.ed-input.formula.invalid {
+  border-color: #a3242c;
+  outline-color: #a3242c;
+}
 .formula-status {
   font-size: 12px;
 }
