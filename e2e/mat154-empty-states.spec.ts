@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -179,25 +180,31 @@ test("MAT-145: Export outputs list is scrollable at 1280x720", async ({
   expect(beforeExport.hasScrollContainer).toBe(true);
 
   const outDir = join(tmpdir(), `dtk-e2e-export-scroll-${Date.now()}`);
-  await page.getByLabel("Output directory").fill(outDir);
-  await page.getByRole("button", { name: "Export parquet + manifest" }).click();
-  await expect(page.getByLabel("Export manifest")).toBeVisible({
-    timeout: 30_000,
-  });
+  try {
+    await page.getByLabel("Output directory").fill(outDir);
+    await page.getByRole("button", { name: "Export parquet + manifest" }).click();
+    await expect(page.getByLabel("Export manifest")).toBeVisible({
+      timeout: 30_000,
+    });
 
-  const after = await scroll.evaluate((el) => {
-    const style = window.getComputedStyle(el);
-    const before = el.scrollTop;
-    el.scrollTop = el.scrollHeight;
-    return {
-      overflowY: style.overflowY,
-      hasScrollContainer:
-        style.overflowY === "auto" || style.overflowY === "scroll",
-      canScroll: el.scrollHeight > el.clientHeight + 1,
-      scrollDelta: el.scrollTop - before,
-    };
-  });
-  expect(after.hasScrollContainer).toBe(true);
-  expect(after.canScroll).toBe(true);
-  expect(after.scrollDelta).toBeGreaterThan(0);
+    const after = await scroll.evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      const before = el.scrollTop;
+      el.scrollTop = el.scrollHeight;
+      return {
+        overflowY: style.overflowY,
+        hasScrollContainer:
+          style.overflowY === "auto" || style.overflowY === "scroll",
+        canScroll: el.scrollHeight > el.clientHeight + 1,
+        scrollDelta: el.scrollTop - before,
+      };
+    });
+    expect(after.hasScrollContainer).toBe(true);
+    expect(after.canScroll).toBe(true);
+    expect(after.scrollDelta).toBeGreaterThan(0);
+  } finally {
+    if (process.env.DTK_E2E_KEEP !== "1") {
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  }
 });
