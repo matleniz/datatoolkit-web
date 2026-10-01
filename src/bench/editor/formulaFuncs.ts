@@ -169,17 +169,45 @@ const BASE_FUNCS: FormulaPaletteItem[] = [
   },
 ];
 
-/** Palette functions, each with its numpy form in the help text. */
-export const FORMULA_FUNCS: FormulaPaletteItem[] = BASE_FUNCS.map((f) => {
-  const numpy = `np.${NUMPY_NAME[f.label] ?? f.label}`;
-  const [sig, ...desc] = f.help.split(" — ");
-  const npSig = `${numpy}${sig!.slice(f.label.length)}`;
-  return {
-    ...f,
-    numpy,
-    help: [`${sig} · ${npSig}`, ...desc].join(" — "),
-  };
-});
+/**
+ * Per-entity functions (datatoolkit-issues#8): computed from the rows of the
+ * same `by` entity in the frame; the only ones taking keywords, no numpy form.
+ */
+const GROUP_FUNCS: FormulaPaletteItem[] = [
+  {
+    insert: "group_mean(",
+    label: "group_mean",
+    help: "group_mean(x, by=col) — mean of x over the row's entity",
+    kind: "func",
+  },
+  {
+    insert: "group_prev(",
+    label: "group_prev",
+    help: "group_prev(x, by=col, order=expr) — the entity's last earlier observed x",
+    kind: "func",
+  },
+  {
+    insert: "group_interp(",
+    label: "group_interp",
+    help: "group_interp(x, by=col, order=expr) — x interpolated linearly between the entity's neighbours",
+    kind: "func",
+  },
+];
+
+/** Palette functions, each with its numpy form in the help text when it has one. */
+export const FORMULA_FUNCS: FormulaPaletteItem[] = [
+  ...BASE_FUNCS.map((f) => {
+    const numpy = `np.${NUMPY_NAME[f.label] ?? f.label}`;
+    const [sig, ...desc] = f.help.split(" — ");
+    const npSig = `${numpy}${sig!.slice(f.label.length)}`;
+    return {
+      ...f,
+      numpy,
+      help: [`${sig} · ${npSig}`, ...desc].join(" — "),
+    };
+  }),
+  ...GROUP_FUNCS,
+];
 
 /** Insertable Python-style examples (MAT-241). */
 export const FORMULA_PY_EXAMPLES: FormulaPaletteItem[] = [
@@ -291,7 +319,7 @@ function collect<T>(
   }
 }
 
-/** Ranked autocomplete candidates for the current token. */
+/** Ranked autocomplete candidates (columns, @variables, then functions). */
 export function formulaAutocomplete(
   token: string,
   columns: string[],
@@ -346,6 +374,13 @@ export function formulaAutocomplete(
       `@${v}`.toLowerCase().startsWith(lower)
         ? `@${v}`
         : null,
+    out,
+    limit,
+  );
+  if (out.length >= limit) return out;
+  collect(
+    FORMULA_FUNCS,
+    (f) => (f.label.startsWith(lower) ? f.insert : null),
     out,
     limit,
   );

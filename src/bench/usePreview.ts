@@ -21,6 +21,7 @@ import { PAGE_DEFAULT, rowsPageSize } from "./grid/columnWindow";
 import { resolveOp, toEngineParams } from "./presets";
 import {
   coerceImputeFillValue,
+  dropInactiveParams,
   stepEditorBlockers,
   stepParamsValid,
   stripNullParams,
@@ -56,14 +57,15 @@ function stepKey(step: Step | null): string | null {
   });
 }
 
+/** Editor params → step params: params whose `x-dtk-when` fails are not sent. */
 function engineParams(
   op: string,
   params: Record<string, unknown>,
   columns: WorkspaceRowsColumn[],
+  fields: EditorField[],
 ) {
-  return stripNullParams(
-    coerceImputeFillValue(toEngineParams(op, params), columns),
-  );
+  const active = dropInactiveParams(toEngineParams(op, params), fields);
+  return stripNullParams(coerceImputeFillValue(active, columns));
 }
 
 /** preview_step only returns diffs — fetch the after-frame and merge by _rid. */
@@ -139,7 +141,7 @@ export function usePreview(input: PreviewInput) {
     const prev = steps[steps.length - 1];
     return stepEditorBlockers(
       resolveOp(editor.op),
-      engineParams(editor.op, editor.params, columns),
+      engineParams(editor.op, editor.params, columns, schemaFields),
       editor.target,
       {
         availableColumns: columns.map((c) => c.name),
@@ -156,6 +158,7 @@ export function usePreview(input: PreviewInput) {
     isLatest,
     schemaLoading,
     schemaError,
+    schemaFields,
     columns,
     profiles,
     workspace?.steps,
@@ -176,7 +179,7 @@ export function usePreview(input: PreviewInput) {
     ) {
       params = { ...params, variables };
     }
-    const engine = engineParams(editor.op, params, columns);
+    const engine = engineParams(editor.op, params, columns, schemaFields);
     if (!stepParamsValid(engineOp, engine, schemaFields).ok) return null;
     return { op: engineOp, target: editor.target, params: engine };
   }, [

@@ -12,11 +12,13 @@ import {
   defaultParams,
   fieldValuePresent,
   filterColumnsByDtype,
+  prefillSemanticParams,
   resolveSchemaProp,
+  schemaToFields,
 } from "./schemaFields";
 
 type Params = Record<string, unknown>;
-type Column = { name: string; kind: ColumnKind };
+type Column = { name: string; kind: ColumnKind; semantic?: string };
 
 /** UI alias ops → engine op (map_value is a one-value standardize_text). */
 const OP_ALIAS: Record<string, string> = { map_value: "standardize_text" };
@@ -126,17 +128,21 @@ function withDuplicateOrder(p: Params, columns: Column[]): Params {
   return id ? { ...p, sort_by: [id.name] } : { ...p, keep: "none", sort_by: null };
 }
 
-/** Editor params once the op's schema has loaded: defaults, then the preset. */
+/**
+ * Editor params once the op's schema has loaded: defaults, then the preset,
+ * then the `x-dtk-semantic` prefill of the params still empty.
+ */
 export function seedEditorParams(
   schema: JsonSchema,
   op: string,
   preset: Params,
   columns: Column[],
 ): Params {
-  const params = {
-    ...defaultParams(schema, op),
-    ...toEngineParams(op, preset, schema),
-  };
+  const params = prefillSemanticParams(
+    { ...defaultParams(schema, op), ...toEngineParams(op, preset, schema) },
+    schemaToFields(schema, op),
+    columns,
+  );
   return op === "drop_duplicates" ? withDuplicateOrder(params, columns) : params;
 }
 

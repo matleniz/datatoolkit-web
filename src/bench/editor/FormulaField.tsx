@@ -214,7 +214,7 @@ export function FormulaField({
             id="formula-suggest"
             role="listbox"
             className="formula-suggest"
-            aria-label="Column and variable suggestions"
+            aria-label="Formula suggestions"
           >
             {suggestions.map((s, i) => (
               <li key={s} role="option" aria-selected={i === activeIdx}>

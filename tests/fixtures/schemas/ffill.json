@@ -22,11 +22,28 @@
         }
       ],
       "default": null,
-      "description": "Columns to fill; default all but sort_by",
+      "description": "Columns to fill; default all but sort_by and by",
       "title": "Columns",
       "x-dtk-dtype": "any",
       "x-dtk-source": "step",
       "x-dtk-widget": "columns"
+    },
+    "by": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Entity column (e.g. patient_id): carry values only within each entity",
+      "title": "By",
+      "x-dtk-dtype": "any",
+      "x-dtk-semantic": "group_id",
+      "x-dtk-source": "step",
+      "x-dtk-widget": "column"
     },
     "limit": {
       "anyOf": [

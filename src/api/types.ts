@@ -34,6 +34,10 @@ export interface JsonSchema {
   "x-dtk-widget"?: "columns" | "column";
   "x-dtk-source"?: string;
   "x-dtk-dtype"?: "any" | "numeric";
+  /** Sibling param → value or values for which this param applies. */
+  "x-dtk-when"?: Record<string, unknown>;
+  /** Column `semantic` (e.g. `group_id`) a front may prefill this param from. */
+  "x-dtk-semantic"?: string;
   [key: string]: unknown;
 }
 
@@ -289,6 +293,8 @@ export interface WorkspaceRowsColumn {
   name: string;
   dtype: string;
   kind: ColumnKind;
+  /** Engine `semantic_type` (e.g. `group_id`); absent on older engines. */
+  semantic?: string;
 }
 
 export type WorkspaceRow = Record<string, JsonValue> & { _rid: number };

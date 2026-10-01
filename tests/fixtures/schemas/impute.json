@@ -15,12 +15,16 @@
     },
     "strategy": {
       "default": "median",
-      "description": "Fill value learned on train: median / mean (numeric), most_frequent (any), constant (fill_value)",
+      "description": "Fill value learned on train: median / mean (numeric), most_frequent (any), constant (fill_value); formula: the value of expr on the same row (one numeric column, nothing learned); group_mean / group_prev (last earlier value, any type) / group_interp (linear between neighbours): from the same `by` entity's rows of the frame being filled",
       "enum": [
         "median",
         "mean",
         "most_frequent",
-        "constant"
+        "constant",
+        "formula",
+        "group_mean",
+        "group_prev",
+        "group_interp"
       ],
       "title": "Strategy",
       "type": "string"
@@ -42,7 +46,97 @@
       ],
       "default": null,
       "description": "strategy \"constant\": the value; default \"MISSING\" for non-numeric columns, 0 for numeric ones",
-      "title": "Fill Value"
+      "title": "Fill Value",
+      "x-dtk-when": {
+        "strategy": "constant"
+      }
+    },
+    "expr": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "strategy \"formula\": expression over other columns (formula syntax, no @variables); a row where it is undefined stays missing",
+      "title": "Expr",
+      "x-dtk-when": {
+        "strategy": "formula"
+      }
+    },
+    "by": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Group strategies: entity column (e.g. patient_id)",
+      "title": "By",
+      "x-dtk-dtype": "any",
+      "x-dtk-semantic": "group_id",
+      "x-dtk-source": "step",
+      "x-dtk-when": {
+        "strategy": [
+          "group_mean",
+          "group_prev",
+          "group_interp"
+        ]
+      },
+      "x-dtk-widget": "column"
+    },
+    "order": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "group_prev / group_interp: order of the entity's rows (e.g. age, a date)",
+      "title": "Order",
+      "x-dtk-dtype": "any",
+      "x-dtk-source": "step",
+      "x-dtk-when": {
+        "strategy": [
+          "group_prev",
+          "group_interp"
+        ]
+      },
+      "x-dtk-widget": "column"
+    },
+    "fallback": {
+      "anyOf": [
+        {
+          "enum": [
+            "median",
+            "mean",
+            "most_frequent"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Group strategies: statistic learned on train for the cells the entity cannot fill (no observed row / neighbour); none = left missing",
+      "title": "Fallback",
+      "x-dtk-when": {
+        "strategy": [
+          "group_mean",
+          "group_prev",
+          "group_interp"
+        ]
+      }
     },
     "add_indicator": {
       "default": false,
