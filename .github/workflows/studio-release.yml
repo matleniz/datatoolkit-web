@@ -1,0 +1,47 @@
+name: studio-release
+
+# Studio's build for the no-Docker launcher (launcher/, dtk-studio): on every
+# push to main, `studio-dist.zip` + its `.sha256` replace the assets of the
+# rolling release `studio-latest`, whose tag moves to the pushed commit.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: studio-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Pack studio-dist.zip
+        run: python3 scripts/pack-studio-dist.py dist release
+      - name: Publish to the studio-latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sha=$(cut -d' ' -f1 release/studio-dist.zip.sha256)
+          notes="Studio build of ${GITHUB_SHA} (studio-dist.zip sha256 ${sha}), used by the no-Docker launcher (launcher/, dtk-studio). Replaced on every push to main."
+          git tag -f studio-latest "$GITHUB_SHA"
+          git push -f origin refs/tags/studio-latest
+          if gh release view studio-latest >/dev/null 2>&1; then
+            gh release upload studio-latest release/studio-dist.zip release/studio-dist.zip.sha256 --clobber
+            gh release edit studio-latest --title "Studio (latest main build)" --notes "$notes"
+          else
+            gh release create studio-latest release/studio-dist.zip release/studio-dist.zip.sha256 \
+              --title "Studio (latest main build)" --notes "$notes" --latest=false
+          fi

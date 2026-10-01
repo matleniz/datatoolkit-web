@@ -1,14 +1,20 @@
 #!/bin/sh
-# datatoolkit launcher (macOS / Linux): engine + Studio with Docker, one command.
+# datatoolkit launcher (macOS / Linux): engine + Studio, one command. With
+# Docker when it is usable, else (or with --uv) without it: uv runs the
+# dtk-studio launcher (launcher/), one local process, installing uv if needed.
 #
 #   curl -fsSL https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/datatoolkit.sh | sh
 #   curl -fsSL .../scripts/datatoolkit.sh | sh -s -- stop
 #
-# Commands: start (default) | stop | update | uninstall [--purge] | help
-# Env: DTK_PORT (8080), DTK_DATA (<install dir>/datatoolkit-data), DTK_HOME
-# (install dir, ~/datatoolkit), DTK_NO_OPEN=1 (do not open the browser),
-# DTK_TIMEOUT (seconds to wait for the app, 300), DTK_COMPOSE_SRC (URL or local
-# path of the compose.yml to install; default: this repo's main branch).
+# Commands: start (default) | stop | update | uninstall [--purge] | help;
+# option --uv (no Docker; start / update only, stop is Ctrl+C).
+# Env: DTK_PORT (8080), DTK_DATA (<install dir>/datatoolkit-data, Docker mode),
+# DTK_INSTALL_DIR (install dir, ~/datatoolkit), DTK_NO_OPEN=1 (do not open the
+# browser), DTK_TIMEOUT (seconds to wait for the app, 300), DTK_COMPOSE_SRC
+# (URL or local path of the compose.yml to install; default: this repo's main
+# branch), DTK_LAUNCHER_SRC (uv mode: what `uv tool run --from` gets; default:
+# this repo's main branch, launcher/). DTK_HOME is the engine's data home
+# (uv mode, ~/.datatoolkit), not the install dir.
 #
 # Everything runs inside main(), called on the last line, so a truncated
 # download through `curl | sh` never runs half a script.
@@ -18,6 +24,9 @@ set -eu
 DOCKER_URL="https://docs.docker.com/get-started/get-docker/"
 DEFAULT_COMPOSE_SRC="https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/compose.yml"
 LAUNCHER_URL="https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/datatoolkit.sh"
+DEFAULT_LAUNCHER_SRC="git+https://github.com/matleniz/datatoolkit-web#subdirectory=launcher"
+UV_INSTALLER_URL="https://astral.sh/uv/install.sh"
+UV_DOCS_URL="https://docs.astral.sh/uv/getting-started/installation/"
 PROJECT=datatoolkit
 
 say() { printf '%s\n' "$*"; }
@@ -29,13 +38,16 @@ die() {
 
 usage() {
   cat <<'EOF'
-Usage: datatoolkit.sh [start|stop|update|uninstall [--purge]|help]
+Usage: datatoolkit.sh [start|stop|update|uninstall [--purge]|help] [--uv]
 
   start      start engine + Studio and open it in the browser (default)
   stop       stop the containers (data is kept)
   update     pull the latest images and restart
   uninstall  remove the containers, images and compose file; keeps your data
              unless --purge is given
+  --uv       run without Docker, in this terminal (Ctrl+C stops it); used
+             automatically when Docker is missing or not running. `update --uv`
+             fetches the latest launcher and Studio build.
 
 Piped form: curl -fsSL <url>/datatoolkit.sh | sh -s -- stop
 EOF
@@ -48,10 +60,7 @@ env_file_value() {
 }
 
 resolve_settings() {
-  DIR=${DTK_HOME:-$HOME/datatoolkit}
-  if [ -e "$DIR/.git" ]; then
-    die "$DIR is a git checkout, not a datatoolkit install dir. Set DTK_HOME to another directory."
-  fi
+  DIR=${DTK_INSTALL_DIR:-$HOME/datatoolkit}
   PORT=${DTK_PORT:-}
   DATA=${DTK_DATA:-}
   if [ -d "$DIR" ]; then
@@ -71,23 +80,99 @@ resolve_settings() {
   CHECK_URL="http://127.0.0.1:$PORT"
 }
 
-check_docker() {
+# Docker mode only: the uv mode never touches the install dir.
+check_install_dir() {
+  if [ -e "$DIR/.git" ]; then
+    die "$DIR is a git checkout, not a datatoolkit install dir. Set DTK_INSTALL_DIR to another directory."
+  fi
+}
+
+# Why Docker is unusable: missing | compose | permission | stopped; empty if usable.
+docker_problem() {
   if ! command -v docker >/dev/null 2>&1; then
-    die "Docker is not installed. Install Docker Desktop (macOS) or Docker Engine (Linux): $DOCKER_URL
-Then run this command again."
-  fi
-  if ! docker compose version >/dev/null 2>&1 </dev/null; then
-    die "Docker is installed but the 'docker compose' plugin is missing.
-Install Docker Compose v2: https://docs.docker.com/compose/install/"
-  fi
-  if ! err=$(docker info 2>&1 >/dev/null </dev/null); then
+    echo missing
+  elif ! docker compose version >/dev/null 2>&1 </dev/null; then
+    echo compose
+  elif ! err=$(docker info 2>&1 >/dev/null </dev/null); then
     case $err in
-      *"permission denied"*)
-        die "Docker is running but your user may not use it (permission denied).
-Add yourself to the docker group (sudo usermod -aG docker \"\$USER\"), log out and back in, then run this again." ;;
+      *"permission denied"*) echo permission ;;
+      *) echo stopped ;;
     esac
-    die "Docker is installed but not running. Start Docker Desktop (or the docker service: sudo systemctl start docker), wait until it is ready, then run this command again."
   fi
+}
+
+check_docker() {
+  case $(docker_problem) in
+    missing)
+      die "Docker is not installed. Install Docker Desktop (macOS) or Docker Engine (Linux): $DOCKER_URL
+Then run this command again (or run without Docker: add --uv)." ;;
+    compose)
+      die "Docker is installed but the 'docker compose' plugin is missing.
+Install Docker Compose v2: https://docs.docker.com/compose/install/" ;;
+    permission)
+      die "Docker is running but your user may not use it (permission denied).
+Add yourself to the docker group (sudo usermod -aG docker \"\$USER\"), log out and back in, then run this again." ;;
+    stopped)
+      die "Docker is installed but not running. Start Docker Desktop (or the docker service: sudo systemctl start docker), wait until it is ready, then run this command again." ;;
+  esac
+}
+
+# Use the uv mode? Yes with --uv, or (with a notice) when Docker is unusable.
+want_uv() {
+  [ "$UV_MODE" = 1 ] && return 0
+  case $(docker_problem) in
+    '') return 1 ;;
+    missing) why="Docker is not installed" ;;
+    compose) why="Docker has no 'docker compose' plugin" ;;
+    permission) why="Docker refuses your user (permission denied)" ;;
+    *) why="Docker is not running" ;;
+  esac
+  say "$why: starting datatoolkit without Docker (uv mode; pass --uv to skip this check)."
+  return 0
+}
+
+# Sets UV to a usable uv binary: on PATH, or where Astral's installer puts it.
+find_uv() {
+  for c in "$(command -v uv 2>/dev/null || true)" "${UV_INSTALL_DIR:+$UV_INSTALL_DIR/uv}" \
+    "${XDG_BIN_HOME:-$HOME/.local/bin}/uv" "$HOME/.cargo/bin/uv"; do
+    if [ -n "$c" ] && [ -x "$c" ]; then
+      UV=$c
+      return 0
+    fi
+  done
+  return 1
+}
+
+ensure_uv() {
+  find_uv && return 0
+  say "Installing uv (Astral's Python package manager) into your user directory..."
+  tmp=$(mktemp)
+  fetch "$UV_INSTALLER_URL" "$tmp" || die "Could not download the uv installer from $UV_INSTALLER_URL."
+  if ! sh "$tmp" </dev/null; then
+    rm -f "$tmp"
+    die "The uv installer failed. Install uv by hand ($UV_DOCS_URL), then run this again."
+  fi
+  rm -f "$tmp"
+  find_uv || die "uv was installed but cannot be found. Open a new terminal and run this again."
+}
+
+# Run dtk-studio (Studio + engine, one process) in the foreground through uv.
+# `update` also refreshes uv's copy of the launcher and the Studio build.
+run_uv() { # run_uv start|update
+  ensure_uv
+  src=${DTK_LAUNCHER_SRC:-$DEFAULT_LAUNCHER_SRC}
+  mode=$1
+  set -- --port "$PORT"
+  if [ "${DTK_NO_OPEN:-}" = 1 ]; then
+    set -- "$@" --no-open
+  fi
+  if [ "$mode" = update ]; then
+    set -- --refresh --from "$src" dtk-studio "$@" --refresh
+  else
+    set -- --from "$src" dtk-studio "$@"
+  fi
+  say "Starting datatoolkit with uv (the first launch takes about a minute: Python + dependencies)..."
+  exec "$UV" tool run "$@" </dev/null
 }
 
 compose() {
@@ -178,18 +263,25 @@ bring_up() {
 }
 
 cmd_start() {
-  check_docker
+  if want_uv; then
+    run_uv start
+  fi
+  check_install_dir
   install_compose missing
   bring_up
 }
 
 cmd_update() {
-  check_docker
+  if want_uv; then
+    run_uv update
+  fi
+  check_install_dir
   install_compose force
   bring_up
 }
 
 cmd_stop() {
+  check_install_dir
   check_docker
   [ -f "$DIR/compose.yml" ] || die "Nothing to stop: datatoolkit is not installed in $DIR."
   compose stop
@@ -202,6 +294,7 @@ cmd_uninstall() {
     '' | --purge) ;;
     *) die "Unknown option '$purge' (did you mean --purge?)." ;;
   esac
+  check_install_dir
   check_docker
   if [ -f "$DIR/compose.yml" ]; then
     compose down --rmi all --remove-orphans || die "Could not remove the containers."
@@ -221,8 +314,25 @@ cmd_uninstall() {
 }
 
 main() {
-  cmd=${1:-start}
-  [ $# -gt 0 ] && shift
+  UV_MODE=0
+  cmd=
+  opt=
+  for arg in "$@"; do
+    case $arg in
+      --uv) UV_MODE=1 ;;
+      *)
+        if [ -z "$cmd" ]; then
+          cmd=$arg
+        elif [ -z "$opt" ]; then
+          opt=$arg
+        else
+          usage >&2
+          exit 2
+        fi
+        ;;
+    esac
+  done
+  cmd=${cmd:-start}
   case $cmd in
     -h | --help | help)
       usage
@@ -234,12 +344,16 @@ main() {
       exit 2
       ;;
   esac
+  if [ "$UV_MODE" = 1 ] && { [ "$cmd" = stop ] || [ "$cmd" = uninstall ]; }; then
+    die "In uv mode datatoolkit runs in its terminal: Ctrl+C (or closing that window) stops it.
+Its data stays in ${DTK_HOME:-$HOME/.datatoolkit}; 'uv cache clean' frees uv's downloads."
+  fi
   resolve_settings
   case $cmd in
     start) cmd_start ;;
     stop) cmd_stop ;;
     update) cmd_update ;;
-    uninstall) cmd_uninstall "${1:-}" ;;
+    uninstall) cmd_uninstall "$opt" ;;
   esac
 }
 
