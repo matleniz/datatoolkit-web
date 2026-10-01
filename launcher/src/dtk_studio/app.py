@@ -39,7 +39,8 @@ class SPAStaticFiles(StaticFiles):
             response = None
         if response is not None and response.status_code != 404:
             return response
-        if path == "api" or path.startswith("api/"):
+        # Starlette hands over an OS path here ("api\\x" on Windows).
+        if path.replace(os.sep, "/").split("/", 1)[0] == "api":
             raise HTTPException(status_code=404)
         return await super().get_response("index.html", scope)
 
