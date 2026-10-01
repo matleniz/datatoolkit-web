@@ -1,11 +1,11 @@
 import { useEffect } from "react";
+import { apiClient } from "../../api/client";
 import type { ColumnKind, JsonValue } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { FormulaField } from "./FormulaField";
 import { formatLearnedState } from "../format";
-import { isNumericKind } from "../kinds";
 import { targetColumnOf } from "../left/datasetSource";
-import { resolveOp, toEngineParams } from "../presets";
+import { pickerPreset, resolveOp, toEngineParams } from "../presets";
 import { Chips } from "../Chips";
 import { fieldControl } from "../fieldControl";
 import {
@@ -25,48 +25,115 @@ import {
 } from "../stages";
 import { useWorkbenchData } from "../WorkbenchData";
 
-const WHAT: Record<string, string> = {
-  replace_sentinels:
-    "Turns placeholder values such as -999 or \"N/A\" into real missing values.",
-  impute:
-    "Fills missing values with a statistic learned on train. The same value fills test.",
-  onehot:
-    "One 0/1 column per train category. A test category never seen in train becomes all zeros.",
-  standardize_text:
-    "Strips spaces and/or lowercases so spelling variants become one category. Optionally unify separators (- _ .) into spaces.",
-  to_numeric:
-    "Parses text numbers with currency symbols, thousands / decimal separators, and optional % into floats.",
-  extract:
-    "Pulls named regex groups from a text column into new typed columns.",
-  drop_high_missing:
-    "Drops columns whose train missing fraction exceeds a threshold. The same columns are dropped on test.",
-  formula:
-    "Your own column from an expression over columns, numbers, functions and @variables.",
-  polynomial:
-    "Expand numeric columns into polynomial features (readable names like a^2, a*b).",
-  power_transform:
-    "Yeo-Johnson / Box-Cox power map; lambdas learned on train.",
-  quantile_transform:
-    "Map values to a uniform or normal distribution using train quantiles.",
-  spline:
-    "Expand numeric columns into B-spline basis functions (knots learned on train).",
-  drop_columns: "Removes columns from the frames the step applies to.",
-  drop_duplicates:
-    "Removes rows identical on the subset. keep first/last requires sort_by.",
-  clip: "Caps values at percentiles learned on train.",
-  scale: "Standard / robust / min-max scaling; statistics come from train.",
-  rename: "Renames columns.",
-  cast: "Converts columns to another type.",
-  ordinal: "Replaces each category by its rank in the order you set.",
-  log1p: "Replaces x by log(1 + x).",
-  parse_dates: "Parses text into dates.",
-  filter_rows:
-    "Keep rows matching conditions (e.g. column > value or column not missing).",
-};
+const opLabel = (op: string) =>
+  op.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+/** Step picker: one button per op, grouped by stage, seeded from the selection. */
+function OpPicker() {
+  const { workspace, selection } = useAppState();
+  const dispatch = useAppDispatch();
+  const { columns, profiles, transforms } = useWorkbenchData();
+
+  const open = async (op: string) => {
+    const selected = selection.columns.flatMap(
+      (name) => columns.find((c) => c.name === name) ?? [],
+    );
+    const target = workspace ? targetColumnOf(workspace) : null;
+    // A schema error is shown by the editor itself: open it unseeded.
+    const schema = await apiClient.transformSchema(op).catch(() => null);
+    const params = schema
+      ? toEngineParams(op, pickerPreset(schema, op, selected, target, profiles), schema)
+      : {};
+    dispatch({ type: "OPEN_EDITOR", op, params });
+  };
+
+  return (
+    <aside className="step-editor" aria-label="Step editor" data-owner="W2">
+      <div className="ed-head">
+        <span className="ed-serif">Add a step</span>
+        <button
+          type="button"
+          className="link-btn"
+          onClick={() => dispatch({ type: "CLOSE_EDITOR" })}
+        >
+          Cancel
+        </button>
+      </div>
+      <p className="ed-help">
+        Pick a transform. You set every parameter before anything is applied.
+      </p>
+      {STAGES.map((st) => {
+        const ops = Object.keys(OP_STAGE).filter(
+          (k) => OP_STAGE[k] === st.id && k !== "map_value",
+        );
+        if (!ops.length) return null;
+        return (
+          <div key={st.id} className="picker-group">
+            <div className="picker-label">
+              <span className="picker-dot" style={{ background: st.color }} />
+              {st.label}
+            </div>
+            <div className="picker-grid">
+              {ops.map((op) => {
+                const info = transforms.find((t) => t.op === op);
+                return (
+                  <button
+                    key={op}
+                    type="button"
+                    className={op === "formula" ? "picker-op formula" : "picker-op"}
+                    title={info?.description ?? ""}
+                    onClick={() => void open(op)}
+                  >
+                    {info?.title ?? opLabel(op)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </aside>
+  );
+}
+
+/** "Learned on train" box text for the current editor state. */
+function learnedText(
+  fits: boolean,
+  state: {
+    preview: { state: Record<string, JsonValue> } | null;
+    schemaError: string | null;
+    schemaLoading: boolean;
+    paramsOk: boolean;
+    editorBlocker: string | null;
+    previewLoading: boolean;
+  },
+): string {
+  if (!fits) return "Not fitted: nothing is learned on train";
+  if (state.preview) return formatLearnedState(state.preview.state);
+  if (state.schemaError) return "Fix the schema error to see what is learned.";
+  if (state.schemaLoading) return "Loading parameters…";
+  if (state.paramsOk && state.editorBlocker) return state.editorBlocker;
+  if (state.paramsOk && state.previewLoading) return "Fitting on train…";
+  return "Complete the parameters to see what is learned.";
+}
+
+/** Why Apply is disabled, for its tooltip. */
+function applyTitle(
+  formError: string | null,
+  schemaLoading: boolean,
+  previewLoading: boolean,
+  isLatest: boolean,
+): string {
+  if (formError) return formError;
+  if (schemaLoading) return "Loading parameters…";
+  if (previewLoading) return "Waiting for preview…";
+  if (!isLatest) return "Go back to the latest version first.";
+  return "Complete the parameters";
+}
 
 /** W2 — step editor (replaces inspector when open). */
 export function StepEditor() {
-  const { editor, workspace, selection } = useAppState();
+  const { editor, workspace } = useAppState();
   const dispatch = useAppDispatch();
   const {
     columns,
@@ -86,182 +153,12 @@ export function StepEditor() {
   } = useWorkbenchData();
 
   if (!editor) return null;
-
-  if (!editor.op) {
-    return (
-      <aside className="step-editor" aria-label="Step editor" data-owner="W2">
-        <div className="ed-head">
-          <span className="ed-serif">Add a step</span>
-          <button
-            type="button"
-            className="link-btn"
-            onClick={() => dispatch({ type: "CLOSE_EDITOR" })}
-          >
-            Cancel
-          </button>
-        </div>
-        <p className="ed-help">
-          Pick a transform. You set every parameter before anything is applied.
-        </p>
-        {STAGES.map((st) => {
-          const ops = Object.keys(OP_STAGE).filter(
-            (k) => OP_STAGE[k] === st.id && k !== "map_value",
-          );
-          if (!ops.length) return null;
-          return (
-            <div key={st.id} className="picker-group">
-              <div className="picker-label">
-                <span
-                  className="picker-dot"
-                  style={{ background: st.color }}
-                />
-                {st.label}
-              </div>
-              <div className="picker-grid">
-                {ops.map((op) => {
-                  const info = transforms.find((t) => t.op === op);
-                  const title =
-                    info?.title ??
-                    op.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-                  const sel1 = selection.columns[0];
-                  const preset: Record<string, unknown> = {};
-                  const target = workspace ? targetColumnOf(workspace) : null;
-                  if (target) {
-                    if (
-                      [
-                        "select_k_best",
-                        "select_from_model",
-                        "drop_missing_target",
-                        "drop_high_missing",
-                        "drop_low_variance",
-                        "drop_correlated",
-                        "pca",
-                        "group_agg",
-                      ].includes(op)
-                    ) {
-                      preset.target = target;
-                    }
-                  }
-                  if (sel1) {
-                    const pr = profiles.get(sel1);
-                    const isNum = pr ? isNumericKind(pr.kind) : false;
-                    if (
-                      [
-                        "impute",
-                        "onehot",
-                        "clip",
-                        "log1p",
-                        "parse_dates",
-                        "standardize_text",
-                        "replace_sentinels",
-                        "to_numeric",
-                        "extract",
-                      ].includes(op)
-                    ) {
-                      preset.column = sel1;
-                      if (op === "replace_sentinels") preset.values = [-999];
-                      if (op === "to_numeric" && pr?.currency_as_text) {
-                        const fmt = pr.currency_as_text;
-                        preset.decimal = fmt.decimal;
-                        preset.thousands = fmt.thousands;
-                        preset.percent = fmt.percent;
-                      }
-                    }
-                    // Seed ordinal from the active column even when kind is not
-                    // yet "text" so + Step does not require a second chip click.
-                    if (op === "ordinal") {
-                      preset.column = sel1;
-                    }
-                    if ((op === "bin" || op === "cyclical") && isNum) {
-                      preset.column = sel1;
-                    }
-                    if (
-                      op === "scale" ||
-                      op === "drop_columns" ||
-                      op === "impute_knn" ||
-                      op === "impute_iterative" ||
-                      op === "interactions" ||
-                      op === "polynomial" ||
-                      op === "power_transform" ||
-                      op === "quantile_transform" ||
-                      op === "spline" ||
-                      op === "align_to_train"
-                    ) {
-                      preset.columns = selection.columns.slice();
-                    }
-                    if (op === "ffill") {
-                      preset.sort_by = sel1;
-                    }
-                    if (op === "group_agg") {
-                      preset.group = sel1;
-                      if (selection.columns.length > 1) {
-                        preset.value = selection.columns[1];
-                      }
-                    }
-                    if (op === "drop_missing_target" && !preset.target) {
-                      preset.target = sel1;
-                    }
-                    if (op === "rename" || op === "cast") {
-                      preset.column = sel1;
-                    }
-                    if (op === "formula") preset.expr = sel1;
-                    if (op === "filter_rows") {
-                      const pr = profiles.get(sel1);
-                      const isNum = pr ? isNumericKind(pr.kind) : false;
-                      preset.conditions = [
-                        {
-                          column: sel1,
-                          op: isNum ? "gt" : "notna",
-                          value: isNum ? 0 : null,
-                        },
-                      ];
-                      preset.combine = "and";
-                    }
-                  }
-                  if (op === "filter_rows" && !preset.conditions) {
-                    const col = columns[0]?.name ?? "";
-                    preset.conditions = [
-                      {
-                        column: col,
-                        op: "gt",
-                        value: 0,
-                      },
-                    ];
-                    preset.combine = "and";
-                  }
-                  return (
-                    <button
-                      key={op}
-                      type="button"
-                      className={
-                        op === "formula" ? "picker-op formula" : "picker-op"
-                      }
-                      title={info?.description ?? WHAT[op] ?? ""}
-                      onClick={() =>
-                        dispatch({
-                          type: "OPEN_EDITOR",
-                          op,
-                          params: toEngineParams(op, preset),
-                        })
-                      }
-                    >
-                      {title}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </aside>
-    );
-  }
+  if (!editor.op) return <OpPicker />;
 
   const op = resolveOp(editor.op);
   const stage = OP_STAGE[editor.op] ?? OP_STAGE[op] ?? "transform";
   const info = transforms.find((t) => t.op === op);
   const title = info?.title ?? op;
-  const what = WHAT[op] ?? info?.description ?? "";
   const paramsValid = stepParamsValid(op, editor.params, schemaFields);
   const missingByColumn = new Map<string, number>();
   for (const [name, pr] of profiles) {
@@ -288,33 +185,17 @@ export function StepEditor() {
     !schemaLoading &&
     !previewLoading &&
     isLatest;
-  const fits = FITTING_OPS.has(op);
-  let learned: string;
-  if (!fits) {
-    learned = "Not fitted: nothing is learned on train";
-  } else if (preview) {
-    learned = formatLearnedState(preview.state);
-  } else if (schemaError) {
-    learned = "Fix the schema error to see what is learned.";
-  } else if (schemaLoading) {
-    learned = "Loading parameters…";
-  } else if (!paramsValid.ok) {
-    learned = "Complete the parameters to see what is learned.";
-  } else if (editorBlocker) {
-    learned = editorBlocker;
-  } else if (previewLoading) {
-    learned = "Fitting on train…";
-  } else {
-    learned = "Complete the parameters to see what is learned.";
-  }
-
-  const effectText = !pendingStep
-    ? isLatest
-      ? "—"
-      : "Go back to the latest version first."
-    : previewLoading && !preview
-      ? "Computing preview…"
-      : pendingDiffText || "no change on this view";
+  const learned = learnedText(FITTING_OPS.has(op), {
+    preview,
+    schemaError,
+    schemaLoading,
+    paramsOk: paramsValid.ok,
+    editorBlocker,
+    previewLoading,
+  });
+  let effectText = pendingDiffText || "no change on this view";
+  if (!pendingStep) effectText = isLatest ? "—" : "Go back to the latest version first.";
+  else if (previewLoading && !preview) effectText = "Computing preview…";
 
   return (
     <aside className="step-editor" aria-label="Step editor" data-owner="W2">
@@ -334,7 +215,7 @@ export function StepEditor() {
         </button>
       </div>
       <div className="ed-serif ed-title">{title}</div>
-      <div className="ed-what">{what}</div>
+      <div className="ed-what">{info?.description ?? ""}</div>
 
       <div className="ed-fields">
         {schemaLoading ? (
@@ -448,16 +329,9 @@ export function StepEditor() {
           className="btn-primary grow2"
           disabled={!canApply}
           title={
-            !canApply
-              ? formError ||
-                (schemaLoading
-                  ? "Loading parameters…"
-                  : previewLoading
-                    ? "Waiting for preview…"
-                    : !isLatest
-                      ? "Go back to the latest version first."
-                      : "Complete the parameters")
-              : undefined
+            canApply
+              ? undefined
+              : applyTitle(formError, schemaLoading, previewLoading, isLatest)
           }
           onClick={applyPending}
         >
@@ -473,6 +347,90 @@ export function StepEditor() {
   );
 }
 
+type Columns = { name: string; kind: ColumnKind }[];
+
+function MappingField({
+  params,
+  columns,
+  onChange,
+}: {
+  params: Record<string, unknown>;
+  columns: Columns;
+  onChange: (m: Record<string, string>) => void;
+}) {
+  const mapping = (params.mapping as Record<string, string>) ?? {};
+  const from = Object.keys(mapping)[0] ?? "";
+  const to = from ? mapping[from]! : "";
+  return (
+    <div className="ed-field">
+      <span className="ed-label">Column → new name</span>
+      <Chips
+        small
+        options={columns.map((c) => c.name)}
+        isOn={(n) => from === n}
+        onPick={(n) => onChange({ [n]: to || n })}
+      />
+      <input
+        aria-label="New name"
+        className="ed-input"
+        placeholder="new_name"
+        value={to}
+        onChange={(e) => {
+          const v = e.target.value.replace(/[^A-Za-z0-9_]/g, "_");
+          if (from) onChange({ [from]: v });
+        }}
+      />
+    </div>
+  );
+}
+
+function DtypesField({
+  params,
+  columns,
+  onChange,
+}: {
+  params: Record<string, unknown>;
+  columns: Columns;
+  onChange: (d: Record<string, string>) => void;
+}) {
+  const dtypes = (params.dtypes as Record<string, string>) ?? {};
+  const col = Object.keys(dtypes)[0] ?? "";
+  const dtype = col ? dtypes[col]! : "float";
+  return (
+    <div className="ed-field">
+      <span className="ed-label">Column</span>
+      <Chips
+        small
+        options={columns.map((c) => c.name)}
+        isOn={(n) => col === n}
+        onPick={(n) => onChange({ [n]: dtype })}
+      />
+      <span className="ed-label">Type</span>
+      <Chips
+        options={["float", "int", "str", "bool"]}
+        isOn={(t) => dtype === t}
+        onPick={(t) => {
+          if (col) onChange({ [col]: t });
+        }}
+      />
+    </div>
+  );
+}
+
+/** Synced from workspace.variables when applying formula; shown as info. */
+function VariablesField({ label, count }: { label: string; count: number }) {
+  return (
+    <div className="ed-field">
+      <span className="ed-label">{label}</span>
+      <span className="ed-help">
+        {count
+          ? `${count} variable(s) from the workspace will be frozen on train.`
+          : "@variables of the workspace are frozen on train when the step is fitted."}
+      </span>
+    </div>
+  );
+}
+
 function Field({
   field,
   columns,
@@ -481,7 +439,7 @@ function Field({
   variables,
 }: {
   field: EditorField;
-  columns: { name: string; kind: ColumnKind }[];
+  columns: Columns;
   params: Record<string, unknown>;
   op: string;
   variables: { name: string; stat: string; column: string }[];
@@ -498,141 +456,84 @@ function Field({
       params: { ...params, [key]: value },
     });
   };
+  const setOwn = (value: unknown) => set(field.key, value);
 
-  if (field.widget === "sentinels") {
-    return (
-      <SentinelsField
-        params={params}
-        columns={columns}
-        onChange={(sentinels) => set("sentinels", sentinels)}
-      />
-    );
-  }
-
-  if (field.widget === "categories") {
-    return (
-      <CategoriesField
-        params={params}
-        columns={columns}
-        onChange={(categories) => set("categories", categories)}
-      />
-    );
-  }
-
-  if (field.widget === "mapping") {
-    const mapping = (params.mapping as Record<string, string>) ?? {};
-    const from = Object.keys(mapping)[0] ?? "";
-    const to = from ? mapping[from]! : "";
-    return (
-      <div className="ed-field">
-        <span className="ed-label">Column → new name</span>
-        <Chips
-          small
-          options={columns.map((c) => c.name)}
-          isOn={(n) => from === n}
-          onPick={(n) => set("mapping", { [n]: to || n })}
+  switch (field.widget) {
+    case "sentinels":
+      return <SentinelsField params={params} columns={columns} onChange={setOwn} />;
+    case "categories":
+      return <CategoriesField params={params} columns={columns} onChange={setOwn} />;
+    case "mapping":
+      return <MappingField params={params} columns={columns} onChange={setOwn} />;
+    case "dtypes":
+      return <DtypesField params={params} columns={columns} onChange={setOwn} />;
+    case "formula":
+      return (
+        <FormulaField
+          label={field.label}
+          expr={String(params.expr ?? "")}
+          onExprChange={(next) => set("expr", next)}
+          columns={columns}
+          variables={variables}
+          nameSet={Boolean(params.name)}
         />
-        <input
-          aria-label="New name"
-          className="ed-input"
-          placeholder="new_name"
-          value={to}
-          onChange={(e) => {
-            const v = e.target.value.replace(/[^A-Za-z0-9_]/g, "_");
-            if (from) set("mapping", { [from]: v });
-          }}
+      );
+    case "variables":
+      return (
+        <VariablesField
+          label={field.label}
+          count={((params.variables as unknown[]) ?? []).length}
         />
-      </div>
-    );
+      );
+    case "conditions":
+      return (
+        <ConditionsField field={field} params={params} columns={columns} onChange={setOwn} />
+      );
+    default:
+      return <GenericField field={field} columns={columns} params={params} op={op} set={setOwn} />;
   }
+}
 
-  if (field.widget === "dtypes") {
-    const dtypes = (params.dtypes as Record<string, string>) ?? {};
-    const col = Object.keys(dtypes)[0] ?? "";
-    const dtype = col ? dtypes[col]! : "float";
-    return (
-      <div className="ed-field">
-        <span className="ed-label">Column</span>
-        <Chips
-          small
-          options={columns.map((c) => c.name)}
-          isOn={(n) => col === n}
-          onPick={(n) => set("dtypes", { [n]: dtype })}
-        />
-        <span className="ed-label">Type</span>
-        <Chips
-          options={["float", "int", "str", "bool"]}
-          isOn={(t) => dtype === t}
-          onPick={(t) => {
-            if (col) set("dtypes", { [col]: t });
-          }}
-        />
-      </div>
-    );
-  }
-
-  if (field.widget === "formula") {
-    return (
-      <FormulaField
-        label={field.label}
-        expr={String(params.expr ?? "")}
-        onExprChange={(next) => set("expr", next)}
-        columns={columns}
-        variables={variables}
-        nameSet={Boolean(params.name)}
-      />
-    );
-  }
-
-  if (field.widget === "variables") {
-    // Synced from workspace.variables when applying formula; shown as info.
-    const vars = (params.variables as unknown[]) ?? [];
-    return (
-      <div className="ed-field">
-        <span className="ed-label">{field.label}</span>
-        <span className="ed-help">
-          {vars.length
-            ? `${vars.length} variable(s) from the workspace will be frozen on train.`
-            : "@variables of the workspace are frozen on train when the step is fitted."}
-        </span>
-      </div>
-    );
-  }
-
-  if (field.widget === "conditions") {
-    return (
-      <ConditionsField
-        field={field}
-        params={params}
-        columns={columns}
-        onChange={(conditions) => set("conditions", conditions)}
-      />
-    );
-  }
-
+function GenericField({
+  field,
+  columns,
+  params,
+  op,
+  set,
+}: {
+  field: EditorField;
+  columns: Columns;
+  params: Record<string, unknown>;
+  op: string;
+  set: (v: unknown) => void;
+}) {
   // Engine fill_value is string | number; numeric columns must get a number
   // (string "0" raises), so it is typed as a number field for those.
   const fill = field.key === "fill_value";
   const fillNumeric = fill && imputeConstantNeedsNumber(params, columns);
+  let placeholder: string | undefined;
+  if (fill) placeholder = fillNumeric ? "e.g. 0" : "e.g. MISSING";
   const control = fieldControl(
     fill ? { ...field, widget: fillNumeric ? "number" : "text" } : field,
     params[field.key],
-    (v) => set(field.key, v),
+    set,
     columns,
-    { placeholder: fill ? (fillNumeric ? "e.g. 0" : "e.g. MISSING") : undefined },
+    { placeholder },
   );
   if (!control) return null;
   const missing = field.required && !fieldValuePresent(params[field.key]);
+  const columnWidget = field.widget === "column" || field.widget === "columns";
+  let fillAttr: string | undefined;
+  if (fill) fillAttr = fillNumeric ? "1" : "0";
   return (
     <div
       className={missing ? "ed-field ed-field-missing" : "ed-field"}
       data-ed-field={field.key}
       data-ed-missing={missing ? "1" : undefined}
-      data-ed-fill-numeric={fill ? (fillNumeric ? "1" : "0") : undefined}
+      data-ed-fill-numeric={fillAttr}
     >
       <span className="ed-label">{field.label}</span>
-      {field.description &&
-      (field.widget === "column" || field.widget === "columns") ? (
+      {field.description && columnWidget ? (
         <span className="ed-help">{field.description}</span>
       ) : null}
       {control}
@@ -652,7 +553,7 @@ function SentinelsField({
   onChange,
 }: {
   params: Record<string, unknown>;
-  columns: { name: string; kind: ColumnKind }[];
+  columns: Columns;
   onChange: (s: Record<string, JsonValue[]>) => void;
 }) {
   const sentinels = (params.sentinels as Record<string, JsonValue[]>) ?? {};
@@ -691,7 +592,7 @@ function CategoriesField({
   onChange,
 }: {
   params: Record<string, unknown>;
-  columns: { name: string; kind: ColumnKind }[];
+  columns: Columns;
   onChange: (c: Record<string, JsonValue[]>) => void;
 }) {
   const categories = (params.categories as Record<string, JsonValue[]>) ?? {};

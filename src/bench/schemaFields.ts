@@ -32,34 +32,55 @@ export interface EditorField {
   description?: string;
   /** Show only when params.strategy === 'constant' (impute fill_value). */
   whenStrategyConstant?: boolean;
+  /** Schema `minItems` of an array param. */
+  minItems?: number;
+}
+
+/** Studio hints carried by a schema prop (kept when a $ref / union is unwrapped). */
+const HINT_KEYS = [
+  "title",
+  "description",
+  "enum",
+  "x-dtk-widget",
+  "x-dtk-dtype",
+  "x-dtk-source",
+] as const;
+
+/** The outer prop's hints and default, falling back to `inner`'s. */
+function hintsOf(outer: JsonSchema, inner: JsonSchema = {}): JsonSchema {
+  const hints: JsonSchema = Object.fromEntries(
+    HINT_KEYS.map((k) => [k, outer[k] ?? inner[k]]),
+  );
+  hints.default = outer.default !== undefined ? outer.default : inner.default;
+  return hints;
 }
 
 /**
  * Resolve a local `#/$defs/...` or `#/definitions/...` ref inside `root`.
  * Returns the original prop when the ref is missing or non-local.
  */
-function resolveLocalRef(
-  prop: JsonSchema,
-  root: JsonSchema,
-): JsonSchema {
-  const ref = prop.$ref;
-  if (!ref || typeof ref !== "string") return prop;
-  const defsMatch = ref.match(/^#\/(\$defs|definitions)\/(.+)$/);
-  if (!defsMatch) return prop;
-  const bag =
-    defsMatch[1] === "$defs" ? root.$defs : root.definitions;
-  const target = bag?.[defsMatch[2]!];
-  if (!target) return prop;
-  return {
-    ...target,
-    title: prop.title ?? target.title,
-    description: prop.description ?? target.description,
-    default: prop.default !== undefined ? prop.default : target.default,
-    enum: prop.enum ?? target.enum,
-    "x-dtk-widget": prop["x-dtk-widget"] ?? target["x-dtk-widget"],
-    "x-dtk-dtype": prop["x-dtk-dtype"] ?? target["x-dtk-dtype"],
-    "x-dtk-source": prop["x-dtk-source"] ?? target["x-dtk-source"],
-  };
+function resolveLocalRef(prop: JsonSchema, root: JsonSchema): JsonSchema {
+  const m = typeof prop.$ref === "string"
+    ? prop.$ref.match(/^#\/(\$defs|definitions)\/(.+)$/)
+    : null;
+  const bag = m?.[1] === "$defs" ? root.$defs : root.definitions;
+  const target = m ? bag?.[m[2]!] : undefined;
+  return target ? { ...target, ...hintsOf(prop, target) } : prop;
+}
+
+/** Collapse a multi-branch union to the widest type the editor can render. */
+function collapseUnion(outer: JsonSchema, resolved: JsonSchema[]): JsonSchema {
+  const types = new Set(resolved.flatMap((r) => (r.type ? [r.type].flat() : [])));
+  const base = hintsOf(outer);
+  if (types.has("array")) {
+    const arr = resolved.find((r) => r.type === "array");
+    return { ...base, type: "array", items: arr?.items ?? { type: "string" } };
+  }
+  if (types.has("number") || types.has("integer")) return { ...base, type: "number" };
+  if (types.has("boolean") && types.size === 1) return { ...base, type: "boolean" };
+  if (types.has("string")) return { ...base, type: "string" };
+  if (types.has("object")) return { ...base, type: "object" };
+  return outer;
 }
 
 /**
@@ -72,480 +93,228 @@ export function resolveSchemaProp(
   root?: JsonSchema,
 ): JsonSchema {
   const withRef = root ? resolveLocalRef(prop, root) : prop;
-  const variants = withRef.anyOf ?? withRef.oneOf;
-  if (variants && variants.length > 0) {
-    const nonNull = variants.filter((v) => !isNullOnlySchema(v));
-    if (nonNull.length === 1) {
-      const inner = resolveSchemaProp(nonNull[0]!, root);
-      return resolveSchemaProp(
-        {
-          ...inner,
-          title: withRef.title ?? inner.title,
-          description: withRef.description ?? inner.description,
-          default:
-            withRef.default !== undefined ? withRef.default : inner.default,
-          enum: withRef.enum ?? inner.enum,
-          "x-dtk-widget": withRef["x-dtk-widget"] ?? inner["x-dtk-widget"],
-          "x-dtk-dtype": withRef["x-dtk-dtype"] ?? inner["x-dtk-dtype"],
-          "x-dtk-source": withRef["x-dtk-source"] ?? inner["x-dtk-source"],
-        },
-        root,
-      );
-    }
-    if (nonNull.length > 1) {
-      const resolved = nonNull.map((v) => resolveSchemaProp(v, root));
-      const types = new Set<string>();
-      for (const r of resolved) {
-        if (!r.type) continue;
-        if (Array.isArray(r.type)) r.type.forEach((t) => types.add(t));
-        else types.add(r.type);
-      }
-      const base: JsonSchema = {
-        title: withRef.title,
-        description: withRef.description,
-        default: withRef.default,
-        enum: withRef.enum,
-        "x-dtk-widget": withRef["x-dtk-widget"],
-        "x-dtk-dtype": withRef["x-dtk-dtype"],
-        "x-dtk-source": withRef["x-dtk-source"],
-      };
-      if (types.has("array")) {
-        const arr = resolved.find((r) => r.type === "array");
-        return { ...base, type: "array", items: arr?.items ?? { type: "string" } };
-      }
-      if (types.has("number") || types.has("integer")) {
-        return { ...base, type: "number" };
-      }
-      if (types.has("boolean") && types.size === 1) {
-        return { ...base, type: "boolean" };
-      }
-      if (types.has("string")) {
-        return { ...base, type: "string" };
-      }
-      if (types.has("object")) {
-        return { ...base, type: "object" };
-      }
-    }
+  const nonNull = (withRef.anyOf ?? withRef.oneOf ?? []).filter(
+    (v) => !isNullOnlySchema(v),
+  );
+  if (nonNull.length === 1) {
+    const inner = resolveSchemaProp(nonNull[0]!, root);
+    return resolveSchemaProp({ ...inner, ...hintsOf(withRef, inner) }, root);
   }
-
+  if (nonNull.length > 1) {
+    return collapseUnion(withRef, nonNull.map((v) => resolveSchemaProp(v, root)));
+  }
   if (Array.isArray(withRef.type)) {
-    const nonNull = withRef.type.filter((t) => t !== "null");
-    if (nonNull.length === 1) {
-      return { ...withRef, type: nonNull[0] };
-    }
+    const types = withRef.type.filter((t) => t !== "null");
+    if (types.length === 1) return { ...withRef, type: types[0] };
   }
-
   return withRef;
 }
 
 function isNullOnlySchema(prop: JsonSchema): boolean {
   if (prop.type === "null") return true;
-  if (Array.isArray(prop.type) && prop.type.length === 1 && prop.type[0] === "null") {
-    return true;
-  }
-  return false;
+  return Array.isArray(prop.type) && prop.type.length === 1 && prop.type[0] === "null";
 }
 
 /** True when the unresolved schema accepts null (Optional / anyOf null). */
 function schemaPropAllowsNull(prop: JsonSchema): boolean {
   if (isNullOnlySchema(prop)) return true;
   if (Array.isArray(prop.type) && prop.type.includes("null")) return true;
-  const variants = prop.anyOf ?? prop.oneOf;
-  if (variants?.some((v) => isNullOnlySchema(v))) return true;
-  return false;
+  return (prop.anyOf ?? prop.oneOf ?? []).some((v) => isNullOnlySchema(v));
 }
 
 /**
  * True when a prop is `integer|number | "auto"` (Pydantic BinsSpec-style anyOf).
  * Detected before resolveSchemaProp collapses the union to number-only.
  */
-function isAutoOrNumberUnion(
-  prop: JsonSchema,
-  root?: JsonSchema,
-): boolean {
-  const variants = prop.anyOf ?? prop.oneOf;
-  if (!variants || variants.length < 2) return false;
-  let hasNum = false;
-  let hasAuto = false;
-  for (const v of variants) {
-    if (isNullOnlySchema(v)) continue;
-    const r = resolveSchemaProp(v, root);
-    if (r.type === "integer" || r.type === "number") hasNum = true;
-    if (r.const === "auto") hasAuto = true;
-    if (r.type === "string" && r.enum?.includes("auto")) hasAuto = true;
-  }
+function isAutoOrNumberUnion(prop: JsonSchema, root?: JsonSchema): boolean {
+  const variants = (prop.anyOf ?? prop.oneOf ?? [])
+    .filter((v) => !isNullOnlySchema(v))
+    .map((v) => resolveSchemaProp(v, root));
+  const hasNum = variants.some((r) => r.type === "integer" || r.type === "number");
+  const hasAuto = variants.some(
+    (r) => r.const === "auto" || (r.type === "string" && !!r.enum?.includes("auto")),
+  );
   return hasNum && hasAuto;
 }
 
+type WidgetSpec = Pick<EditorField, "widget" | "enumValues" | "dtypeFilter">;
+
 /**
- * Map GET /transforms/{op}/schema → editor field descriptors.
- * Special-cases engine object params (sentinels, categories, mapping, dtypes).
+ * Params with a dedicated editor control, keyed `op.key` or `key`; the label is
+ * the fallback when the schema has no title (`fixedLabel` ignores the title).
+ */
+const SPECIAL_FIELDS: Record<
+  string,
+  Partial<EditorField> & { widget: FieldWidget; fixedLabel?: boolean }
+> = {
+  fill_value: { widget: "text", label: "Constant value", required: false, whenStrategyConstant: true },
+  sentinels: { widget: "sentinels", label: "Sentinels" },
+  categories: { widget: "categories", label: "Categories" },
+  "rename.mapping": { widget: "mapping", label: "Rename", fixedLabel: true },
+  "standardize_text.mapping": { widget: "object", label: "Mapping", required: false },
+  dtypes: { widget: "dtypes", label: "Types" },
+  expr: { widget: "formula", label: "Expression" },
+  "formula.variables": { widget: "variables", label: "Variables", required: false },
+  conditions: { widget: "conditions", label: "Conditions" },
+};
+
+/** Studio copy for generic fields (drop_duplicates: Subset vs Sort by, MAT-155). */
+const FIELD_COPY: Record<string, Pick<EditorField, "label" | "description">> = {
+  "drop_duplicates.subset": {
+    label: "Subset (identity columns)",
+    description:
+      "Columns that define a duplicate row. Leave empty to match on all columns.",
+  },
+  "drop_duplicates.sort_by": {
+    label: "Sort by (keep first/last)",
+    description:
+      "Order rows before keeping first/last — not the same group as Subset. Required when keep is first or last.",
+  },
+};
+
+const CONDITION_OPS = ["eq", "ne", "gt", "ge", "lt", "le", "isin", "notin", "isna", "notna"];
+
+function conditionOps(schema: JsonSchema, prop: JsonSchema): string[] {
+  const cond =
+    (schema.$defs?.Condition as JsonSchema | undefined) ??
+    (prop.items as JsonSchema | undefined);
+  const ops = (cond?.properties?.op as JsonSchema | undefined)?.enum;
+  return (ops as string[] | undefined) ?? CONDITION_OPS;
+}
+
+function arrayWidget(
+  key: string,
+  prop: JsonSchema,
+  schema: JsonSchema,
+  dtypeFilter: EditorField["dtypeFilter"],
+): WidgetSpec {
+  const items = prop.items
+    ? resolveSchemaProp(prop.items as JsonSchema, schema)
+    : undefined;
+  if (Array.isArray(items?.enum)) {
+    return { widget: "enum_list", enumValues: items.enum.map(String) };
+  }
+  if (items?.type === "number" || items?.type === "integer") {
+    return { widget: "number_list" };
+  }
+  // Column-selector keys (and old engines without x-dtk-widget) → chips, not free text.
+  const columnKey = key === "columns" || key === "subset" || key === "sort_by";
+  if (items?.type === "string" && !prop["x-dtk-widget"] && !columnKey) {
+    return { widget: "string_list" };
+  }
+  return { widget: "columns", dtypeFilter: dtypeFilter ?? "any" };
+}
+
+const SCALAR_WIDGET: Record<string, FieldWidget> = {
+  boolean: "bool",
+  number: "number",
+  integer: "number",
+  string: "text",
+};
+
+/** Generic widget from the schema type and the x-dtk hints; null = no control. */
+function genericWidget(
+  key: string,
+  raw: JsonSchema,
+  prop: JsonSchema,
+  schema: JsonSchema,
+): WidgetSpec | null {
+  if (isAutoOrNumberUnion(raw, schema)) return { widget: "auto_number" };
+  const hint = prop["x-dtk-widget"];
+  const dtype = prop["x-dtk-dtype"];
+  const dtypeFilter = dtype === "numeric" || dtype === "any" ? dtype : undefined;
+  if (hint === "columns" || hint === "column") return { widget: hint, dtypeFilter };
+  if (Array.isArray(prop.enum)) {
+    const enumValues = prop.enum.map(String);
+    if (schemaPropAllowsNull(raw) && !enumValues.includes("__null__")) {
+      enumValues.push("__null__");
+    }
+    return { widget: "enum", enumValues };
+  }
+  if (prop.type === "array") return arrayWidget(key, prop, schema, dtypeFilter);
+  const scalar = SCALAR_WIDGET[String(prop.type)];
+  return scalar ? { widget: scalar } : null;
+}
+
+/**
+ * Map GET /transforms/{op}/schema → editor field descriptors: dedicated
+ * controls for the engine's structured params, otherwise a widget derived from
+ * the schema type and x-dtk hints.
  */
 export function schemaToFields(schema: JsonSchema, op: string): EditorField[] {
-  const props = schema.properties ?? {};
   const required = new Set(schema.required ?? []);
   const fields: EditorField[] = [];
-
-  for (const [key, raw] of Object.entries(props)) {
-    const rawProp = raw as JsonSchema;
-    if (isAutoOrNumberUnion(rawProp, schema)) {
-      const prop = resolveSchemaProp(rawProp, schema);
+  for (const [key, raw] of Object.entries(schema.properties ?? {})) {
+    const prop = resolveSchemaProp(raw as JsonSchema, schema);
+    const base = {
+      key,
+      label: prop.title ?? key,
+      required: required.has(key),
+      description: prop.description,
+      ...(typeof prop.minItems === "number" ? { minItems: prop.minItems } : {}),
+    };
+    const special = SPECIAL_FIELDS[`${op}.${key}`] ?? SPECIAL_FIELDS[key];
+    if (special) {
+      const { fixedLabel, label, ...rest } = special;
       fields.push({
-        key,
-        label: (rawProp.title ?? prop.title) ?? key,
-        widget: "auto_number",
-        required: required.has(key),
-        description: rawProp.description ?? prop.description,
+        ...base,
+        label: fixedLabel ? label! : (prop.title ?? label!),
+        ...rest,
+        ...(key === "conditions" ? { enumValues: conditionOps(schema, prop) } : {}),
       });
       continue;
     }
-    const prop = resolveSchemaProp(rawProp, schema);
-    if (key === "fill_value") {
-      fields.push({
-        key,
-        label: prop.title ?? "Constant value",
-        widget: "text",
-        required: false,
-        description: prop.description,
-        whenStrategyConstant: true,
-      });
-      continue;
-    }
-    if (key === "sentinels") {
-      fields.push({
-        key,
-        label: prop.title ?? "Sentinels",
-        widget: "sentinels",
-        required: required.has(key),
-        description: prop.description,
-      });
-      continue;
-    }
-    if (key === "categories") {
-      fields.push({
-        key,
-        label: prop.title ?? "Categories",
-        widget: "categories",
-        required: required.has(key),
-        description: prop.description,
-      });
-      continue;
-    }
-    if (key === "mapping" && op === "rename") {
-      fields.push({
-        key,
-        label: "Rename",
-        widget: "mapping",
-        required: required.has(key),
-        description: prop.description,
-      });
-      continue;
-    }
-    if (key === "mapping" && op === "standardize_text") {
-      fields.push({
-        key,
-        label: prop.title ?? "Mapping",
-        widget: "object",
-        required: false,
-        description: prop.description,
-      });
-      continue;
-    }
-    if (key === "dtypes") {
-      fields.push({
-        key,
-        label: prop.title ?? "Types",
-        widget: "dtypes",
-        required: required.has(key),
-        description: prop.description,
-      });
-      continue;
-    }
-    if (key === "expr") {
-      fields.push({
-        key,
-        label: prop.title ?? "Expression",
-        widget: "formula",
-        required: required.has(key),
-        description: prop.description,
-      });
-      continue;
-    }
-    if (key === "variables" && op === "formula") {
-      fields.push({
-        key,
-        label: prop.title ?? "Variables",
-        widget: "variables",
-        required: false,
-        description: prop.description,
-      });
-      continue;
-    }
-    if (key === "conditions") {
-      const condSchema =
-        (schema.$defs?.Condition as JsonSchema | undefined) ??
-        (prop.items as JsonSchema | undefined);
-      const opEnum =
-        ((condSchema?.properties?.op as JsonSchema | undefined)?.enum as
-          | string[]
-          | undefined) ?? [
-          "eq",
-          "ne",
-          "gt",
-          "ge",
-          "lt",
-          "le",
-          "isin",
-          "notin",
-          "isna",
-          "notna",
-        ];
-      fields.push({
-        key,
-        label: prop.title ?? "Conditions",
-        widget: "conditions",
-        required: required.has(key),
-        enumValues: opEnum,
-        description: prop.description,
-      });
-      continue;
-    }
-
-    const widgetHint = prop["x-dtk-widget"];
-    const dtypeHint = prop["x-dtk-dtype"];
-    const dtypeFilter =
-      dtypeHint === "numeric"
-        ? "numeric"
-        : dtypeHint === "any"
-          ? "any"
-          : undefined;
-
-    if (widgetHint === "columns") {
-      // Drop duplicates: make Subset vs Sort by visually distinct (MAT-155).
-      let label = prop.title ?? key;
-      let description = prop.description;
-      if (op === "drop_duplicates" && key === "subset") {
-        label = "Subset (identity columns)";
-        description =
-          "Columns that define a duplicate row. Leave empty to match on all columns.";
-      } else if (op === "drop_duplicates" && key === "sort_by") {
-        label = "Sort by (keep first/last)";
-        description =
-          "Order rows before keeping first/last — not the same group as Subset. Required when keep is first or last.";
-      }
-      fields.push({
-        key,
-        label,
-        widget: "columns",
-        required: required.has(key),
-        dtypeFilter,
-        description,
-      });
-      continue;
-    }
-    if (widgetHint === "column") {
-      fields.push({
-        key,
-        label: prop.title ?? key,
-        widget: "column",
-        required: required.has(key),
-        dtypeFilter,
-        description: prop.description,
-      });
-      continue;
-    }
-    if (prop.enum && Array.isArray(prop.enum)) {
-      const rawHadNull = schemaPropAllowsNull(raw as JsonSchema);
-      const enumValues = prop.enum.map(String);
-      if (rawHadNull && !enumValues.includes("__null__")) {
-        enumValues.push("__null__");
-      }
-      fields.push({
-        key,
-        label: prop.title ?? key,
-        widget: "enum",
-        required: required.has(key),
-        enumValues,
-        description: prop.description,
-      });
-      continue;
-    }
-    if (prop.type === "boolean") {
-      fields.push({
-        key,
-        label: prop.title ?? key,
-        widget: "bool",
-        required: required.has(key),
-        description: prop.description,
-      });
-      continue;
-    }
-    if (prop.type === "number" || prop.type === "integer") {
-      fields.push({
-        key,
-        label: prop.title ?? key,
-        widget: "number",
-        required: required.has(key),
-        description: prop.description,
-      });
-      continue;
-    }
-    if (prop.type === "string") {
-      fields.push({
-        key,
-        label: prop.title ?? key,
-        widget: "text",
-        required: required.has(key),
-        description: prop.description,
-      });
-      continue;
-    }
-    if (prop.type === "array") {
-      const items = prop.items as JsonSchema | undefined;
-      const resolvedItems = items ? resolveSchemaProp(items, schema) : undefined;
-      if (resolvedItems?.enum && Array.isArray(resolvedItems.enum)) {
-        fields.push({
-          key,
-          label: prop.title ?? key,
-          widget: "enum_list",
-          required: required.has(key),
-          enumValues: resolvedItems.enum.map(String),
-          description: prop.description,
-        });
-        continue;
-      }
-      if (resolvedItems?.type === "number" || resolvedItems?.type === "integer") {
-        fields.push({
-          key,
-          label: prop.title ?? key,
-          widget: "number_list",
-          required: required.has(key),
-          description: prop.description,
-        });
-        continue;
-      }
-      // Column-selector keys (and old engines without x-dtk-widget) → chips, not free text.
-      const columnKey =
-        key === "columns" ||
-        key === "subset" ||
-        key === "sort_by" ||
-        widgetHint === "columns";
-      if (resolvedItems?.type === "string" && !widgetHint && !columnKey) {
-        fields.push({
-          key,
-          label: prop.title ?? key,
-          widget: "string_list",
-          required: required.has(key),
-          description: prop.description,
-        });
-        continue;
-      }
-      fields.push({
-        key,
-        label: prop.title ?? key,
-        widget: "columns",
-        required: required.has(key),
-        dtypeFilter: dtypeFilter ?? "any",
-        description: prop.description,
-      });
-      continue;
-    }
+    const widget = genericWidget(key, raw as JsonSchema, prop, schema);
+    if (widget) fields.push({ ...base, ...widget, ...FIELD_COPY[`${op}.${key}`] });
   }
-
   return fields;
 }
 
-/** Default params from schema defaults + common op defaults. Skip null defaults. */
+/** Studio defaults that differ from (or are missing in) the engine schema. */
+const UX_DEFAULTS: Record<string, Record<string, unknown>> = {
+  // Collapse case variants by default (engine default is false).
+  standardize_text: { lower: true },
+  // keep first/last needs a sort_by the user has not picked yet.
+  drop_duplicates: { keep: "none" },
+  bin: { mode: "qcut", q: 5 },
+  cyclical: { period: 24 },
+  datetime_parts: { parts: ["hour", "dayofweek", "month"] },
+  select_k_best: { k: 5 },
+};
+
+/** Structured editors start from an empty container. */
+const EMPTY_VALUE: Partial<Record<FieldWidget, () => unknown>> = {
+  sentinels: () => ({}),
+  categories: () => ({}),
+  mapping: () => ({}),
+  dtypes: () => ({}),
+  variables: () => [],
+  conditions: () => [],
+};
+
+/** A required multi-enum preselects mean when offered, else its first value (MAT-167). */
+function enumListDefault(field: EditorField): unknown {
+  const vals = field.enumValues ?? [];
+  if (field.widget !== "enum_list" || !field.required || !vals.length) return undefined;
+  return vals.includes("mean") ? ["mean"] : [vals[0]!];
+}
+
+/** Default params: schema defaults (nulls skipped), then the Studio choices. */
 export function defaultParams(
   schema: JsonSchema,
   op: string,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  const props = schema.properties ?? {};
-  for (const [key, raw] of Object.entries(props)) {
-    const prop = resolveSchemaProp(raw as JsonSchema, schema);
-    if (prop.default !== undefined && prop.default !== null) {
-      out[key] = prop.default;
-    }
+  for (const [key, raw] of Object.entries(schema.properties ?? {})) {
+    const d = resolveSchemaProp(raw as JsonSchema, schema).default;
+    if (d !== undefined && d !== null) out[key] = d;
   }
-  if (op === "impute" && out.strategy === undefined) out.strategy = "median";
-  if (op === "clip") {
-    if (out.lower === undefined) out.lower = 5;
-    if (out.upper === undefined) out.upper = 95;
-  }
-  if (op === "scale" && out.method === undefined) out.method = "standard";
-  if (op === "standardize_text") {
-    if (out.strip === undefined) out.strip = true;
-    // Studio defaults to collapsing case (engine schema default is false).
-    out.lower = true;
-  }
-  if (op === "drop_duplicates") {
-    if (out.keep === undefined) out.keep = "none";
-  }
-  if (op === "replace_sentinels" && out.sentinels === undefined) {
-    out.sentinels = {};
-  }
-  if (op === "ordinal" && out.categories === undefined) out.categories = {};
-  if (op === "rename" && out.mapping === undefined) out.mapping = {};
-  if (op === "cast" && out.dtypes === undefined) out.dtypes = {};
-  if (op === "formula") {
-    if (out.variables === undefined) out.variables = [];
-  }
-  if (op === "bin") {
-    if (out.mode === undefined) out.mode = "qcut";
-    if (out.q === undefined) out.q = 5;
-  }
-  if (op === "cyclical" && out.period === undefined) out.period = 24;
-  if (op === "datetime_parts" && out.parts === undefined) {
-    out.parts = ["hour", "dayofweek", "month"];
-  }
-  // Required enum_list fields: preselect mean when available, else the first value.
-  // Covers group_agg.aggs and any future required multi-enum (MAT-167).
   for (const field of schemaToFields(schema, op)) {
-    if (field.widget !== "enum_list" || !field.required) continue;
     if (out[field.key] !== undefined) continue;
-    const vals = field.enumValues ?? [];
-    if (vals.length === 0) continue;
-    out[field.key] = vals.includes("mean") ? ["mean"] : [vals[0]!];
+    const value = EMPTY_VALUE[field.widget]?.() ?? enumListDefault(field);
+    if (value !== undefined) out[field.key] = value;
   }
-  if (op === "impute_knn") {
-    if (out.n_neighbors === undefined) out.n_neighbors = 5;
-    if (out.weights === undefined) out.weights = "uniform";
-  }
-  if (op === "impute_iterative") {
-    if (out.max_iter === undefined) out.max_iter = 10;
-    if (out.random_state === undefined) out.random_state = 0;
-  }
-  if (op === "select_k_best") {
-    if (out.score === undefined) out.score = "mutual_info";
-    if (out.k === undefined && out.percentile === undefined) out.k = 5;
-  }
-  if (op === "select_from_model") {
-    if (out.model === undefined) out.model = "tree";
-  }
-  if (op === "pca") {
-    if (out.n_components === undefined) out.n_components = 0.95;
-    if (out.standardize === undefined) out.standardize = true;
-  }
-  if (op === "drop_low_variance" && out.threshold === undefined) {
-    out.threshold = 0.0;
-  }
-  if (op === "drop_correlated" && out.threshold === undefined) {
-    out.threshold = 0.95;
-  }
-  if (op === "filter_rows") {
-    if (out.conditions === undefined) out.conditions = [];
-    if (out.combine === undefined) out.combine = "and";
-  }
-  if (op === "to_numeric") {
-    if (out.decimal === undefined) out.decimal = ".";
-    if (out.percent === undefined) out.percent = false;
-    if (out.errors === undefined) out.errors = "raise";
-  }
-  if (op === "drop_high_missing" && out.threshold === undefined) {
-    out.threshold = 0.5;
-  }
-  return out;
+  return { ...out, ...UX_DEFAULTS[op] };
 }
 
 /** Drop null/undefined entries before sending params to the engine. */
@@ -634,9 +403,48 @@ export function fieldValuePresent(v: unknown): boolean {
   return true;
 }
 
-/**
- * Basic validity: required fields present; drop_duplicates keep first/last needs sort_by.
- */
+function conditionsProblem(params: Record<string, unknown>): string | null {
+  const conds = params.conditions as
+    | Array<{ column?: string; op?: string; value?: unknown }>
+    | undefined;
+  if (!conds?.length) return "Add at least one condition";
+  for (const c of conds) {
+    if (!c.column) return "Select a column for each condition";
+    if (!c.op) return "Select an operator for each condition";
+    const needsValue = c.op !== "isna" && c.op !== "notna";
+    if (needsValue && (c.value === undefined || c.value === null || c.value === "")) {
+      return `Value required for condition on ${c.column}`;
+    }
+  }
+  return null;
+}
+
+/** Cross-field rules the schema cannot express. */
+const OP_CHECKS: Record<string, (p: Record<string, unknown>) => string | null> = {
+  drop_duplicates: (p) =>
+    (p.keep === "first" || p.keep === "last") && !fieldValuePresent(p.sort_by)
+      ? "keep first/last requires sort_by (pick an identifier column, or use keep none)"
+      : null,
+  formula: (p) =>
+    String(p.name ?? "").trim() && String(p.expr ?? "").trim()
+      ? null
+      : "Name and expression are required",
+  filter_rows: conditionsProblem,
+};
+
+function fieldProblem(f: EditorField, v: unknown): string | null {
+  if (f.required && !fieldValuePresent(v)) {
+    if (Array.isArray(v)) return `Pick at least one for ${f.label}`;
+    if (typeof v === "object" && v !== null) return `Configure ${f.label}`;
+    return `Missing ${f.label}`;
+  }
+  if (Array.isArray(v) && v.length < (f.minItems ?? 0)) {
+    return `Pick at least ${f.minItems} for ${f.label}`;
+  }
+  return null;
+}
+
+/** Basic validity: schema-required fields and minItems, then the op's own rules. */
 export function stepParamsValid(
   op: string,
   params: Record<string, unknown>,
@@ -644,68 +452,11 @@ export function stepParamsValid(
 ): { ok: boolean; missing?: string } {
   for (const f of fields) {
     if (f.whenStrategyConstant && params.strategy !== "constant") continue;
-    if (!f.required) continue;
-    if (!fieldValuePresent(params[f.key])) {
-      if (Array.isArray(params[f.key]) && (params[f.key] as unknown[]).length === 0) {
-        return { ok: false, missing: `Pick at least one for ${f.label}` };
-      }
-      if (
-        typeof params[f.key] === "object" &&
-        params[f.key] !== null &&
-        !Array.isArray(params[f.key]) &&
-        Object.keys(params[f.key] as object).length === 0
-      ) {
-        return { ok: false, missing: `Configure ${f.label}` };
-      }
-      return { ok: false, missing: `Missing ${f.label}` };
-    }
+    const problem = fieldProblem(f, params[f.key]);
+    if (problem) return { ok: false, missing: problem };
   }
-  if (op === "drop_duplicates") {
-    const keep = params.keep;
-    if (keep === "first" || keep === "last") {
-      const sortBy = params.sort_by as unknown[] | null | undefined;
-      if (!sortBy || !Array.isArray(sortBy) || sortBy.length === 0) {
-        return {
-          ok: false,
-          missing:
-            "keep first/last requires sort_by (pick an identifier column, or use keep none)",
-        };
-      }
-    }
-  }
-  if (op === "formula") {
-    if (!String(params.name ?? "").trim() || !String(params.expr ?? "").trim()) {
-      return { ok: false, missing: "Name and expression are required" };
-    }
-  }
-  if (op === "interactions") {
-    const cols = params.columns as unknown[] | null | undefined;
-    if (!cols || !Array.isArray(cols) || cols.length < 2) {
-      return { ok: false, missing: "Pick at least 2 columns to combine" };
-    }
-  }
-  if (op === "filter_rows") {
-    const conds = params.conditions as
-      | Array<{ column?: string; op?: string; value?: unknown }>
-      | undefined;
-    if (!conds || !Array.isArray(conds) || conds.length === 0) {
-      return { ok: false, missing: "Add at least one condition" };
-    }
-    for (const c of conds) {
-      if (!c.column) {
-        return { ok: false, missing: "Select a column for each condition" };
-      }
-      if (!c.op) {
-        return { ok: false, missing: "Select an operator for each condition" };
-      }
-      if (c.op !== "isna" && c.op !== "notna") {
-        if (c.value === undefined || c.value === null || c.value === "") {
-          return { ok: false, missing: `Value required for condition on ${c.column}` };
-        }
-      }
-    }
-  }
-  return { ok: true };
+  const problem = OP_CHECKS[op]?.(params);
+  return problem ? { ok: false, missing: problem } : { ok: true };
 }
 
 /**

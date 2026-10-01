@@ -24,10 +24,9 @@ import type {
 } from "../api/types";
 import { useAppDispatch, useAppState } from "../state/AppStore";
 import { buildDisplay, diffText, type DisplayFrame } from "./diff";
-import { resolveOp, toEngineParams } from "./presets";
+import { resolveOp, seedEditorParams, toEngineParams } from "./presets";
 import {
   coerceImputeFillValue,
-  defaultParams,
   schemaFieldsGap,
   schemaToFields,
   stepEditorBlockers,
@@ -565,31 +564,10 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
         const gap = schemaFieldsGap(schema, fields);
         setSchemaFields(fields);
         setSchemaError(gap);
-        const defaults = defaultParams(schema, op);
-        const opened = toEngineParams(op, openedParams);
-        const merged: Record<string, unknown> = {
-          ...defaults,
-          ...opened,
-        };
-        if (op === "drop_duplicates") {
-          const keep = merged.keep ?? "none";
-          if (
-            (keep === "first" || keep === "last") &&
-            (!merged.sort_by ||
-              (Array.isArray(merged.sort_by) &&
-                (merged.sort_by as unknown[]).length === 0))
-          ) {
-            const idCol = columnsRef.current.find(
-              (c) => c.kind === "identifier",
-            );
-            if (idCol) merged.sort_by = [idCol.name];
-            else {
-              merged.keep = "none";
-              merged.sort_by = null;
-            }
-          }
-        }
-        dispatch({ type: "SET_EDITOR_PARAMS", params: merged });
+        dispatch({
+          type: "SET_EDITOR_PARAMS",
+          params: seedEditorParams(schema, op, openedParams, columnsRef.current),
+        });
       })
       .catch((e) => {
         if (!cancelled) {
