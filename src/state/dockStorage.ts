@@ -1,5 +1,4 @@
-import type { DockPos, DockSize, DockState, ToolId } from "../../state/reducer";
-import { TOOLS } from "../toolrail/tools";
+import type { DockPos, DockSize, DockState, ToolId } from "./reducer";
 import { sanitizeDockLayouts, syncDockLayouts } from "./dockLayout";
 
 const keyFor = (workspaceName: string) => `dtk.dock.${workspaceName}`;
@@ -8,9 +7,17 @@ const keyFor = (workspaceName: string) => `dtk.dock.${workspaceName}`;
 type StoredDock = Pick<DockState, "tools" | "pos" | "size" | "layouts">;
 
 /** Dock windows only; the rail's Transform entry opens the step picker, never a window. */
-const KNOWN_TOOLS: ToolId[] = TOOLS.flatMap((t) =>
-  t.id === "transform" ? [] : [t.id],
-);
+const KNOWN_TOOLS: ToolId[] = [
+  "compare",
+  "corr",
+  "dist",
+  "missing",
+  "outliers",
+  "target",
+  "drift",
+  "feature_selection",
+  "chart",
+];
 
 function parseStoredDock(raw: unknown, maxTools: number): StoredDock | null {
   if (typeof raw !== "object" || raw === null) return null;

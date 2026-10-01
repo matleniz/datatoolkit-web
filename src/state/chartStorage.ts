@@ -1,4 +1,4 @@
-import type { ChartSpec } from "../../api/types";
+import type { ChartSpec } from "../api/types";
 
 const keyFor = (workspaceName: string) => `dtk.charts.${workspaceName}`;
 
@@ -43,10 +43,7 @@ export function hydrateWorkspaceCharts<
   T extends { name: string; charts?: ChartSpec[] },
 >(ws: T): T {
   const existing = ws.charts ?? [];
-  if (existing.length > 0) {
-    saveStoredCharts(ws.name, existing);
-    return ws;
-  }
+  if (existing.length > 0) return ws;
   const stored = loadStoredCharts(ws.name);
   if (stored.length === 0) return { ...ws, charts: [] };
   return { ...ws, charts: stored };

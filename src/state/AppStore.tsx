@@ -12,6 +12,9 @@ import {
 
 import { serializeWorkspace } from "../api/client";
 import { rememberWorkspaceName } from "../bootstrap";
+import { saveStoredCharts } from "./chartStorage";
+import { saveStoredDock } from "./dockStorage";
+import { savePanels } from "./panelStorage";
 import {
   appReducer,
   initialState,
@@ -71,6 +74,17 @@ export function AppProvider({
       delete window.__DTK_STATE__;
     };
   }, [dispatch, state]);
+
+  // Persistence lives here, not in the reducer (which must stay pure).
+  const wsName = state.workspace?.name;
+  const charts = state.workspace?.charts;
+  useEffect(() => savePanels(state.panels), [state.panels]);
+  useEffect(() => {
+    if (wsName !== undefined) saveStoredDock(wsName, state.dock);
+  }, [wsName, state.dock]);
+  useEffect(() => {
+    if (wsName !== undefined && charts) saveStoredCharts(wsName, charts);
+  }, [wsName, charts]);
 
   useLayoutEffect(() => {
     setCommittedWorkspace(state.workspace);

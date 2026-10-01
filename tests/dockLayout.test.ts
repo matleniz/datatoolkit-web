@@ -13,7 +13,8 @@ import {
   sanitizeDockLayouts,
   syncDockLayouts,
   toGridItems,
-} from "../src/bench/dock/dockLayout";
+} from "../src/state/dockLayout";
+import { saveStoredDock } from "../src/state/dockStorage";
 import {
   appReducer,
   emptyWorkspace,
@@ -275,7 +276,8 @@ describe("dock layout reducer (MAT-234)", () => {
     });
     s = appReducer(s, { type: "SET_MAXIMIZED", id: "chart" });
 
-    // "Reload": fresh state, same storage.
+    // "Reload": fresh state, same storage (AppStore persists on change).
+    saveStoredDock("demo", s.dock);
     const r = loaded(emptyWorkspace("demo"));
     expect(r.dock.tools).toEqual(["dist", "chart", "corr"]);
     expect(r.dock.size).toBe("L");
@@ -287,6 +289,7 @@ describe("dock layout reducer (MAT-234)", () => {
   it("layouts are per workspace; unknown workspaces keep the current dock", () => {
     let a = loaded(emptyWorkspace("a"));
     a = open(a, "compare");
+    saveStoredDock("a", a.dock);
     let b = appReducer(a, {
       type: "SET_WORKSPACE",
       workspace: emptyWorkspace("b"),

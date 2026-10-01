@@ -1,4 +1,4 @@
-import type { DockPos, ToolId } from "../../state/reducer";
+import type { DockPos, ToolId } from "./reducer";
 
 /**
  * Dock window grid layout (MAT-234 / MAT-206). Pure helpers shared by the
