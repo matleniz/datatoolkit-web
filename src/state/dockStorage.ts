@@ -1,4 +1,4 @@
-import type { DockPos, DockSize, DockState, ToolId } from "./reducer";
+import type { DockPos, DockSize, DockState, ToolId } from "./dockTypes";
 import { sanitizeDockLayouts, syncDockLayouts } from "./dockLayout";
 
 const keyFor = (workspaceName: string) => `dtk.dock.${workspaceName}`;

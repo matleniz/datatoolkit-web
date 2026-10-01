@@ -5,38 +5,23 @@ import type {
   VariableSpec,
   Workspace,
 } from "../api/types";
-import type { ChartDraft } from "../bench/dock/chartPrefill";
+import { DEFAULT_CHART_DRAFT, type ChartDraft } from "./chartDraft";
 import { hydrateWorkspaceCharts } from "./chartStorage";
 import {
   loadPanels,
   type PanelSide,
   type PanelsState,
 } from "./panelStorage";
-import {
-  applyGridLayout,
-  emptyDockLayouts,
-  syncDockLayouts,
-  type DockLayouts,
-  type DockRect,
-} from "./dockLayout";
+import { applyGridLayout, emptyDockLayouts, syncDockLayouts } from "./dockLayout";
+import type { DockPos, DockRect, DockSize, DockState, ToolId } from "./dockTypes";
 import { loadStoredDock } from "./dockStorage";
-import type { ToolViewState } from "../bench/dock/windowView";
-import type { WorkspaceSourcesState } from "../screens/sources/sourcesLogic";
+import type { ToolViewState } from "./toolViews";
+import type { WorkspaceSourcesState } from "./sourcesState";
+
+export type { DockPos, DockSize, DockState, ToolId };
 
 export type ScreenId = "sources" | "align" | "bench";
 export type Role = "train" | "test";
-export type DockPos = "bottom" | "right";
-export type DockSize = "S" | "M" | "L";
-export type ToolId =
-  | "compare"
-  | "corr"
-  | "dist"
-  | "missing"
-  | "outliers"
-  | "target"
-  | "drift"
-  | "feature_selection"
-  | "chart";
 
 /** Course stage ids used by the Suggestions filter (prototype STAGES). */
 export type CourseStage =
@@ -63,15 +48,6 @@ export interface EditorState {
   op: string | null;
   params: Record<string, unknown>;
   target: "train" | "test" | "both";
-}
-
-export interface DockState {
-  tools: ToolId[];
-  pos: DockPos;
-  size: DockSize;
-  maximized: ToolId | null;
-  /** Grid rect per open window and dock position (MAT-234). */
-  layouts: DockLayouts;
 }
 
 export interface CtxMenuState {
@@ -326,23 +302,6 @@ function withWorkspace(
   if (!state.workspace) return state;
   return { ...state, ...extra, workspace: { ...state.workspace, ...patch } };
 }
-
-const DEFAULT_CHART_DRAFT: ChartDraft = {
-  chart: "histogram",
-  x: null,
-  y: null,
-  color: null,
-  facet_row: null,
-  facet_col: null,
-  size: null,
-  columns: [],
-  agg: null,
-  trendline: false,
-  log_x: false,
-  log_y: false,
-  bins: 30,
-  sample_size: 10_000,
-};
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {

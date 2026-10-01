@@ -1,5 +1,8 @@
 import type { Result, ResultFigure } from "../../api/types";
+import type { StoredView, ToolViewState } from "../../state/toolViews";
 import { DEFAULT_FIGURE_DISPLAY, type FigureDisplay } from "./figureDisplay";
+
+export type { ToolViewState };
 
 /**
  * What an analysis window shows (MAT-235): one of the key's figures, the
@@ -9,20 +12,6 @@ export type WindowView =
   | { kind: "figure"; index: number }
   | { kind: "table" }
   | { kind: "metrics" };
-
-/** The user's choice, remembered per window (reducer `toolViews`). */
-export type StoredView =
-  | { kind: "figure"; title: string; index: number; count: number }
-  | { kind: "table" };
-
-export interface ToolViewState {
-  view?: StoredView;
-  display?: Partial<FigureDisplay>;
-  /** Details drawer open. */
-  details?: boolean;
-  /** Parameters panel expanded (collapsed by default: the figure first). */
-  params?: boolean;
-}
 
 /** Figure opened by default: the key's `main` one, otherwise the first. */
 export function defaultFigureIndex(figures: readonly ResultFigure[]): number {

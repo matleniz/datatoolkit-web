@@ -7,21 +7,11 @@
  * may arrive base64-encoded (`{dtype, bdata, shape}`, plotly.py ≥ 6).
  */
 
+import type { BarSort, FigureDisplay } from "../../state/toolViews";
+
+export type { BarSort, FigureDisplay };
+
 type Json = Record<string, unknown>;
-
-export type BarSort = "none" | "desc" | "asc";
-
-export interface FigureDisplay {
-  /** Keep the N largest categories (after sort); null = all. */
-  topN: number | null;
-  sort: BarSort;
-  /** Values as % of the total instead of counts. */
-  percent: boolean;
-  /** Log scale on the value axis. */
-  log: boolean;
-  /** Text labels on marks and layout annotations. */
-  annotations: boolean;
-}
 
 export const DEFAULT_FIGURE_DISPLAY: FigureDisplay = {
   topN: null,

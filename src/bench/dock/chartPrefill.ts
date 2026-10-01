@@ -1,58 +1,19 @@
 import type { ColumnKind } from "../../api/types";
+import {
+  CHART_AGGS,
+  CHART_TYPES,
+  DEFAULT_CHART_DRAFT,
+  type ChartAgg,
+  type ChartDraft,
+  type ChartType,
+} from "../../state/chartDraft";
 import { isNumericKind } from "../kinds";
 
-const CHART_TYPES = [
-  "histogram",
-  "box",
-  "violin",
-  "bar",
-  "count",
-  "scatter",
-  "line",
-  "heatmap",
-  "density_heatmap",
-  "pie",
-  "scatter_matrix",
-] as const;
-
-export type ChartType = (typeof CHART_TYPES)[number];
-
-export const CHART_AGGS = ["count", "mean", "sum", "median"] as const;
-export type ChartAgg = (typeof CHART_AGGS)[number];
-
-/** Editable chart-key params (everything except `source`). */
-export interface ChartDraft {
-  chart: ChartType;
-  x: string | null;
-  y: string | null;
-  color: string | null;
-  facet_row: string | null;
-  facet_col: string | null;
-  size: string | null;
-  columns: string[];
-  agg: ChartAgg | null;
-  trendline: boolean;
-  log_x: boolean;
-  log_y: boolean;
-  bins: number;
-  sample_size: number | null;
-}
-
-export const DEFAULT_CHART_DRAFT: ChartDraft = {
-  chart: "histogram",
-  x: null,
-  y: null,
-  color: null,
-  facet_row: null,
-  facet_col: null,
-  size: null,
-  columns: [],
-  agg: null,
-  trendline: false,
-  log_x: false,
-  log_y: false,
-  bins: 30,
-  sample_size: 10_000,
+export {
+  CHART_AGGS,
+  DEFAULT_CHART_DRAFT,
+  type ChartDraft,
+  type ChartType,
 };
 
 export interface PrefillCol {
