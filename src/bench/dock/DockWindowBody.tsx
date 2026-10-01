@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { apiClient } from "../../api/client";
 import type { ColumnProfile, Result, WorkspaceRow } from "../../api/types";
-import { EngineError } from "../../api/types";
 import {
   ensureWorkspaceSaved,
   useAppDispatch,
@@ -16,17 +15,21 @@ import { toolParamsKey } from "../left/keyTunable";
 import { computeStat, fmtStat } from "../left/stats";
 import { stripNullParams } from "../schemaFields";
 import { toolDef } from "../toolrail/tools";
-import { useDebounced } from "../../hooks";
+import { useDebounced, useKeyedAsync } from "../../hooks";
 import { useWorkbenchData } from "../WorkbenchData";
 import {
   SCOPEABLE_TOOLS,
-  engineColumnsParam,
   isNumericKind,
-  outliersBoundLabel,
   schemaHasBy,
   schemaHasColumns,
-  selectedNumericColumns,
 } from "./columnScope";
+import {
+  chartColumnsOf,
+  corrSelectedCount,
+  toolDataAttrs,
+  toolPlan,
+  type PlanCtx,
+} from "./dockToolPlan";
 import { EMPTY_DATA_ROWS_MSG } from "../format";
 import { AnalysisResultView } from "./AnalysisResultView";
 import { chartPrefillForWindow } from "./chartPrefill";
@@ -112,8 +115,8 @@ const PER_COLUMN_PARAM_TOOLS = new Set<ToolId>(["dist", "outliers", "target"]);
 const COMPARE_STATS = ["mean", "median", "std", "min", "max"] as const;
 const PARAM_DEBOUNCE_MS = 300;
 
-/** Survives dock close/reopen — keyed by version+tool+params (+ selection scope). */
-type DockResultCacheEntry = {
+/** One run of a dock window; also the entry cached across dock close/reopen. */
+interface DockRun {
   profiles: ColumnProfile[];
   rows: WorkspaceRow[];
   result: Result | null;
@@ -121,10 +124,26 @@ type DockResultCacheEntry = {
   bound: string;
   hasColumnsParam: boolean;
   corrCols: string[];
-  error: string | null;
+  /** Params of the last run_key (source pinned to the identity) — e2e / debug. */
   runParams: string | null;
+}
+const EMPTY_RUN: DockRun = {
+  profiles: [],
+  rows: [],
+  result: null,
+  msg: null,
+  bound: "",
+  hasColumnsParam: false,
+  corrCols: [],
+  runParams: null,
 };
-const dockResultCache = new Map<string, DockResultCacheEntry>();
+const NO_WORKSPACE_RUN: DockRun = {
+  ...EMPTY_RUN,
+  msg: "Load a workspace with a train source to run this tool.",
+};
+
+/** Keyed by version+tool+params (+ selection scope). */
+const dockResultCache = new Map<string, DockRun>();
 
 function ScopeToggle({
   scopeAll,
@@ -156,25 +175,57 @@ function ScopeToggle({
   );
 }
 
+function SplitByBar({
+  splitBy,
+  names,
+  target,
+  onChange,
+}: {
+  splitBy: string | null;
+  names: string[];
+  target: string | null;
+  onChange: (by: string | null) => void;
+}) {
+  return (
+    <div className="dock-split-by" title="Split by column">
+      <label htmlFor="dock-split-by">
+        <span className="dock-split-label">By</span>
+        <select
+          id="dock-split-by"
+          aria-label="Split by"
+          value={splitBy ?? ""}
+          onChange={(e) => onChange(e.target.value || null)}
+        >
+          <option value="">(none)</option>
+          {names.map((name) => (
+            <option key={name} value={name}>
+              {name}
+              {name === target ? " (target)" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
+/** What to render for a key: cached entry > settled run > placeholder. */
+function resolveRun(
+  key: string | null,
+  cached: DockRun | undefined,
+  run: { value: DockRun | undefined; error: string | null; ready: boolean },
+) {
+  if (!key) return { shown: NO_WORKSPACE_RUN, error: null, ready: true };
+  if (cached) return { shown: cached, error: null, ready: true };
+  return { shown: run.value ?? EMPTY_RUN, error: run.error, ready: run.ready };
+}
+
 export function DockWindowBody({ id }: { id: ToolId }) {
   const { workspace, selection, role, distBy, toolParams, toolViews } =
     useAppState();
   const dispatch = useAppDispatch();
   const bench = useWorkbenchData();
-  const [profiles, setProfiles] = useState<ColumnProfile[]>([]);
-  const [rows, setRows] = useState<WorkspaceRow[]>([]);
-  const [result, setResult] = useState<Result | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [bound, setBound] = useState("");
-  const [ready, setReady] = useState(false);
   const [scopeAll, setScopeAll] = useState(false);
-  const [hasColumnsParam, setHasColumnsParam] = useState(false);
-  const [corrCols, setCorrCols] = useState<string[]>([]);
-  /** Params of the last run_key (source pinned to the identity) — e2e / debug. */
-  const [runParams, setRunParams] = useState<string | null>(null);
-  /** Identity of the data currently rendered (null while loading). */
-  const [shownIdentity, setShownIdentity] = useState<string | null>(null);
 
   const selCols = selection.columns;
   const focus = selCols[0] ?? selection.cell?.col ?? null;
@@ -229,357 +280,107 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     target,
   ]);
 
-  useEffect(() => {
-    if (!workspace?.datasets.train.x.path) {
-      setMsg("Load a workspace with a train source to run this tool.");
-      setProfiles([]);
-      setRows([]);
-      setResult(null);
-      setReady(true);
-      setError(null);
-      return;
-    }
-
-    // Reopen with nothing changed → reuse last result (not just warm bench data).
-    if (dockCacheKey) {
-      const hit = dockResultCache.get(dockCacheKey);
-      if (hit) {
-        setProfiles(hit.profiles);
-        setRows(hit.rows);
-        setResult(hit.result);
-        setMsg(hit.msg);
-        setBound(hit.bound);
-        setHasColumnsParam(hit.hasColumnsParam);
-        setCorrCols(hit.corrCols);
-        setError(hit.error);
-        setRunParams(hit.runParams);
-        setShownIdentity(identity.key);
-        setReady(true);
-        return;
-      }
-    }
-
-    let cancelled = false;
-    let cacheBound = "";
-    let cacheMsg: string | null = null;
-    let cacheResult: Result | null = null;
-    let cacheHasColumns = false;
-    let cacheCorr: string[] = [];
-    let cacheProfiles: ColumnProfile[] = [];
-    let cacheRows: WorkspaceRow[] = [];
-    let cacheError: string | null = null;
-    let cacheRunParams: string | null = null;
-    const idKey = identity.key;
-
-    (async () => {
-      setReady(false);
-      setError(null);
-      setMsg(null);
-      setResult(null);
-      setRunParams(null);
-      setShownIdentity(null);
-      try {
-        await ensureWorkspaceSaved(workspace);
-        if (cancelled) return;
-        let profColumns: ColumnProfile[];
-        let pageRows: WorkspaceRow[];
-        // Reuse the grid's frame only when it is exactly this identity
-        // (same version is not enough: a step's params may have changed).
-        const canReuse =
-          bench.profiles.size > 0 &&
-          bench.profilesIdentity === idKey &&
-          bench.rowsIdentity === idKey;
-        if (canReuse) {
-          profColumns = [...bench.profiles.values()];
-          pageRows = bench.rows;
-        } else {
-          const prof = await apiClient.columnProfiles(
-            workspace,
-            role,
-            identity.version,
-          );
-          const wr = await apiClient.workspaceRows(
-            workspace,
-            role,
-            identity.version,
-            0,
-            500,
-          );
-          profColumns = prof.columns;
-          pageRows = wr.rows;
-        }
-        if (cancelled) return;
-        cacheProfiles = profColumns;
-        cacheRows = pageRows;
-        setProfiles(profColumns);
-        setRows(pageRows);
-
-        if (id === "compare") {
-          const cs = selCols.filter((c) =>
-            profColumns.some((p) => p.name === c),
-          );
-          if (cs.length < 2) {
-            cacheMsg =
-              "Select two or more columns (shift-click headers, or right-click → Add to selection).";
-            setMsg(cacheMsg);
-          } else {
-            cacheBound = `${cs.length} columns · ${role}`;
-            setBound(cacheBound);
-          }
-          return;
-        }
-
-        if (id === "corr") {
-          const nums = profColumns
-            .filter((p) => isNumericKind(p.kind) && p.name !== target)
-            .map((p) => p.name);
-          const selNum = selCols.filter((c) =>
-            profColumns.some(
-              (p) =>
-                p.name === c && isNumericKind(p.kind) && c !== target,
-            ),
-          );
-          const useSelection = !scopeAll && selNum.length >= 2;
-          const use = (useSelection ? selNum : nums).slice(0, 7);
-          if (use.length < 2) {
-            cacheMsg = "Need at least two numeric columns.";
-            setMsg(cacheMsg);
-            setCorrCols([]);
-            return;
-          }
-          cacheCorr = use;
-          setCorrCols(use);
-          cacheBound = useSelection
-            ? `bound to selection · ${selNum.length} columns · key correlations`
-            : "all numeric columns · key correlations";
-          setBound(cacheBound);
-          // Fall through to engine run.
-        }
-
-        if (id === "dist") {
-          if (!focus || !profColumns.some((p) => p.name === focus)) {
-            cacheMsg = "Select a column to see its distribution.";
-            setMsg(cacheMsg);
-            return;
-          }
-          cacheBound = splitBy
-            ? `bound to ${focus} · split by ${splitBy} · key column_distribution`
-            : `bound to ${focus} · key column_distribution`;
-          setBound(cacheBound);
-          // Always run engine so bins / log / norm knobs apply (MAT-174).
-        }
-
-        if (id === "missing") {
-          const useSelection = !scopeAll && selCols.length > 0;
-          cacheBound = useSelection
-            ? selCols.length === 1
-              ? `bound to ${selCols[0]} · key missing_values`
-              : `bound to selection · ${selCols.length} columns · key missing_values`
-            : `${role} · all columns · key missing_values`;
-          setBound(cacheBound);
-        }
-
-        if (id === "outliers") {
-          const selNum = selectedNumericColumns(selCols, profColumns);
-          if (!scopeAll) {
-            if (selNum.length === 0) {
-              cacheMsg =
-                "Select a numeric column. Fences: Q1 − 1.5·IQR and Q3 + 1.5·IQR, sentinels excluded.";
-              setMsg(cacheMsg);
-              return;
-            }
-            cacheBound =
-              selNum.length === 1
-                ? `${outliersBoundLabel(selNum[0]!, profColumns.find((c) => c.name === selNum[0]))} · key outliers`
-                : `bound to selection · ${selNum.length} columns · key outliers`;
-            setBound(cacheBound);
-          } else {
-            cacheBound = "all numeric columns · key outliers";
-            setBound(cacheBound);
-          }
-        }
-
-        if (id === "target" || id === "feature_selection") {
-          if (!target) {
-            cacheMsg =
-              "No target yet: set it on the Sources screen, or right-click a column → Set as target.";
-            setMsg(cacheMsg);
-            return;
-          }
-          if (role === "test") {
-            cacheMsg = "The test set has no label. Switch to Train.";
-            setMsg(cacheMsg);
-            return;
-          }
-        }
-
-        const runEngine = ENGINE_TOOLS.has(id);
-        if (runEngine) {
-          const available: Record<string, unknown> = {
-            source: identitySource(identity),
-            ...debouncedUserParams,
-          };
-          // train_test_check takes `train` + `test` (no `source`): without an
-          // explicit train it silently analysed the engine's demo CSV. It
-          // always compares train against test, whatever role is viewed.
-          available.train = identitySource(
-            withRole(workspace, identity, "train"),
-            false,
-          );
-          // The test frame is unlabeled: a target there is a KeyParamsError.
-          if (target && role === "train") available.target = target;
-          if (workspace.datasets.test) {
-            available.test = identitySource(
-              withRole(workspace, identity, "test"),
-              false,
-            );
-          }
-          const schema = await apiClient.keySchema(def.key);
-          if (cancelled) return;
-          const hasCols = schemaHasColumns(schema);
-          cacheHasColumns = hasCols;
-          setHasColumnsParam(hasCols);
-          if (hasCols) {
-            if (id === "outliers") {
-              const selNum = selectedNumericColumns(selCols, profColumns);
-              const cols = scopeAll ? null : selNum;
-              if (cols && cols.length > 0) available.columns = cols;
-            } else if (id === "missing") {
-              const cols = engineColumnsParam(selCols, scopeAll);
-              if (cols && cols.length > 0) available.columns = cols;
-            } else if (id === "dist" && focus) {
-              available.columns = [focus];
-            } else if (id === "corr") {
-              const nums = profColumns
-                .filter((p) => isNumericKind(p.kind) && p.name !== target)
-                .map((p) => p.name);
-              const selNum = selCols.filter((c) =>
-                profColumns.some(
-                  (p) =>
-                    p.name === c &&
-                    isNumericKind(p.kind) &&
-                    c !== target,
-                ),
-              );
-              const useSelection = !scopeAll && selNum.length >= 2;
-              const use = (useSelection ? selNum : nums).slice(0, 7);
-              if (use.length > 0) available.columns = use;
-            } else {
-              const cols = engineColumnsParam(selCols, scopeAll);
-              if (cols) {
-                const usable =
-                  id === "feature_selection"
-                    ? cols.filter((c) => {
-                        const p = profColumns.find((pc) => pc.name === c);
-                        return p && isNumericKind(p.kind) && c !== target;
-                      })
-                    : cols;
-                if (usable.length > 0) available.columns = usable;
-              }
-            }
-          }
-          if (id === "dist" && splitBy && schemaHasBy(schema)) {
-            available.by = splitBy;
-          }
-          // Structural wins over user params for columns / by / target / sources.
-          const params = stripNullParams(
-            keyParamsFromSchema(schema, available),
-          );
-          const r = await apiClient.runKey(def.key, params);
-          if (cancelled) return;
-          cacheRunParams = JSON.stringify(params);
-          setRunParams(cacheRunParams);
-          cacheResult = r;
-          setResult(r);
-          if (id === "outliers") {
-            const selNum = selectedNumericColumns(selCols, profColumns);
-            if (scopeAll) {
-              cacheBound = "all numeric columns · key outliers";
-            } else if (selNum.length === 1) {
-              cacheBound = `${outliersBoundLabel(selNum[0]!, profColumns.find((c) => c.name === selNum[0]))} · key outliers`;
-            } else {
-              cacheBound = `bound to selection · ${selNum.length} columns · key outliers`;
-            }
-            setBound(cacheBound);
-          } else if (id === "missing") {
-            const useSelection = !scopeAll && selCols.length > 0;
-            cacheBound = useSelection
-              ? selCols.length === 1
-                ? `bound to ${selCols[0]} · key missing_values`
-                : `bound to selection · ${selCols.length} columns · key missing_values`
-              : `all columns · key missing_values`;
-            setBound(cacheBound);
-          } else if (id === "dist" && focus) {
-            cacheBound = splitBy
-              ? `bound to ${focus} · split by ${splitBy} · key column_distribution`
-              : `bound to ${focus} · key column_distribution`;
-            setBound(cacheBound);
-          } else if (id === "corr") {
-            cacheBound = `key correlations · ${(available.columns as string[] | undefined)?.length ?? 0} columns`;
-            setBound(cacheBound);
-          } else if (
-            (id === "target" || id === "feature_selection") &&
-            hasCols
-          ) {
-            const cols = engineColumnsParam(selCols, scopeAll);
-            cacheBound = cols
-              ? cols.length === 1
-                ? `bound to ${cols[0]} · key ${def.key}`
-                : `bound to selection · ${cols.length} columns · key ${def.key}`
-              : `all features · key ${def.key}`;
-            setBound(cacheBound);
-          } else {
-            cacheBound = `key ${def.key}`;
-            setBound(cacheBound);
-          }
-        }
-      } catch (e) {
-        if (cancelled) return;
-        cacheError = e instanceof EngineError ? e.message : String(e);
-        setError(cacheError);
-      } finally {
-        if (!cancelled) {
-          setReady(true);
-          setShownIdentity(idKey);
-          if (dockCacheKey) {
-            dockResultCache.set(dockCacheKey, {
-              profiles: cacheProfiles,
-              rows: cacheRows,
-              result: cacheResult,
-              msg: cacheMsg,
-              bound: cacheBound,
-              hasColumnsParam: cacheHasColumns,
-              corrCols: cacheCorr,
-              error: cacheError,
-              runParams: cacheRunParams,
-            });
-          }
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    workspace,
-    identity,
-    selCols,
-    selKey,
-    focus,
-    role,
+  const planCtx = (profiles: ColumnProfile[]): PlanCtx => ({
     id,
-    target,
-    def.key,
+    key: def.key,
+    role,
+    selCols,
     scopeAll,
+    target,
+    focus,
     splitBy,
-    debouncedParamsJson,
-    debouncedUserParams,
+    profiles,
+  });
+
+  /** The grid's frame when it is exactly this identity, else fetched. */
+  const loadFrame = async () => {
+    // Same version is not enough: a step's params may have changed.
+    if (
+      bench.profiles.size > 0 &&
+      bench.profilesIdentity === identity.key &&
+      bench.rowsIdentity === identity.key
+    ) {
+      return { profiles: [...bench.profiles.values()], rows: bench.rows };
+    }
+    const prof = await apiClient.columnProfiles(workspace!, role, identity.version);
+    const wr = await apiClient.workspaceRows(workspace!, role, identity.version, 0, 500);
+    return { profiles: prof.columns, rows: wr.rows };
+  };
+
+  const runEngine = async (
+    plan: ReturnType<typeof toolPlan>,
+    ctx: PlanCtx,
+    alive: () => boolean,
+  ): Promise<Partial<DockRun>> => {
+    const available: Record<string, unknown> = {
+      source: identitySource(identity),
+      ...debouncedUserParams,
+    };
+    // train_test_check takes `train` + `test` (no `source`): without an
+    // explicit train it silently analysed the engine's demo CSV. It
+    // always compares train against test, whatever role is viewed.
+    available.train = identitySource(
+      withRole(workspace!, identity, "train"),
+      false,
+    );
+    // The test frame is unlabeled: a target there is a KeyParamsError.
+    if (target && role === "train") available.target = target;
+    if (workspace!.datasets.test) {
+      available.test = identitySource(
+        withRole(workspace!, identity, "test"),
+        false,
+      );
+    }
+    const schema = await apiClient.keySchema(def.key);
+    if (!alive()) return {};
+    const hasCols = schemaHasColumns(schema);
+    const cols = hasCols ? plan.columns?.(ctx) : null;
+    if (cols && cols.length > 0) available.columns = cols;
+    if (id === "dist" && splitBy && schemaHasBy(schema)) {
+      available.by = splitBy;
+    }
+    // Structural wins over user params for columns / by / target / sources.
+    const params = stripNullParams(keyParamsFromSchema(schema, available));
+    const result = await apiClient.runKey(def.key, params);
+    return {
+      result,
+      hasColumnsParam: hasCols,
+      corrCols: id === "corr" ? (cols ?? []) : [],
+      runParams: JSON.stringify(params),
+      bound: plan.bound(ctx, {
+        hasCols,
+        sent: available.columns as string[] | undefined,
+      }),
+    };
+  };
+
+  // Reopen with nothing changed reuses the last result (not just warm bench data).
+  const cached = dockCacheKey ? dockResultCache.get(dockCacheKey) : undefined;
+  const run = useKeyedAsync<DockRun>(
     dockCacheKey,
-    bench.profiles,
-    bench.rows,
-    bench.profilesIdentity,
-    bench.rowsIdentity,
-  ]);
+    async (alive) => {
+      await ensureWorkspaceSaved(workspace!);
+      const frame = await loadFrame();
+      const base = { ...EMPTY_RUN, ...frame };
+      if (!alive()) return base;
+      const plan = toolPlan(id);
+      const ctx = planCtx(frame.profiles);
+      const msg = plan.guard?.(ctx) ?? null;
+      const out: DockRun = msg
+        ? { ...base, msg }
+        : plan.engine
+          ? { ...base, ...(await runEngine(plan, ctx, alive)) }
+          : { ...base, bound: plan.bound(ctx, { hasCols: false, sent: undefined }) };
+      if (alive()) dockResultCache.set(dockCacheKey!, out);
+      return out;
+    },
+    !cached,
+  );
+  const { shown, error, ready } = resolveRun(dockCacheKey, cached, run);
+  const { profiles, rows, result, msg, bound, hasColumnsParam, corrCols, runParams } =
+    shown;
+  /** Identity of the data currently rendered (null while loading). */
+  const shownIdentity = dockCacheKey && ready ? identity.key : null;
 
   const profileByName = useMemo(() => {
     const m = new Map<string, ColumnProfile>();
@@ -602,10 +403,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
   const onColumnsClick = (cols: string[], add: boolean) => {
     const scopedToSelection =
       id === "corr"
-        ? selCols.filter((c) => {
-            const k = profileByName.get(c)?.kind;
-            return !!k && isNumericKind(k) && c !== target;
-          }).length >= 2
+        ? corrSelectedCount(planCtx(profiles)) >= 2
         : selCols.length > 0;
     if (SCOPEABLE_TOOLS.has(id) && !scopedToSelection) setScopeAll(true);
     if (!add) dispatch({ type: "CLEAR_SELECTION" });
@@ -618,22 +416,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
 
   /** Open in Chart (MAT-235): the columns / split the key actually ran on. */
   const openInChart = () => {
-    let params: Record<string, unknown> = {};
-    try {
-      params = runParams ? (JSON.parse(runParams) as Record<string, unknown>) : {};
-    } catch {
-      /* no run params: fall back to the selection */
-    }
-    let names = Array.isArray(params.columns)
-      ? params.columns.filter((c): c is string => typeof c === "string")
-      : scopeAll
-        ? []
-        : [...selCols];
-    if (id === "target" && typeof params.target === "string") {
-      const feature = names.find((n) => n !== params.target);
-      names = feature ? [feature, params.target] : [params.target];
-    }
-    const by = typeof params.by === "string" ? params.by : null;
+    const { names, by } = chartColumnsOf(id, runParams, scopeAll, selCols);
     const cols = names.map((name) => ({
       name,
       kind: profileByName.get(name)?.kind ?? "text",
@@ -661,35 +444,6 @@ export function DockWindowBody({ id }: { id: ToolId }) {
       />
     ) : null;
 
-  const splitByBar =
-    id === "dist" ? (
-      <div className="dock-split-by" title="Split by column">
-        <label htmlFor="dock-split-by">
-          <span className="dock-split-label">By</span>
-          <select
-            id="dock-split-by"
-            aria-label="Split by"
-            value={splitBy ?? ""}
-            onChange={(e) => {
-              const v = e.target.value;
-              dispatch({ type: "SET_DIST_BY", by: v || null });
-            }}
-          >
-            <option value="">(none)</option>
-            {profiles
-              .map((p) => p.name)
-              .filter((name) => name !== focus)
-              .map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                  {name === target ? " (target)" : ""}
-                </option>
-              ))}
-          </select>
-        </label>
-      </div>
-    ) : null;
-
   const subchrome = (
     <div className="dock-subchrome">
       <IdentityStrip
@@ -701,7 +455,14 @@ export function DockWindowBody({ id }: { id: ToolId }) {
       {showScopeToggle ? (
         <ScopeToggle scopeAll={scopeAll} onChange={setScopeAll} />
       ) : null}
-      {splitByBar}
+      {id === "dist" ? (
+        <SplitByBar
+          splitBy={splitBy}
+          names={columnNames.filter((name) => name !== focus)}
+          target={target}
+          onChange={(by) => dispatch({ type: "SET_DIST_BY", by })}
+        />
+      ) : null}
       {paramsPanel}
       {bound ? (
         <span className="dock-bound muted" title={bound}>
@@ -759,28 +520,17 @@ export function DockWindowBody({ id }: { id: ToolId }) {
       </div>
     );
   }
+  const attrs = (full: boolean) =>
+    toolDataAttrs(planCtx(profiles), {
+      full,
+      params: debouncedUserParams,
+      corrCols,
+    });
+  const scopeMode = scopeAll ? "all" : "selection";
+
   if (msg) {
-    const selNum =
-      id === "outliers" && !scopeAll
-        ? selectedNumericColumns(selCols, profiles)
-        : [];
-    const outliersCol = selNum.length === 1 ? selNum[0] : undefined;
     return wrap(
-      <div
-        data-scope-mode={scopeAll ? "all" : "selection"}
-        {...(outliersCol
-          ? {
-              "data-outliers-col": outliersCol,
-              "data-outliers-cols": outliersCol,
-            }
-          : {})}
-        {...(id === "dist"
-          ? {
-              "data-dist-col": focus ?? undefined,
-              "data-dist-by": splitBy ?? "",
-            }
-          : {})}
-      >
+      <div data-scope-mode={scopeMode} {...attrs(false)}>
         {subchrome}
         <div className="dock-msg">{msg}</div>
       </div>
@@ -788,23 +538,11 @@ export function DockWindowBody({ id }: { id: ToolId }) {
   }
 
   if (id === "compare") {
-    const cs = selCols.filter((c) => profileByName.has(c)).slice(0, 6);
-    if (cs.length < 2) {
-      return wrap(
-        <div>
-          {subchrome}
-          <div className="dock-msg">
-            Select two or more columns (shift-click headers, or right-click → Add
-            to selection).
-          </div>
-        </div>
-      );
-    }
     return wrap(
       <div>
         {subchrome}
         <CompareNative
-          cols={cs}
+          cols={selCols.filter((c) => profileByName.has(c)).slice(0, 6)}
           profiles={profileByName}
           rows={rows}
           target={target}
@@ -814,83 +552,14 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     );
   }
 
-  if (id === "missing" && !result) {
-    const useSelection = !scopeAll && selCols.length > 0;
-    return wrap(
-      <div
-        data-scope-mode={useSelection ? "selection" : "all"}
-        data-missing-cols={
-          useSelection
-            ? selCols.join(",")
-            : profiles.map((c) => c.name).join(",")
-        }
-      >
-        {subchrome}
-        <div className="dock-msg muted">Loading…</div>
-      </div>
-    );
-  }
-
   if (result) {
-    const selNum =
-      id === "outliers" && !scopeAll
-        ? selectedNumericColumns(selCols, profiles)
-        : [];
-    const outliersCol = selNum.length === 1 ? selNum[0] : undefined;
-    const missingCols =
-      id === "missing" && !scopeAll && selCols.length > 0 ? selCols : null;
     return wrap(
       <div
         className="dock-result"
-        data-scope-mode={scopeAll ? "all" : "selection"}
+        data-scope-mode={scopeMode}
         data-engine-key={def.key}
         data-has-columns-param={hasColumnsParam ? "1" : "0"}
-        {...(id === "outliers"
-          ? {
-              ...(outliersCol
-                ? {
-                    "data-outliers-col": outliersCol,
-                    "data-outliers-cols": outliersCol,
-                  }
-                : selNum.length > 1
-                  ? { "data-outliers-cols": selNum.join(",") }
-                  : {}),
-            }
-          : {})}
-        {...(id === "missing"
-          ? {
-              "data-missing-cols":
-                missingCols?.join(",") ??
-                profiles.map((c) => c.name).join(","),
-            }
-          : {})}
-        {...(id === "dist"
-          ? {
-              "data-dist-col": focus ?? undefined,
-              "data-dist-by": splitBy ?? "",
-              "data-dist-bins":
-                debouncedUserParams.bins !== undefined
-                  ? String(debouncedUserParams.bins)
-                  : undefined,
-            }
-          : {})}
-        {...(id === "corr"
-          ? {
-              "data-corr-size": String(
-                corrCols.length ||
-                  ((debouncedUserParams.columns as string[] | undefined)
-                    ?.length ?? 0),
-              ),
-            }
-          : {})}
-        {...(id === "outliers" &&
-        debouncedUserParams.contamination !== undefined
-          ? {
-              "data-outliers-contamination": String(
-                debouncedUserParams.contamination,
-              ),
-            }
-          : {})}
+        {...attrs(true)}
       >
         {subchrome}
         <AnalysisResultView
