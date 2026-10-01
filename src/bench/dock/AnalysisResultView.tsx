@@ -41,17 +41,17 @@ function DisplayControls({
   caps,
   display,
   onChange,
-  open,
 }: {
-  open: boolean;
   caps: ReturnType<typeof figureCaps>;
   display: FigureDisplay;
   onChange: (patch: Partial<FigureDisplay>) => void;
 }) {
+  const [open, setOpen] = useState(false);
   if (!caps.sortable && !caps.percent && !caps.log && !caps.annotations) {
     return null;
   }
   return (
+    <>
     <div
       className="result-display"
       role="group"
@@ -124,6 +124,163 @@ function DisplayControls({
         </label>
       ) : null}
     </div>
+    <button
+      type="button"
+      className="chip result-display-toggle"
+      data-display-toggle=""
+      aria-label="Display options"
+      aria-expanded={open}
+      title="Display options"
+      onClick={() => setOpen((o) => !o)}
+    >
+      ⋯
+    </button>
+    </>
+  );
+}
+
+type Figure = Result["figures"][number];
+
+/** The figure filling the window; marks naming columns can select them. */
+function FigureMain({
+  figure,
+  shown,
+  columns,
+  onColumnsClick,
+}: {
+  figure: Figure;
+  shown: Figure["plotly"];
+  columns: readonly string[];
+  onColumnsClick?: (cols: string[], add: boolean) => void;
+}) {
+  const clickable =
+    !!onColumnsClick && figureHasColumnAxis(figure.plotly, columns);
+  return (
+    <div
+      className={clickable ? "result-figure clickable" : "result-figure"}
+      data-figure-title={figure.title}
+      title={clickable ? "Click a column to select it in the grid" : undefined}
+    >
+      <PlotlyFigure
+        title={figure.title}
+        plotly={shown}
+        onPointClick={
+          clickable
+            ? (pt, ev) => {
+                const cols = clickedColumns(pt, columns);
+                if (cols.length > 0) {
+                  onColumnsClick(
+                    cols,
+                    !!ev && (ev.shiftKey || ev.metaKey || ev.ctrlKey),
+                  );
+                }
+              }
+            : undefined
+        }
+      />
+    </div>
+  );
+}
+
+/** Figure tabs + select: one entry per figure, plus Table when present. */
+function ViewSwitcher({
+  result,
+  viewId,
+  select,
+}: {
+  result: Result;
+  viewId: string;
+  select: (v: WindowView) => void;
+}) {
+  const hasTables = result.tables.length > 0;
+  const tabs: { id: string; label: string; view: WindowView }[] = [
+    ...result.figures.map((f, i) => ({
+      id: `figure:${i}`,
+      label: f.title,
+      view: { kind: "figure", index: i } as WindowView,
+    })),
+    ...(hasTables
+      ? [{ id: "table", label: "Table", view: { kind: "table" } as WindowView }]
+      : []),
+  ];
+  return (
+    <>
+      <div className="result-tabs" role="tablist" aria-label="Views">
+        {tabs.map((t) => {
+          const on = t.id === viewId;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              className={on ? "result-tab on" : "result-tab"}
+              data-view-tab={t.id}
+              title={t.id === "table" ? undefined : t.label}
+              onClick={() => select(t.view)}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+      <select
+        className="result-view-select"
+        aria-label="View"
+        data-view-select=""
+        value={viewId}
+        onChange={(e) =>
+          select(tabs.find((t) => t.id === e.target.value)!.view)
+        }
+      >
+        {tabs.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.label}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+}
+
+/** Collapsed drawer: metric tiles, tables not already shown, text. */
+function Details({
+  result,
+  open,
+  bits,
+  showTables,
+  onToggle,
+}: {
+  result: Result;
+  open: boolean;
+  bits: unknown[];
+  showTables: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="result-details" data-details-open={open ? "1" : "0"}>
+      <button
+        type="button"
+        className="result-details-toggle"
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <span className="result-details-caret" aria-hidden="true">
+          {open ? "▾" : "▸"}
+        </span>
+        Details
+        {bits.length ? <span className="muted"> · {bits.join(" · ")}</span> : null}
+      </button>
+      {open ? (
+        <div className="result-details-body">
+          <MetricTiles metrics={result.metrics} />
+          {showTables
+            ? result.tables.map((t) => <ResultTableView key={t.title} table={t} />)
+            : null}
+          {result.text ? <pre className="result-text">{result.text}</pre> : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -153,11 +310,14 @@ export function AnalysisResultView({
   const dispatch = useAppDispatch();
   const state: ToolViewState | undefined = toolViews[viewKey];
   const view = resolveView(result, state?.view);
-  const display = displayOf(state);
+  const storedDisplay = state?.display;
+  const display = useMemo(
+    () => displayOf({ display: storedDisplay }),
+    [storedDisplay],
+  );
   const detailsOpen = state?.details === true;
   const patch = (p: ToolViewState) =>
     dispatch({ type: "PATCH_TOOL_VIEW", key: viewKey, patch: p });
-  const [displayOpen, setDisplayOpen] = useState(false);
   const select = (v: WindowView) => patch({ view: storedViewFor(result, v) });
 
   const figure = view.kind === "figure" ? result.figures[view.index] : undefined;
@@ -167,31 +327,20 @@ export function AnalysisResultView({
   );
   const shown = useMemo(
     () => (figure && caps ? applyDisplay(figure.plotly, display, caps) : null),
-    // `display` is rebuilt each render; its fields are the real inputs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [figure, caps, display.sort, display.topN, display.percent, display.log, display.annotations],
-  );
-  const clickable = useMemo(
-    () =>
-      !!figure && !!onColumnsClick && figureHasColumnAxis(figure.plotly, columns),
-    [figure, onColumnsClick, columns],
+    [figure, caps, display],
   );
 
   const headline = result.headline?.trim();
-  const hasTables = result.tables.length > 0;
-  const viewId =
-    view.kind === "figure" ? `figure:${view.index}` : view.kind;
+  const nMetrics = Object.keys(result.metrics).length;
+  const nTables = result.tables.length;
+  const showTables = nTables > 0 && view.kind !== "table";
+  const viewId = view.kind === "figure" ? `figure:${view.index}` : view.kind;
   const detailBits = [
-    Object.keys(result.metrics).length
-      ? `${Object.keys(result.metrics).length} metrics`
-      : null,
-    hasTables && view.kind !== "table"
-      ? `${result.tables.length} table${result.tables.length > 1 ? "s" : ""}`
-      : null,
+    nMetrics ? `${nMetrics} metrics` : null,
+    showTables ? `${nTables} table${nTables > 1 ? "s" : ""}` : null,
   ].filter(Boolean);
   const hasDetails =
-    view.kind !== "metrics" &&
-    (detailBits.length > 0 || !!result.text);
+    view.kind !== "metrics" && (detailBits.length > 0 || !!result.text);
 
   return (
     <div className="result-view result-shell" data-view={viewId}>
@@ -202,30 +351,13 @@ export function AnalysisResultView({
       ) : null}
 
       <div className="result-main" data-main-view={view.kind}>
-        {view.kind === "figure" && figure && shown ? (
-          <div
-            className={clickable ? "result-figure clickable" : "result-figure"}
-            data-figure-title={figure.title}
-            title={clickable ? "Click a column to select it in the grid" : undefined}
-          >
-            <PlotlyFigure
-              title={figure.title}
-              plotly={shown}
-              onPointClick={
-                clickable
-                  ? (pt, ev) => {
-                      const cols = clickedColumns(pt, columns);
-                      if (cols.length > 0) {
-                        onColumnsClick!(
-                          cols,
-                          !!ev && (ev.shiftKey || ev.metaKey || ev.ctrlKey),
-                        );
-                      }
-                    }
-                  : undefined
-              }
-            />
-          </div>
+        {figure && shown ? (
+          <FigureMain
+            figure={figure}
+            shown={shown}
+            columns={columns}
+            onColumnsClick={onColumnsClick}
+          />
         ) : null}
         {view.kind === "table" ? (
           <div className="result-tables">
@@ -245,83 +377,14 @@ export function AnalysisResultView({
       {result.figures.length > 0 || onOpenChart ? (
         <div className="result-viewbar">
           {result.figures.length > 0 ? (
-            <div className="result-tabs" role="tablist" aria-label="Views">
-              {result.figures.map((f, i) => {
-                const on = view.kind === "figure" && view.index === i;
-                return (
-                  <button
-                    key={`${f.title}-${i}`}
-                    type="button"
-                    role="tab"
-                    aria-selected={on}
-                    className={on ? "result-tab on" : "result-tab"}
-                    data-view-tab={`figure:${i}`}
-                    title={f.title}
-                    onClick={() => select({ kind: "figure", index: i })}
-                  >
-                    {f.title}
-                  </button>
-                );
-              })}
-              {hasTables ? (
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={view.kind === "table"}
-                  className={view.kind === "table" ? "result-tab on" : "result-tab"}
-                  data-view-tab="table"
-                  onClick={() => select({ kind: "table" })}
-                >
-                  Table
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-          {result.figures.length > 0 ? (
-            <select
-              className="result-view-select"
-              aria-label="View"
-              data-view-select=""
-              value={viewId}
-              onChange={(e) => {
-                const v = e.target.value;
-                select(
-                  v === "table"
-                    ? { kind: "table" }
-                    : { kind: "figure", index: Number(v.split(":")[1]) },
-                );
-              }}
-            >
-              {result.figures.map((f, i) => (
-                <option key={`${f.title}-${i}`} value={`figure:${i}`}>
-                  {f.title}
-                </option>
-              ))}
-              {hasTables ? <option value="table">Table</option> : null}
-            </select>
+            <ViewSwitcher result={result} viewId={viewId} select={select} />
           ) : null}
           {caps ? (
-            <>
-              <DisplayControls
-                caps={caps}
-                display={display}
-                onChange={(d) => patch({ display: d })}
-                open={displayOpen}
-              />
-              {caps.sortable || caps.percent || caps.log || caps.annotations ? (
-                <button
-                  type="button"
-                  className="chip result-display-toggle"
-                  data-display-toggle=""
-                  aria-label="Display options"
-                  aria-expanded={displayOpen}
-                  title="Display options"
-                  onClick={() => setDisplayOpen((o) => !o)}
-                >
-                  ⋯
-                </button>
-              ) : null}
-            </>
+            <DisplayControls
+              caps={caps}
+              display={display}
+              onChange={(d) => patch({ display: d })}
+            />
           ) : null}
           <span className="result-viewbar-spacer" />
           {onOpenChart ? (
@@ -338,31 +401,13 @@ export function AnalysisResultView({
       ) : null}
 
       {hasDetails ? (
-        <div className="result-details" data-details-open={detailsOpen ? "1" : "0"}>
-          <button
-            type="button"
-            className="result-details-toggle"
-            aria-expanded={detailsOpen}
-            onClick={() => patch({ details: !detailsOpen })}
-          >
-            <span className="result-details-caret" aria-hidden="true">
-              {detailsOpen ? "▾" : "▸"}
-            </span>
-            Details
-            {detailBits.length ? (
-              <span className="muted"> · {detailBits.join(" · ")}</span>
-            ) : null}
-          </button>
-          {detailsOpen ? (
-            <div className="result-details-body">
-              <MetricTiles metrics={result.metrics} />
-              {view.kind !== "table"
-                ? result.tables.map((t) => <ResultTableView key={t.title} table={t} />)
-                : null}
-              {result.text ? <pre className="result-text">{result.text}</pre> : null}
-            </div>
-          ) : null}
-        </div>
+        <Details
+          result={result}
+          open={detailsOpen}
+          bits={detailBits}
+          showTables={showTables}
+          onToggle={() => patch({ details: !detailsOpen })}
+        />
       ) : null}
     </div>
   );
