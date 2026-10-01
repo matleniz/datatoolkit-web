@@ -1,0 +1,26 @@
+[project]
+name = "dtk-studio"
+version = "0.1.0"
+description = "datatoolkit Studio + engine in one local process (no Docker)"
+requires-python = ">=3.11"
+dependencies = [
+    "dtk-engine[api] @ git+https://github.com/matleniz/datatoolkit",
+]
+
+[project.scripts]
+dtk-studio = "dtk_studio.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+# The engine is not on PyPI: depend on its GitHub repo.
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dtk_studio"]
+
+[tool.uv]
+# Rebuild on source edits when run from a checkout (`uvx --from ./launcher`).
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.py" }]

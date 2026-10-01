@@ -17,3 +17,7 @@ e2e/screenshots
 
 # docker compose data volume
 datatoolkit-data/
+
+# dtk-studio launcher (Python)
+__pycache__/
+launcher/.venv/

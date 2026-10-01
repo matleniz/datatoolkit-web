@@ -1,0 +1,105 @@
+name: uv-launcher
+
+# The no-Docker launcher on the three OS, from this branch: launcher/ run with
+# uvx, and the sh / ps1 one-liners in uv mode. Studio's build comes from this
+# job (packed like the studio-latest release asset, served over file://), so
+# a PR does not depend on the published release.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      engine_ref:
+        description: "Engine git ref to run against instead of main (e.g. a PR branch of matleniz/datatoolkit)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  uv-launcher:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      DTK_NO_OPEN: "1"
+      PY: ${{ matrix.os == 'windows-latest' && 'python' || 'python3' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Pack Studio like the release asset; point the launchers at this branch
+        run: |
+          "$PY" scripts/pack-studio-dist.py dist "$RUNNER_TEMP/studio-release"
+          url=$("$PY" -c 'import pathlib, sys; print(pathlib.Path(sys.argv[1]).resolve().as_uri())' "$RUNNER_TEMP/studio-release")
+          echo "DTK_STUDIO_URL=$url" >> "$GITHUB_ENV"
+          echo "DTK_LAUNCHER_SRC=$GITHUB_WORKSPACE/launcher" >> "$GITHUB_ENV"
+          if [ -n "$ENGINE_REF" ]; then
+            # Every uv run below (scripts included) resolves the engine at that ref.
+            printf 'dtk-engine[api] @ git+https://github.com/matleniz/datatoolkit@%s\n' "$ENGINE_REF" > "$RUNNER_TEMP/overrides.txt"
+            echo "UV_OVERRIDE=$RUNNER_TEMP/overrides.txt" >> "$GITHUB_ENV"
+          fi
+        env:
+          ENGINE_REF: ${{ inputs.engine_ref }}
+
+      # The one-liners first, before setup-uv puts uv on PATH.
+      - name: sh one-liner, no Docker daemon -> uv mode, installs uv
+        if: runner.os != 'Windows'
+        run: |
+          # Hide any preinstalled uv and use a fresh HOME so the official
+          # installer runs; a dead DOCKER_HOST makes Docker "not running"
+          # where it exists (ubuntu; macOS runners have no Docker).
+          path=$(printf %s "$PATH" | tr : '\n' | while read -r d; do [ -x "$d/uv" ] || printf '%s:' "$d"; done)
+          mkdir -p "$RUNNER_TEMP/home"
+          DTK_HOME="$RUNNER_TEMP/dtk-sh" "$PY" scripts/smoke-uv-launcher.py \
+            --expect 'starting datatoolkit without Docker' --expect 'Installing uv' --expect 'Downloading Studio' -- \
+            env HOME="$RUNNER_TEMP/home" PATH="${path%:}" DOCKER_HOST=unix:///nonexistent.sock sh scripts/datatoolkit.sh
+      - name: ps1 one-liner (Windows PowerShell 5.1, piped form) -Uv
+        if: runner.os == 'Windows'
+        run: |
+          DTK_HOME="$RUNNER_TEMP/dtk-ps1" "$PY" scripts/smoke-uv-launcher.py \
+            --expect 'Starting datatoolkit with uv' --expect 'Downloading Studio' -- \
+            powershell -NoProfile -ExecutionPolicy Bypass -Command \
+            '& ([scriptblock]::Create((Get-Content -Raw scripts/datatoolkit.ps1))) -Uv'
+
+      - uses: astral-sh/setup-uv@v6
+      - name: HTTPS from uv's managed Python (the launcher downloads Studio with urllib)
+        env:
+          UV_PYTHON_PREFERENCE: only-managed
+        run: uv run --no-project python -c "import urllib.request; print(urllib.request.urlopen('https://github.com/matleniz/datatoolkit-web', timeout=30).status)"
+      - name: uvx --from ./launcher dtk-studio (download, verify, cache)
+        env:
+          UV_PYTHON_PREFERENCE: only-managed
+          DTK_HOME: ${{ runner.temp }}/dtk-uvx
+        run: |
+          "$PY" scripts/smoke-uv-launcher.py \
+            --expect 'Downloading Studio' --expect 'running: http://localhost:8080' -- \
+            uvx --from ./launcher dtk-studio --no-open
+      - name: Same, offline with a cache and a busy port
+        env:
+          UV_PYTHON_PREFERENCE: only-managed
+          DTK_HOME: ${{ runner.temp }}/dtk-uvx
+        run: |
+          # Hold 8090 (not 8080: the previous step leaves it in TIME_WAIT) so
+          # the launcher has to move to 8091.
+          "$PY" -c 'import socket, time; s = socket.socket(); s.bind(("127.0.0.1", 8090)); s.listen(); time.sleep(900)' &
+          holder=$!
+          trap 'kill "$holder" 2>/dev/null || true' EXIT
+          sleep 2
+          kill -0 "$holder"
+          DTK_STUDIO_URL=file:///nonexistent "$PY" scripts/smoke-uv-launcher.py --port 8091 \
+            --expect 'using the cached one' --expect 'Port 8090 is busy, using 8091' -- \
+            uvx --from ./launcher dtk-studio --no-open --refresh --port 8090
