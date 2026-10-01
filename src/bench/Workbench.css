@@ -214,6 +214,32 @@
   font-weight: 500;
 }
 
+/* datatoolkit-issues#16: undo / redo over the pipeline's steps. */
+.pipeline-history {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: 10px;
+}
+
+.pipeline-history-btn {
+  width: 28px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--dtk-border);
+  border-radius: 5px;
+  background: #ffffff;
+  color: #5b5850;
+}
+
+.pipeline-history-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .pipeline-legend {
   flex-shrink: 0;
   display: flex;

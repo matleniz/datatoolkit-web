@@ -122,6 +122,14 @@ state (`SET_SCREEN`); nginx serves `index.html` for any path.
 Workbench layout (prototype sizes, `src/theme/tokens.css`): pipeline
 **96px**, left **280px**, inspector **318px**, tool rail **56px**.
 
+Pipeline undo / redo (datatoolkit-issues#16): the pipeline bar's ↶ / ↷
+buttons, Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z (or Ctrl+Y) undo / redo changes to
+the workspace's steps (add, remove, alignment steps) and replay at the latest
+version. History is in memory (`AppState.stepHistory`, 100 levels,
+`src/state/stepHistory.ts`), reset when another workspace is loaded; disabled
+while a step is being edited, and the shortcuts leave text fields alone.
+Variables, charts and the target are not part of it.
+
 ## Fixtures
 
 Prototype churn CSVs (dirty on purpose) live in `e2e/fixtures/`:
