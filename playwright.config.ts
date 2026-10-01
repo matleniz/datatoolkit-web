@@ -3,7 +3,9 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
-const dtkHome = mkdtempSync(join(tmpdir(), "dtk-e2e-"));
+const dtkHome =
+  process.env.DTK_E2E_HOME ?? mkdtempSync(join(tmpdir(), "dtk-e2e-"));
+process.env.DTK_E2E_HOME = dtkHome;
 const dtkToolkitDir = join(homedir(), "datatoolkit");
 
 /** Dedicated ports — parallel worktrees fuser-kill 8765/5173. */
@@ -51,6 +53,7 @@ const webServers = [
 
 export default defineConfig({
   testDir: "./e2e",
+  globalTeardown: "./e2e/global-teardown.ts",
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
