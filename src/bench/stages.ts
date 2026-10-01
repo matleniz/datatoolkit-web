@@ -45,21 +45,13 @@ export const STAGES: StageInfo[] = [
   },
 ];
 
-export const STAGE_COLOR: Record<StageId, string> = {
-  import: "#6b5ea8",
-  clean: "#b4460f",
-  transform: "#1d5b86",
-  select: "#2f6b3a",
-  custom: "#8a5a9e",
-};
+export const STAGE_COLOR = Object.fromEntries(
+  STAGES.map((st) => [st.id, st.color]),
+) as Record<StageId, string>;
 
-export const STAGE_NAME: Record<StageId, string> = {
-  import: "Import & align",
-  clean: "Clean",
-  transform: "Encode & transform",
-  select: "Select",
-  custom: "Custom formula",
-};
+export const STAGE_NAME = Object.fromEntries(
+  STAGES.map((st) => [st.id, st.label]),
+) as Record<StageId, string>;
 
 /** Ops shown in the step picker, grouped by course stage (prototype OPS). */
 export const OP_STAGE: Record<string, StageId> = {
@@ -202,181 +194,109 @@ export function stepSummary(
   return sub ? `${title} · ${sub}` : title;
 }
 
+type Params = Record<string, unknown>;
+
+const cols = (p: Params) => (p.columns as string[] | undefined) ?? [];
+const str = (v: unknown) => String(v);
+/** "a, b · <detail>" — the shape most column ops share. */
+const colsWith = (detail: (p: Params) => string) => (p: Params) =>
+  `${cols(p).join(", ")} · ${detail(p)}`;
+/** One entry per key of a column-keyed object param. */
+const perColumn =
+  <T>(key: string, fmt: (col: string, v: T) => string, sep = ", ") =>
+  (p: Params) =>
+    Object.entries((p[key] as Record<string, T> | undefined) ?? {})
+      .map(([c, v]) => fmt(c, v))
+      .join(sep);
+
+function conditionLabel(c: { column?: string; op?: string; value?: unknown }): string {
+  if (!c.column) return "";
+  if (c.op === "isna") return `${c.column} is missing`;
+  if (c.op === "notna") return `${c.column} not missing`;
+  let val = "";
+  if (Array.isArray(c.value)) val = `[${c.value.join(", ")}]`;
+  else if (c.value !== null && c.value !== undefined) val = String(c.value);
+  return `${c.column} ${c.op ?? "=="} ${val}`;
+}
+
+function textBits(p: Params): string {
+  const bits = [
+    p.strip ? "strip" : "",
+    p.lower ? "lower" : "",
+    p.unify_separators ? "unify separators" : "",
+  ].filter(Boolean);
+  return bits.join(" + ") || "no change";
+}
+
+function numericTextBits(p: Params): string {
+  const thousands = p.thousands != null && p.thousands !== "" ? `thou ${str(p.thousands)}` : "";
+  return [`dec ${str(p.decimal ?? ".")}`, thousands, p.percent ? "%" : ""]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+const SUB_LABEL: Record<string, (p: Params) => string> = {
+  replace_sentinels: perColumn<unknown[]>(
+    "sentinels",
+    (c, vals) => `${c} · ${vals.map(String).join(", ")} → NaN`,
+    "; ",
+  ),
+  impute: colsWith((p) => str(p.strategy ?? "")),
+  onehot: (p) => cols(p).join(", "),
+  standardize_text: colsWith(textBits),
+  to_numeric: colsWith(numericTextBits),
+  extract: (p) => {
+    const col = str(p.column ?? "");
+    const pattern = str(p.pattern ?? "");
+    return pattern ? `${col} · ${pattern}` : col;
+  },
+  drop_high_missing: (p) =>
+    `>${str(p.threshold ?? 0.5)}${p.target ? ` · keep ${str(p.target)}` : ""}`,
+  clip: colsWith((p) => `p${str(p.lower)}–p${str(p.upper)}`),
+  scale: (p) => `${cols(p).length} col · ${str(p.method)}`,
+  rename: perColumn<string>("mapping", (a, b) => `${a} → ${b}`),
+  cast: perColumn<string>("dtypes", (c, t) => `${c} → ${t}`),
+  drop_columns: (p) => cols(p).join(", "),
+  drop_duplicates: (p) => `exact rows · keep ${str(p.keep ?? "none")}`,
+  filter_rows: (p) =>
+    ((p.conditions as Parameters<typeof conditionLabel>[0][] | undefined) ?? [])
+      .map(conditionLabel)
+      .filter(Boolean)
+      .join(p.combine === "or" ? " or " : " and "),
+  ordinal: perColumn<unknown[]>(
+    "categories",
+    (c, order) => `${c} · ${order.map(String).join(" < ")}`,
+    "; ",
+  ),
+  formula: (p) => `${str(p.name ?? "")} = ${str(p.expr ?? "")}`,
+  log1p: (p) => cols(p).join(", "),
+  parse_dates: (p) => cols(p).join(", "),
+  datetime_parts: (p) => `${str(p.column ?? "")} · month, dayofweek`,
+  derive: (p) => `${str(p.a)} ${str(p.op ?? p.kind)} ${str(p.b)}`,
+  ffill: (p) => {
+    const s = p.sort_by ? `sort by ${str(p.sort_by)}` : "";
+    return cols(p).length ? `${cols(p).join(", ")} · ${s}` : s;
+  },
+  impute_knn: colsWith((p) => `k=${str(p.n_neighbors ?? 5)}`),
+  impute_iterative: colsWith((p) => `iter=${str(p.max_iter ?? 10)}`),
+  drop_missing_target: (p) => str(p.target ?? ""),
+  bin: (p) => `${str(p.column ?? "")} · ${str(p.mode ?? "qcut")}`,
+  interactions: (p) => cols(p).join(" × "),
+  polynomial: colsWith((p) => `deg ${str(p.degree ?? 2)}`),
+  power_transform: colsWith((p) => str(p.method ?? "yeo-johnson")),
+  quantile_transform: colsWith((p) => str(p.output_distribution ?? "uniform")),
+  spline: colsWith((p) => `knots ${str(p.n_knots ?? 5)}`),
+  group_agg: (p) => `${str(p.value ?? "")} by ${str(p.group ?? "")}`,
+  cyclical: (p) => `${str(p.column ?? "")} · period ${str(p.period ?? "")}`,
+  drop_low_variance: (p) => `var ≤ ${str(p.threshold ?? 0)}`,
+  drop_correlated: (p) => `|r| ≥ ${str(p.threshold ?? 0.95)}`,
+  select_k_best: (p) => `k=${str(p.k ?? "")} · ${str(p.score ?? "mutual_info")}`,
+  select_from_model: (p) => str(p.model ?? "tree"),
+  pca: (p) => `n=${str(p.n_components ?? "0.95")}`,
+  align_to_train: colsWith((p) => str(p.mode ?? "shift_mean")),
+};
+
 /** Short sub-label for a step (pipeline / recipe). */
-export function stepSubLabel(
-  op: string,
-  params: Record<string, unknown>,
-): string {
-  switch (op) {
-    case "replace_sentinels": {
-      const s = params.sentinels as Record<string, unknown[]> | undefined;
-      if (!s) return "";
-      return Object.entries(s)
-        .map(([c, vals]) => `${c} · ${vals.map(String).join(", ")} → NaN`)
-        .join("; ");
-    }
-    case "impute": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      return `${cols.join(", ")} · ${String(params.strategy ?? "")}`;
-    }
-    case "onehot": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      return cols.join(", ");
-    }
-    case "standardize_text": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      const bits = [
-        params.strip ? "strip" : "",
-        params.lower ? "lower" : "",
-        params.unify_separators ? "unify separators" : "",
-      ].filter(Boolean);
-      return `${cols.join(", ")} · ${bits.join(" + ") || "no change"}`;
-    }
-    case "to_numeric": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      const bits = [
-        `dec ${String(params.decimal ?? ".")}`,
-        params.thousands != null && params.thousands !== ""
-          ? `thou ${String(params.thousands)}`
-          : "",
-        params.percent ? "%" : "",
-      ].filter(Boolean);
-      return `${cols.join(", ")} · ${bits.join(" · ")}`;
-    }
-    case "extract": {
-      const col = String(params.column ?? "");
-      const pattern = String(params.pattern ?? "");
-      if (!col && !pattern) return "";
-      return pattern ? `${col} · ${pattern}` : col;
-    }
-    case "drop_high_missing": {
-      const thr = params.threshold ?? 0.5;
-      const tgt = params.target ? ` · keep ${String(params.target)}` : "";
-      return `>${String(thr)}${tgt}`;
-    }
-    case "clip": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      return `${cols.join(", ")} · p${String(params.lower)}–p${String(params.upper)}`;
-    }
-    case "scale": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      return `${cols.length} col · ${String(params.method)}`;
-    }
-    case "rename": {
-      const m = params.mapping as Record<string, string> | undefined;
-      if (!m) return "";
-      return Object.entries(m)
-        .map(([a, b]) => `${a} → ${b}`)
-        .join(", ");
-    }
-    case "cast": {
-      const d = params.dtypes as Record<string, string> | undefined;
-      if (!d) return "";
-      return Object.entries(d)
-        .map(([c, t]) => `${c} → ${t}`)
-        .join(", ");
-    }
-    case "drop_columns": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      return cols.join(", ");
-    }
-    case "drop_duplicates":
-      return `exact rows · keep ${String(params.keep ?? "none")}`;
-    case "filter_rows": {
-      const conds = params.conditions as
-        | Array<{ column?: string; op?: string; value?: unknown }>
-        | undefined;
-      if (!conds || !conds.length) return "";
-      const parts = conds
-        .map((c) => {
-          if (!c.column) return "";
-          if (c.op === "isna") return `${c.column} is missing`;
-          if (c.op === "notna") return `${c.column} not missing`;
-          const val =
-            c.value === null || c.value === undefined
-              ? ""
-              : Array.isArray(c.value)
-                ? `[${c.value.join(", ")}]`
-                : String(c.value);
-          return `${c.column} ${c.op ?? "=="} ${val}`;
-        })
-        .filter(Boolean);
-      return parts.join(params.combine === "or" ? " or " : " and ");
-    }
-    case "ordinal": {
-      const cats = params.categories as Record<string, unknown[]> | undefined;
-      if (!cats) return "";
-      return Object.entries(cats)
-        .map(([c, order]) => `${c} · ${order.map(String).join(" < ")}`)
-        .join("; ");
-    }
-    case "formula":
-      return `${String(params.name ?? "")} = ${String(params.expr ?? "")}`;
-    case "log1p":
-    case "parse_dates": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      return cols.join(", ");
-    }
-    case "datetime_parts":
-      return `${String(params.column ?? "")} · month, dayofweek`;
-    case "derive":
-      return `${String(params.a)} ${String(params.op ?? params.kind)} ${String(params.b)}`;
-    case "ffill": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      const s = params.sort_by ? `sort by ${String(params.sort_by)}` : "";
-      return cols.length ? `${cols.join(", ")} · ${s}` : s;
-    }
-    case "impute_knn": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      return `${cols.join(", ")} · k=${String(params.n_neighbors ?? 5)}`;
-    }
-    case "impute_iterative": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      return `${cols.join(", ")} · iter=${String(params.max_iter ?? 10)}`;
-    }
-    case "drop_missing_target":
-      return String(params.target ?? "");
-    case "bin":
-      return `${String(params.column ?? "")} · ${String(params.mode ?? "qcut")}`;
-    case "interactions": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      return cols.join(" × ");
-    }
-    case "polynomial": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      return `${cols.join(", ")} · deg ${String(params.degree ?? 2)}`;
-    }
-    case "power_transform": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      return `${cols.join(", ")} · ${String(params.method ?? "yeo-johnson")}`;
-    }
-    case "quantile_transform": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      return `${cols.join(", ")} · ${String(params.output_distribution ?? "uniform")}`;
-    }
-    case "spline": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      return `${cols.join(", ")} · knots ${String(params.n_knots ?? 5)}`;
-    }
-    case "group_agg":
-      return `${String(params.value ?? "")} by ${String(params.group ?? "")}`;
-    case "cyclical":
-      return `${String(params.column ?? "")} · period ${String(params.period ?? "")}`;
-    case "drop_low_variance":
-      return `var ≤ ${String(params.threshold ?? 0)}`;
-    case "drop_correlated":
-      return `|r| ≥ ${String(params.threshold ?? 0.95)}`;
-    case "select_k_best":
-      return `k=${String(params.k ?? "")} · ${String(params.score ?? "mutual_info")}`;
-    case "select_from_model":
-      return `${String(params.model ?? "tree")}`;
-    case "pca":
-      return `n=${String(params.n_components ?? "0.95")}`;
-    case "align_to_train": {
-      const cols = (params.columns as string[] | undefined) ?? [];
-      return `${cols.join(", ")} · ${String(params.mode ?? "shift_mean")}`;
-    }
-    default:
-      return op;
-  }
+export function stepSubLabel(op: string, params: Params): string {
+  return SUB_LABEL[op]?.(params) ?? op;
 }

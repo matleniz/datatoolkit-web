@@ -9,7 +9,11 @@ import {
   keySchemaDefaults,
   keyTunableFields,
 } from "../src/bench/left/keyTunable";
-import { toEngineParams } from "../src/bench/presets";
+import {
+  pickerPreset,
+  seedEditorParams,
+  toEngineParams,
+} from "../src/bench/presets";
 import {
   coerceImputeFillValue,
   defaultParams,
@@ -317,56 +321,160 @@ describe("real dtk-api schema fixtures", () => {
   });
 });
 
-describe("toEngineParams", () => {
-  it("converts prototype column/values to sentinels map", () => {
+describe("toEngineParams (schema-driven)", () => {
+  const sentinels = loadSchema("replace_sentinels");
+
+  it("places column/values into the sentinels map", () => {
     expect(
-      toEngineParams("replace_sentinels", { column: "age", values: [-999] }),
+      toEngineParams("replace_sentinels", { column: "age", values: [-999] }, sentinels),
     ).toEqual({ sentinels: { age: [-999] } });
   });
 
-  it("converts column/values even when empty sentinels {} is present", () => {
+  it("places column/values even when empty sentinels {} is present", () => {
     expect(
-      toEngineParams("replace_sentinels", {
-        sentinels: {},
-        column: "age",
-        values: [-999],
-      }),
+      toEngineParams(
+        "replace_sentinels",
+        { sentinels: {}, column: "age", values: [-999] },
+        sentinels,
+      ),
     ).toEqual({ sentinels: { age: [-999] } });
   });
 
   it("keeps a non-empty sentinels map", () => {
     expect(
-      toEngineParams("replace_sentinels", {
-        sentinels: { age: [-999] },
-        column: "other",
-        values: [0],
-      }),
+      toEngineParams(
+        "replace_sentinels",
+        { sentinels: { age: [-999] }, column: "other", values: [0] },
+        sentinels,
+      ),
     ).toEqual({ sentinels: { age: [-999] } });
   });
 
-  it("converts single column to columns array", () => {
-    expect(toEngineParams("impute", { column: "age", strategy: "median" })).toEqual({
-      columns: ["age"],
-      strategy: "median",
+  it("wraps a single column into the schema's columns param", () => {
+    expect(
+      toEngineParams("impute", { column: "age", strategy: "median" }, loadSchema("impute")),
+    ).toEqual({ columns: ["age"], strategy: "median" });
+  });
+
+  it("puts a single column into a required single-column param", () => {
+    expect(
+      toEngineParams("ffill", { column: "ts" }, loadSchema("ffill")),
+    ).toEqual({ sort_by: "ts" });
+    expect(
+      toEngineParams("drop_missing_target", { column: "y" }, loadSchema("drop_missing_target")),
+    ).toEqual({ target: "y" });
+  });
+
+  it("keys rename / cast by the column", () => {
+    expect(
+      toEngineParams("rename", { column: "a", to: "b" }, loadSchema("rename")),
+    ).toEqual({ mapping: { a: "b" } });
+    expect(toEngineParams("cast", { column: "a" }, loadSchema("cast"))).toEqual({
+      dtypes: { a: "float" },
     });
   });
 
-  it("maps map_value onto standardize_text params", () => {
+  it("keeps column for ops that take one", () => {
     expect(
-      toEngineParams("map_value", {
-        column: "city",
-        from: "PARIS",
-        to: "paris",
-      }),
-    ).toEqual({
+      toEngineParams("bin", { column: "age", mode: "cut", edges: "0, 10, x" }, loadSchema("bin")),
+    ).toEqual({ column: "age", mode: "cut", edges: [0, 10] });
+  });
+
+  it("maps map_value onto standardize_text params, idempotently", () => {
+    const once = toEngineParams("map_value", {
+      column: "city",
+      from: "PARIS",
+      to: "paris",
+    });
+    expect(once).toEqual({
       columns: ["city"],
       strip: false,
       lower: false,
       mapping: { PARIS: "paris" },
     });
+    expect(toEngineParams("map_value", once)).toEqual(once);
+    expect(toEngineParams("map_value", { column: "city" })).toEqual({
+      columns: ["city"],
+      strip: false,
+      lower: false,
+      mapping: {},
+    });
+  });
+
+  it("an op unknown to the front needs no entry: schema slot, defaults, picker", () => {
+    const schema: JsonSchema = {
+      type: "object",
+      properties: {
+        columns: {
+          type: "array",
+          items: { type: "string" },
+          "x-dtk-widget": "columns",
+          "x-dtk-dtype": "numeric",
+        },
+        factor: { type: "number", default: 2 },
+      },
+      required: ["columns"],
+    };
+    expect(seedEditorParams(schema, "new_op", { column: "x" }, [])).toEqual({
+      columns: ["x"],
+      factor: 2,
+    });
+    const selection = [
+      { name: "x", kind: "number" as const },
+      { name: "city", kind: "text" as const },
+    ];
+    expect(pickerPreset(schema, "new_op", selection, null, new Map())).toEqual({
+      columns: ["x"],
+    });
   });
 });
 
+describe("seedEditorParams / pickerPreset", () => {
+  it("drop_duplicates keep first/last falls back to the identifier, else keep none", () => {
+    const schema = loadSchema("drop_duplicates");
+    expect(seedEditorParams(schema, "drop_duplicates", {}, []).keep).toBe("none");
+    const first = { keep: "first" };
+    expect(
+      seedEditorParams(schema, "drop_duplicates", first, [
+        { name: "id", kind: "identifier" },
+      ]).sort_by,
+    ).toEqual(["id"]);
+    expect(seedEditorParams(schema, "drop_duplicates", first, [])).toMatchObject({
+      keep: "none",
+      sort_by: null,
+    });
+  });
+
+  it("seeds single-column params in selection order, honouring dtype", () => {
+    const selection = [
+      { name: "city", kind: "text" as const },
+      { name: "spend", kind: "number" as const },
+    ];
+    expect(
+      pickerPreset(loadSchema("group_agg"), "group_agg", selection, "churn", new Map()),
+    ).toEqual({ group: "city", value: "spend", target: "churn" });
+  });
+
+  it("seeds the dataset target, else the selection for a required target", () => {
+    const sel = [{ name: "y", kind: "number" as const }];
+    const schema = loadSchema("drop_missing_target");
+    expect(pickerPreset(schema, "drop_missing_target", sel, "churn", new Map())).toEqual({
+      target: "churn",
+    });
+    expect(pickerPreset(schema, "drop_missing_target", sel, null, new Map())).toEqual({
+      target: "y",
+    });
+  });
+
+  it("seeds a column-keyed op from the first selected column", () => {
+    const sel = [{ name: "age", kind: "number" as const }];
+    const schema = loadSchema("replace_sentinels");
+    const preset = pickerPreset(schema, "replace_sentinels", sel, null, new Map());
+    expect(toEngineParams("replace_sentinels", preset, schema)).toEqual({
+      sentinels: { age: [-999] },
+    });
+  });
+});
 
 describe("MAT-177 schema robustness + drop blockers", () => {
   it("maps drop_columns without x-dtk-widget to columns chips", () => {
