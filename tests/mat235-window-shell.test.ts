@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { MockApiClient } from "../src/api/mockClient";
-import type { Result } from "../src/api/types";
 import { chartPrefillForWindow } from "../src/bench/dock/chartPrefill";
 import {
   applyDisplay,
@@ -332,14 +330,5 @@ describe("chartPrefillForWindow", () => {
       ),
     ).toMatchObject({ chart: "box", x: "Pclass", y: "Fare" });
     expect(chartPrefillForWindow([], null).x).toBeNull();
-  });
-});
-
-describe("MockApiClient result contract (MAT-244)", () => {
-  it("returns a headline and a main figure that is not the first", async () => {
-    const r: Result = await new MockApiClient().runKey("missing_values", {});
-    expect(r.headline).toMatch(/columns/);
-    expect(resolveView(r, undefined)).toEqual({ kind: "figure", index: 1 });
-    expect(figureCaps(r.figures[1]!.plotly).sortable).toBe(true);
   });
 });

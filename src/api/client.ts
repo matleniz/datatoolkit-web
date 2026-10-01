@@ -22,7 +22,7 @@ import {
 } from "./types";
 import { InFlightDedupe } from "./requestDedupe";
 
-export interface ApiClient {
+interface ApiClient {
   listKeys(): Promise<KeyInfo[]>;
   keySchema(id: string): Promise<JsonSchema>;
   runKey(id: string, params: Record<string, unknown>): Promise<Result>;

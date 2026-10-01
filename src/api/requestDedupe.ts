@@ -3,7 +3,7 @@
  * Collapses React StrictMode double-mounts and concurrent duplicate callers.
  */
 
-export type RequestRunner<T> = () => Promise<T>;
+type RequestRunner<T> = () => Promise<T>;
 
 export class InFlightDedupe {
   private readonly inflight = new Map<string, Promise<unknown>>();

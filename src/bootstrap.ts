@@ -1,4 +1,4 @@
-import { apiClient, serializeWorkspace } from "./api/client";
+import { apiClient } from "./api/client";
 import type { Workspace } from "./api/types";
 
 const FILES = [
@@ -8,7 +8,7 @@ const FILES = [
   "customers_extra.csv",
 ] as const;
 
-export const LAST_WORKSPACE_KEY = "dtk.lastWorkspace";
+const LAST_WORKSPACE_KEY = "dtk.lastWorkspace";
 
 export function rememberWorkspaceName(name: string): void {
   try {
@@ -28,7 +28,7 @@ export function forgetWorkspaceName(name?: string): void {
   }
 }
 
-export function rememberedWorkspaceName(): string | null {
+function rememberedWorkspaceName(): string | null {
   try {
     return localStorage.getItem(LAST_WORKSPACE_KEY);
   } catch {
@@ -97,14 +97,3 @@ export async function loadInitialWorkspace(): Promise<Workspace | null> {
   // Fresh store: create demo churn via upload + PUT (no GET 404).
   return createChurnWorkspace();
 }
-
-/** @deprecated Prefer loadInitialWorkspace — kept for callers that need churn. */
-export async function ensureChurnWorkspace(): Promise<Workspace> {
-  const list = await apiClient.listWorkspaces();
-  if (list.some((w) => w.name === "churn")) {
-    return apiClient.getWorkspace("churn");
-  }
-  return createChurnWorkspace();
-}
-
-export { serializeWorkspace };

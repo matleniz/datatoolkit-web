@@ -26,7 +26,7 @@ export interface DataIdentity {
 }
 
 /** FNV-1a 32-bit, hex — cheap and stable; collisions only cost a refetch miss. */
-export function fnv1a(text: string): string {
+function fnv1a(text: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
     h ^= text.charCodeAt(i);
@@ -43,7 +43,7 @@ function clampVersion(ws: Workspace, version: number | null): number {
 }
 
 /** Hash of the inputs that determine the frame at `version`. */
-export function stepsHash(ws: Workspace, version: number | null): string {
+function stepsHash(ws: Workspace, version: number | null): string {
   const v = clampVersion(ws, version);
   return fnv1a(
     JSON.stringify({
