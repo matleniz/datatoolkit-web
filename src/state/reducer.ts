@@ -56,6 +56,12 @@ export interface EditorState {
   op: string | null;
   params: Record<string, unknown>;
   target: "train" | "test" | "both";
+  /**
+   * Index of the applied step being edited (datatoolkit-issues#10); absent
+   * for a new step. While set, the view is pinned to the step's input
+   * version (`editIndex`) and Apply replaces the step at that index.
+   */
+  editIndex?: number;
 }
 
 export interface CtxMenuState {
@@ -201,6 +207,8 @@ export type AppAction =
   | { type: "SET_EDITOR_PARAMS"; params: Record<string, unknown> }
   | { type: "SET_EDITOR_TARGET"; target: "train" | "test" | "both" }
   | { type: "CLOSE_EDITOR" }
+  /** Open the editor on an applied step, pre-filled (datatoolkit-issues#10). */
+  | { type: "EDIT_STEP"; index: number }
   | { type: "OPEN_TOOL"; id: ToolId }
   | { type: "TOGGLE_TOOL"; id: ToolId }
   | { type: "SET_DOCK_POS"; pos: DockPos }
@@ -250,6 +258,8 @@ export type AppAction =
   | { type: "SET_CHARTS"; charts: ChartSpec[] }
   | { type: "SET_BENCH_ERROR"; message: string | null }
   | { type: "ADD_STEP"; step: Step }
+  /** Replace the step at `index` (keeps its `align` flag) and replay. */
+  | { type: "REPLACE_STEP"; index: number; step: Step }
   | { type: "REMOVE_STEP"; index: number }
   /** Pipeline history only (datatoolkit-issues#16); no-op while editing a step. */
   | { type: "UNDO_STEPS" }
@@ -311,6 +321,11 @@ export function pickCol(
 }
 
 /** Patch the open workspace (no-op without one); `extra` patches the state. */
+/** True while the editor is open on an applied step (datatoolkit-issues#10). */
+function isEditingStep(state: AppState): boolean {
+  return state.editor?.editIndex !== undefined;
+}
+
 function withWorkspace(
   state: AppState,
   patch: Partial<Workspace>,
@@ -349,6 +364,8 @@ function reduceShell(
     case "SET_ROLE":
       return { ...state, role: action.role };
     case "SET_VIEW_VERSION":
+      // Editing a step pins the view to that step's input version.
+      if (state.editor?.editIndex !== undefined) return state;
       return { ...state, viewVersion: action.version };
     case "SET_PANEL_COLLAPSED": {
       // An unapplied step edit lives in the right slot: never collapse it.
@@ -485,7 +502,25 @@ function reduceEditor(
           target: action.target ?? "both",
         },
         ctx: null,
+        // A new step goes after the latest version, not at an edited step.
+        viewVersion: isEditingStep(state) ? null : state.viewVersion,
       };
+    case "EDIT_STEP": {
+      const step = state.workspace?.steps[action.index];
+      if (!step) return state;
+      return {
+        ...state,
+        editor: {
+          op: step.op,
+          params: { ...step.params },
+          target: step.target,
+          editIndex: action.index,
+        },
+        ctx: null,
+        viewVersion: action.index,
+        selection: { ...state.selection, row: null, cell: null },
+      };
+    }
     case "SET_EDITOR_PARAMS":
       if (!state.editor) return state;
       return {
@@ -499,7 +534,11 @@ function reduceEditor(
         editor: { ...state.editor, target: action.target },
       };
     case "CLOSE_EDITOR":
-      return { ...state, editor: null };
+      return {
+        ...state,
+        editor: null,
+        viewVersion: isEditingStep(state) ? null : state.viewVersion,
+      };
     case "INSERT_FORMULA_TOKEN": {
       const token = action.token;
       if (state.editor?.op === "formula") {
@@ -522,6 +561,7 @@ function reduceEditor(
           target: "both",
         },
         ctx: null,
+        viewVersion: isEditingStep(state) ? null : state.viewVersion,
       };
     }
     default:
@@ -654,6 +694,23 @@ function reduceWorkspace(
           benchError: null,
         },
       );
+    case "REPLACE_STEP": {
+      const steps = (state.workspace?.steps ?? []).slice();
+      const old = steps[action.index];
+      if (!old) return state;
+      const { align: _drop, ...step } = action.step;
+      steps[action.index] = old.align ? { ...step, align: true } : step;
+      return withWorkspace(
+        state,
+        { steps },
+        {
+          editor: null,
+          viewVersion: null,
+          selection: { ...state.selection, row: null, cell: null },
+          benchError: null,
+        },
+      );
+    }
     case "REMOVE_STEP": {
       const steps = (state.workspace?.steps ?? []).slice();
       if (action.index < 0 || action.index >= steps.length) return state;

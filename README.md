@@ -134,11 +134,21 @@ Workbench layout (prototype sizes, `src/theme/tokens.css`): pipeline
 
 Pipeline undo / redo (datatoolkit-issues#16): the pipeline bar's ↶ / ↷
 buttons, Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z (or Ctrl+Y) undo / redo changes to
-the workspace's steps (add, remove, alignment steps) and replay at the latest
+the workspace's steps (add, edit, remove, alignment steps) and replay at the latest
 version. History is in memory (`AppState.stepHistory`, 100 levels,
 `src/state/stepHistory.ts`), reset when another workspace is loaded; disabled
 while a step is being edited, and the shortcuts leave text fields alone.
 Variables, charts and the target are not part of it.
+
+Edit an applied step (datatoolkit-issues#10): a pipeline step node's ✎ button,
+or right-click → **Edit step**, opens the step editor pre-filled with the
+step's op, target and params (`EDIT_STEP`; the params are the step's own over
+the schema defaults, no Studio preset or prefill). While editing, the view is
+pinned to the step's input version, the live preview runs on the steps before
+it, and Apply stays disabled until something changed; Apply replaces the step
+at its index (`REPLACE_STEP`, alignment flag kept, later steps kept) and the
+pipeline replays at the latest version, as one undoable change. Discard goes
+back to the latest version.
 
 ## Fixtures
 

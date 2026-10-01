@@ -14,6 +14,7 @@ import {
   filterColumnsByDtype,
   prefillSemanticParams,
   resolveSchemaProp,
+  schemaDefaults,
   schemaToFields,
 } from "./schemaFields";
 
@@ -144,6 +145,15 @@ export function seedEditorParams(
     columns,
   );
   return op === "drop_duplicates" ? withDuplicateOrder(params, columns) : params;
+}
+
+/**
+ * Editor params for an applied step being edited (datatoolkit-issues#10): the
+ * step's own params over the schema defaults only, so no Studio preset or
+ * prefill changes what the step does until the user edits it.
+ */
+export function editStepParams(schema: JsonSchema, params: Params): Params {
+  return { ...schemaDefaults(schema), ...params };
 }
 
 /** Step-picker presets the schema cannot express. */

@@ -366,16 +366,22 @@ function enumListDefault(field: EditorField): unknown {
   return vals.includes("mean") ? ["mean"] : [vals[0]!];
 }
 
-/** Default params: schema defaults (nulls skipped), then the Studio choices. */
-export function defaultParams(
-  schema: JsonSchema,
-  op: string,
-): Record<string, unknown> {
+/** The schema's own defaults (nulls skipped). */
+export function schemaDefaults(schema: JsonSchema): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, raw] of Object.entries(schema.properties ?? {})) {
     const d = resolveSchemaProp(raw as JsonSchema, schema).default;
     if (d !== undefined && d !== null) out[key] = d;
   }
+  return out;
+}
+
+/** Default params: schema defaults (nulls skipped), then the Studio choices. */
+export function defaultParams(
+  schema: JsonSchema,
+  op: string,
+): Record<string, unknown> {
+  const out = schemaDefaults(schema);
   for (const field of schemaToFields(schema, op)) {
     if (out[field.key] !== undefined) continue;
     const value = EMPTY_VALUE[field.widget]?.() ?? enumListDefault(field);

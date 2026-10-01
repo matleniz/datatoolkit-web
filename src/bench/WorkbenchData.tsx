@@ -22,6 +22,7 @@ import { buildDisplay, diffText, type DisplayFrame } from "./diff";
 import type { EditorField } from "./schemaFields";
 import type { DataIdentity } from "./dataIdentity";
 import { useBenchFrame, type PipelineShape } from "./useBenchFrame";
+import { editorBaseVersion } from "./version";
 import { useEditorSchema } from "./useEditorSchema";
 import { usePreview } from "./usePreview";
 
@@ -30,6 +31,11 @@ export type { PipelineShape };
 export interface WorkbenchDataValue {
   version: number;
   isLatest: boolean;
+  /**
+   * The view shows the frame the editor's step applies to: the latest version
+   * for a new step, the edited step's input version (datatoolkit-issues#10).
+   */
+  atEditBase: boolean;
   /**
    * Refresh identity of the viewed frame (role + effective version + steps
    * hash). Every consumer keys its fetches on `identity.key` (MAT-175).
@@ -79,12 +85,16 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
 
   const frame = useBenchFrame(workspace, role, viewVersion, dispatch);
   const { isLatest, columns, rows } = frame;
+  const editIndex = editor?.editIndex;
+  const atBase = workspace
+    ? frame.version === editorBaseVersion(workspace, editIndex)
+    : isLatest;
   const schema = useEditorSchema(editor, columns, dispatch);
   const pv = usePreview({
     workspace,
     role,
     editor,
-    isLatest,
+    atBase,
     columns,
     profiles: frame.profiles,
     schemaFields: schema.schemaFields,
@@ -98,21 +108,24 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       buildDisplay(
         columns,
         rows,
-        isLatest ? preview : null,
-        isLatest ? nextRows : null,
-        isLatest ? nextColumns : null,
+        atBase ? preview : null,
+        atBase ? nextRows : null,
+        atBase ? nextColumns : null,
       ),
-    [columns, rows, preview, nextRows, nextColumns, isLatest],
+    [columns, rows, preview, nextRows, nextColumns, atBase],
   );
 
   const applyPending = useCallback(() => {
-    if (pendingStep) dispatch({ type: "ADD_STEP", step: pendingStep });
-  }, [pendingStep, dispatch]);
+    if (!pendingStep) return;
+    if (editIndex === undefined) dispatch({ type: "ADD_STEP", step: pendingStep });
+    else dispatch({ type: "REPLACE_STEP", index: editIndex, step: pendingStep });
+  }, [pendingStep, editIndex, dispatch]);
 
   const value = useMemo<WorkbenchDataValue>(
     () => ({
       version: frame.version,
       isLatest,
+      atEditBase: atBase,
       identity: frame.identity,
       rowsIdentity: frame.rowsIdentity,
       profilesIdentity: frame.profilesIdentity,
@@ -121,9 +134,9 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       total: frame.total,
       profiles: frame.profiles,
       display,
-      preview: isLatest ? preview : null,
+      preview: atBase ? preview : null,
       previewError: pv.previewError,
-      pendingStep: isLatest ? pendingStep : null,
+      pendingStep: atBase ? pendingStep : null,
       pendingDiffText: diffText(display.diff),
       shapes: frame.shapes,
       stepErrors: frame.stepErrors,
@@ -147,6 +160,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       columns,
       rows,
       isLatest,
+      atBase,
       preview,
       pendingStep,
       display,

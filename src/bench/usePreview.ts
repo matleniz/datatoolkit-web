@@ -24,6 +24,7 @@ import {
   dropInactiveParams,
   stepEditorBlockers,
   stepParamsValid,
+  stepsAreIdentical,
   stripNullParams,
   type EditorField,
 } from "./schemaFields";
@@ -68,7 +69,11 @@ function engineParams(
   return stripNullParams(coerceImputeFillValue(active, columns));
 }
 
-/** preview_step only returns diffs — fetch the after-frame and merge by _rid. */
+/**
+ * preview_step only returns diffs — fetch the after-frame and merge by _rid.
+ * `ws` holds the steps before the pending one (all of them for a new step,
+ * those before the edited step otherwise).
+ */
 async function fetchPreview(
   ws: Workspace,
   step: Step,
@@ -107,11 +112,17 @@ async function fetchPreview(
   }
 }
 
+/** The workspace cut to the steps before the editor's step. */
+function baseWorkspace(ws: Workspace, editIndex: number | undefined): Workspace {
+  return editIndex === undefined ? ws : { ...ws, steps: ws.steps.slice(0, editIndex) };
+}
+
 interface PreviewInput {
   workspace: Workspace | null;
   role: Role;
   editor: EditorState | null;
-  isLatest: boolean;
+  /** The view shows the frame the editor's step applies to (`editorBaseVersion`). */
+  atBase: boolean;
   columns: WorkspaceRowsColumn[];
   profiles: Map<string, ColumnProfile>;
   schemaFields: EditorField[];
@@ -124,24 +135,32 @@ export function usePreview(input: PreviewInput) {
     workspace,
     role,
     editor,
-    isLatest,
+    atBase,
     columns,
     profiles,
     schemaFields,
     schemaLoading,
     schemaError,
   } = input;
+  const editIndex = editor?.editIndex;
   const columnsRef = useRef(columns);
   columnsRef.current = columns;
 
   const editorBlocker = useMemo((): string | null => {
-    if (!editor?.op || !isLatest) return null;
+    if (!editor?.op || !atBase) return null;
     if (schemaLoading || schemaError) return null;
     const steps = workspace?.steps ?? [];
-    const prev = steps[steps.length - 1];
+    const base = editIndex ?? steps.length;
+    const prev = steps[base - 1];
+    const op = resolveOp(editor.op);
+    const params = engineParams(editor.op, editor.params, columns, schemaFields);
+    const edited = editIndex === undefined ? undefined : steps[editIndex];
+    if (edited && stepsAreIdentical({ op, target: editor.target, params }, edited)) {
+      return "No change yet: edit a parameter, or Discard.";
+    }
     return stepEditorBlockers(
-      resolveOp(editor.op),
-      engineParams(editor.op, editor.params, columns, schemaFields),
+      op,
+      params,
       editor.target,
       {
         availableColumns: columns.map((c) => c.name),
@@ -155,7 +174,8 @@ export function usePreview(input: PreviewInput) {
     );
   }, [
     editor,
-    isLatest,
+    editIndex,
+    atBase,
     schemaLoading,
     schemaError,
     schemaFields,
@@ -166,7 +186,7 @@ export function usePreview(input: PreviewInput) {
 
   const variables = workspace?.variables;
   const pendingStep = useMemo((): Step | null => {
-    if (!editor?.op || !isLatest) return null;
+    if (!editor?.op || !atBase) return null;
     // Wait for schema→fields; never preview while schema is broken/empty for
     // a param-bearing op (schemaError covers required-field gaps — MAT-177).
     if (schemaLoading || schemaError || editorBlocker) return null;
@@ -184,7 +204,7 @@ export function usePreview(input: PreviewInput) {
     return { op: engineOp, target: editor.target, params: engine };
   }, [
     editor,
-    isLatest,
+    atBase,
     columns,
     schemaFields,
     schemaLoading,
@@ -212,7 +232,7 @@ export function usePreview(input: PreviewInput) {
     const ac = new AbortController();
     setState((s) => ({ ...s, loading: true }));
     void fetchPreview(
-      workspace,
+      baseWorkspace(workspace, editIndex),
       step,
       role,
       columnsRef.current.length,
@@ -221,7 +241,7 @@ export function usePreview(input: PreviewInput) {
       if (!ac.signal.aborted) setState({ ...res, loading: false });
     });
     return () => ac.abort();
-  }, [workspace, role, debouncedKey]);
+  }, [workspace, role, debouncedKey, editIndex]);
 
   return {
     editorBlocker,

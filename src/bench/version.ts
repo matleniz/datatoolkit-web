@@ -6,6 +6,17 @@ export function latestVersion(ws: Workspace): number {
 }
 
 /**
+ * Version the editor's step applies to: the edited step's input version
+ * (datatoolkit-issues#10), else the latest (a new step is appended).
+ */
+export function editorBaseVersion(
+  ws: Workspace,
+  editIndex: number | undefined,
+): number {
+  return editIndex ?? latestVersion(ws);
+}
+
+/**
  * Fingerprint of workspace parts that affect pipeline shapes.
  * Variables and view version are intentionally excluded.
  */

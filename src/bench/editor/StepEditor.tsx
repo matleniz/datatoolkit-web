@@ -123,13 +123,22 @@ function applyTitle(
   formError: string | null,
   schemaLoading: boolean,
   previewLoading: boolean,
-  isLatest: boolean,
+  atEditBase: boolean,
 ): string {
   if (formError) return formError;
   if (schemaLoading) return "Loading parameters…";
   if (previewLoading) return "Waiting for preview…";
-  if (!isLatest) return "Go back to the latest version first.";
+  if (!atEditBase) return BACK_TO_LATEST;
   return "Complete the parameters";
+}
+
+const BACK_TO_LATEST = "Go back to the latest version first.";
+
+/** Editor head kicker: a new step, or the applied step being edited (#10). */
+function kickerText(editIndex: number | undefined, stageName: string): string {
+  return editIndex === undefined
+    ? `New step · ${stageName}`
+    : `Edit step v${editIndex + 1} · ${stageName}`;
 }
 
 /** W2 — step editor (replaces inspector when open). */
@@ -150,7 +159,7 @@ export function StepEditor() {
     pendingDiffText,
     previewLoading,
     applyPending,
-    isLatest,
+    atEditBase,
   } = useWorkbenchData();
 
   if (!editor) return null;
@@ -185,7 +194,7 @@ export function StepEditor() {
     !editorBlocker &&
     !schemaLoading &&
     !previewLoading &&
-    isLatest;
+    atEditBase;
   const learned = learnedText(FITTING_OPS.has(op), {
     preview,
     schemaError,
@@ -195,7 +204,7 @@ export function StepEditor() {
     previewLoading,
   });
   let effectText = pendingDiffText || "no change on this view";
-  if (!pendingStep) effectText = isLatest ? "—" : "Go back to the latest version first.";
+  if (!pendingStep) effectText = atEditBase ? "—" : BACK_TO_LATEST;
   else if (previewLoading && !preview) effectText = "Computing preview…";
 
   return (
@@ -204,16 +213,19 @@ export function StepEditor() {
         <span
           className="ed-kicker"
           style={{ color: STAGE_COLOR[stage] }}
+          data-ed-edit-index={editor.editIndex}
         >
-          New step · {STAGE_NAME[stage]}
+          {kickerText(editor.editIndex, STAGE_NAME[stage])}
         </span>
-        <button
-          type="button"
-          className="link-btn"
-          onClick={() => dispatch({ type: "OPEN_EDITOR", op: null })}
-        >
-          ← All transforms
-        </button>
+        {editor.editIndex === undefined ? (
+          <button
+            type="button"
+            className="link-btn"
+            onClick={() => dispatch({ type: "OPEN_EDITOR", op: null })}
+          >
+            ← All transforms
+          </button>
+        ) : null}
       </div>
       <div className="ed-serif ed-title">{title}</div>
       <div className="ed-what">{info?.description ?? ""}</div>
@@ -332,7 +344,7 @@ export function StepEditor() {
           title={
             canApply
               ? undefined
-              : applyTitle(formError, schemaLoading, previewLoading, isLatest)
+              : applyTitle(formError, schemaLoading, previewLoading, atEditBase)
           }
           onClick={applyPending}
         >
