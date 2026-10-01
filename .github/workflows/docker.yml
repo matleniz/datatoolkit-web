@@ -24,9 +24,9 @@ jobs:
         run: |
           for _ in $(seq 1 60); do
             engine=$(docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q engine)" 2>/dev/null || echo none)
-            web=$(docker inspect --format '{{.State.Status}}' "$(docker compose ps -q web)" 2>/dev/null || echo none)
+            web=$(docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q web)" 2>/dev/null || echo none)
             echo "engine: $engine, web: $web"
-            if [ "$engine" = healthy ] && [ "$web" = running ]; then exit 0; fi
+            if [ "$engine" = healthy ] && [ "$web" = healthy ] && curl -fsS -o /dev/null http://127.0.0.1:8080/; then exit 0; fi
             sleep 2
           done
           docker compose ps
