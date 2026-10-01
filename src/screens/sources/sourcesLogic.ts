@@ -166,157 +166,236 @@ export interface WorkspaceBuildResult {
   originMap: Record<string, "x" | "y" | "merge">;
 }
 
+type OriginMap = Record<string, "x" | "y" | "merge">;
+type BuildInfo = { y?: string; merge?: string };
+
+/** Partial result of one concern of the workspace build. */
+interface BuildPart {
+  errors: string[];
+  info: BuildInfo;
+  originMap: OriginMap;
+}
+
+function newPart(): BuildPart {
+  return { errors: [], info: {}, originMap: {} };
+}
+
+function roleErrors(
+  trainXFiles: SourceFileItem[],
+  testXFiles: SourceFileItem[],
+): string[] {
+  const errors: string[] = [];
+  if (trainXFiles.length === 0) {
+    errors.push("Pick a Train X file.");
+  } else if (trainXFiles.length > 1) {
+    errors.push("Only one file can be Train X.");
+  }
+  if (testXFiles.length > 1) {
+    errors.push("Only one file can be Test X.");
+  }
+  return errors;
+}
+
+function buildTestXSpec(
+  testX: SourceFileItem | undefined,
+  testDecimal: string | null | undefined,
+): FileSourceSpec | undefined {
+  if (!testX) return undefined;
+  const spec = structuredClone(testX.spec);
+  if (spec.kind === "csv" && testDecimal) {
+    (spec as CsvSource).decimal = testDecimal;
+  }
+  return spec;
+}
+
+interface YFileBuild extends BuildPart {
+  trainYSpec: FileSourceSpec | null;
+  targetLabel: string | null;
+  labelJoin: LabelJoin;
+}
+
+function buildYFileKeyJoin(
+  trainX: SourceFileItem | undefined,
+  trainY: SourceFileItem,
+  targetCol: string | null | undefined,
+  errors: string[],
+): LabelJoin {
+  const labelJoin: LabelJoin = { mode: "key", key: targetCol ?? undefined };
+  const commonWithX = trainX ? getCommonColumns(trainX.cols, trainY.cols) : [];
+  if (commonWithX.length === 0) {
+    errors.push(
+      `${trainY.name} has no column in common with train X for key join.`,
+    );
+  } else if (!targetCol || !commonWithX.includes(targetCol)) {
+    labelJoin.key = commonWithX[0];
+  }
+  return labelJoin;
+}
+
+function checkOrderJoin(
+  trainX: SourceFileItem | undefined,
+  trainY: SourceFileItem,
+  part: BuildPart,
+): void {
+  if (
+    trainX &&
+    trainX.rowCount !== undefined &&
+    trainY.rowCount !== undefined &&
+    trainX.rowCount !== trainY.rowCount
+  ) {
+    part.errors.push(
+      `Label join by order refuses: ${trainY.name} has ${trainY.rowCount} rows, train X has ${trainX.rowCount}.`,
+    );
+  } else if (trainY.rowCount !== undefined) {
+    part.info.y = `${trainY.rowCount} labels joined row by row · 0 rows lost`;
+  }
+}
+
+function buildYFile(
+  input: WorkspaceBuildInput,
+  trainX: SourceFileItem | undefined,
+  trainY: SourceFileItem | undefined,
+): YFileBuild {
+  const part = newPart();
+  const out: YFileBuild = {
+    ...part,
+    trainYSpec: null,
+    targetLabel: null,
+    labelJoin: { mode: "order" },
+  };
+  if (!trainY) {
+    out.errors.push(
+      "Give a file the role “Train y”, or pick a column of train X as the target.",
+    );
+    return out;
+  }
+  out.trainYSpec = structuredClone(trainY.spec);
+  const valueCol = yLabelValueColumn(trainY.cols);
+  if (valueCol) {
+    out.originMap[valueCol] = "y";
+    out.targetLabel = valueCol;
+  }
+  if (input.yJoin === "key") {
+    out.labelJoin = buildYFileKeyJoin(
+      trainX,
+      trainY,
+      input.targetCol,
+      out.errors,
+    );
+  } else {
+    checkOrderJoin(trainX, trainY, out);
+  }
+  return out;
+}
+
+function buildColumnTarget(
+  input: WorkspaceBuildInput,
+  trainX: SourceFileItem | undefined,
+): { targetColumn: string | null; info: BuildInfo } {
+  if (input.targetCol && trainX && trainX.cols.includes(input.targetCol)) {
+    return {
+      targetColumn: input.targetCol,
+      info: { y: `target = column “${input.targetCol}” of train X` },
+    };
+  }
+  return { targetColumn: null, info: { y: "Pick the target column." } };
+}
+
+function mergeInfoText(
+  trainX: SourceFileItem,
+  testX: SourceFileItem | undefined,
+  mergeInTest: boolean | undefined,
+): string {
+  const trainRows = trainX.rowCount ?? "n";
+  let text = `train: ${trainRows} / ${trainRows} rows matched`;
+  if (mergeInTest && testX) {
+    const testRows = testX.rowCount ?? "n";
+    text += ` · test: ${testRows} / ${testRows}`;
+  }
+  return `${text} · 0 rows lost (left join)`;
+}
+
+function buildMerge(
+  input: WorkspaceBuildInput,
+  trainX: SourceFileItem | undefined,
+  testX: SourceFileItem | undefined,
+  mergeF: SourceFileItem | undefined,
+): BuildPart & { merges: MergeSpec[] } {
+  const out = { ...newPart(), merges: [] as MergeSpec[] };
+  if (!mergeF) return out;
+  if (!trainX) {
+    out.errors.push("Train X required to configure merge.");
+    return out;
+  }
+  const common = getCommonColumns(trainX.cols, mergeF.cols);
+  const chosenKey = input.mergeKey ?? common[0];
+  if (!chosenKey || !common.includes(chosenKey)) {
+    out.errors.push(`Merge key must exist in train X and ${mergeF.name}.`);
+    return out;
+  }
+  out.merges.push({
+    source: structuredClone(mergeF.spec),
+    key: chosenKey,
+    apply_to: input.mergeInTest ? "both" : "train",
+  });
+  // Extra merge columns get origin 'merge'
+  for (const c of mergeF.cols) {
+    if (c !== chosenKey) out.originMap[c] = "merge";
+  }
+  out.info.merge = mergeInfoText(trainX, testX, input.mergeInTest);
+  return out;
+}
+
 /**
  * Pure mapping from user choices on Sources screen to a valid Workspace JSON object.
  */
 export function buildWorkspaceJson(
   input: WorkspaceBuildInput,
 ): WorkspaceBuildResult {
-  const errors: string[] = [];
-  const info: { y?: string; merge?: string } = {};
-  const originMap: Record<string, "x" | "y" | "merge"> = {};
-
   const byRole = (role: FileRole) =>
     input.files.filter((f) => input.roles[f.id] === role);
 
   const trainXFiles = byRole("trainX");
   const testXFiles = byRole("testX");
-  const trainYFiles = byRole("trainY");
-  const mergeFiles = byRole("merge");
-
-  if (trainXFiles.length === 0) {
-    errors.push("Pick a Train X file.");
-  } else if (trainXFiles.length > 1) {
-    errors.push("Only one file can be Train X.");
-  }
-
-  if (testXFiles.length > 1) {
-    errors.push("Only one file can be Test X.");
-  }
-
   const trainX = trainXFiles[0];
   const testX = testXFiles[0];
-  const trainY = trainYFiles[0];
-  const mergeF = mergeFiles[0];
+  const trainY = byRole("trainY")[0];
+  const mergeF = byRole("merge")[0];
 
-  let targetLabel: string | null = null;
-
-  // Build dataset X
-  const trainXSpec: FileSourceSpec = trainX
-    ? structuredClone(trainX.spec)
-    : { kind: "csv", path: "" };
-
+  const originMap: OriginMap = {};
   if (trainX) {
-    trainX.cols.forEach((c) => {
-      originMap[c] = "x";
-    });
+    for (const c of trainX.cols) originMap[c] = "x";
   }
 
-  let testXSpec: FileSourceSpec | undefined;
-  if (testX) {
-    testXSpec = structuredClone(testX.spec);
-    if (testXSpec.kind === "csv" && input.testDecimal) {
-      (testXSpec as CsvSource).decimal = input.testDecimal;
-    }
-  }
-
-  // Target handling
+  const errors = roleErrors(trainXFiles, testXFiles);
+  const info: BuildInfo = {};
+  let targetLabel: string | null = null;
   let trainYSpec: FileSourceSpec | null = null;
   let targetColumn: string | null = null;
   let labelJoin: LabelJoin = { mode: "order" };
 
   if (input.labelMode === "yfile") {
-    if (!trainY) {
-      errors.push(
-        "Give a file the role “Train y”, or pick a column of train X as the target.",
-      );
-    } else {
-      trainYSpec = structuredClone(trainY.spec);
-      const valueCol = yLabelValueColumn(trainY.cols);
-      if (valueCol) {
-        originMap[valueCol] = "y";
-        targetLabel = valueCol;
-      }
-
-      if (input.yJoin === "key") {
-        labelJoin = { mode: "key", key: input.targetCol ?? undefined };
-        const commonWithX = trainX
-          ? getCommonColumns(trainX.cols, trainY.cols)
-          : [];
-        if (commonWithX.length === 0) {
-          errors.push(
-            `${trainY.name} has no column in common with train X for key join.`,
-          );
-        } else if (!input.targetCol || !commonWithX.includes(input.targetCol)) {
-          labelJoin.key = commonWithX[0];
-        }
-      } else {
-        labelJoin = { mode: "order" };
-        if (
-          trainX &&
-          trainX.rowCount !== undefined &&
-          trainY.rowCount !== undefined &&
-          trainX.rowCount !== trainY.rowCount
-        ) {
-          errors.push(
-            `Label join by order refuses: ${trainY.name} has ${trainY.rowCount} rows, train X has ${trainX.rowCount}.`,
-          );
-        } else if (trainY.rowCount !== undefined) {
-          info.y = `${trainY.rowCount} labels joined row by row · 0 rows lost`;
-        }
-      }
-    }
+    const y = buildYFile(input, trainX, trainY);
+    errors.push(...y.errors);
+    Object.assign(info, y.info);
+    Object.assign(originMap, y.originMap);
+    ({ trainYSpec, targetLabel, labelJoin } = y);
   } else {
-    // Column mode
-    if (input.targetCol && trainX && trainX.cols.includes(input.targetCol)) {
-      targetColumn = input.targetCol;
-      targetLabel = input.targetCol;
-      info.y = `target = column “${targetColumn}” of train X`;
-    } else {
-      info.y = "Pick the target column.";
-    }
+    const col = buildColumnTarget(input, trainX);
+    targetColumn = col.targetColumn;
+    targetLabel = col.targetColumn;
+    Object.assign(info, col.info);
   }
 
-  // Merge handling
-  const merges: MergeSpec[] = [];
-  if (mergeF) {
-    if (!trainX) {
-      errors.push("Train X required to configure merge.");
-    } else {
-      const common = getCommonColumns(trainX.cols, mergeF.cols);
-      const chosenKey = input.mergeKey ?? common[0];
-      if (!chosenKey || !common.includes(chosenKey)) {
-        errors.push(
-          `Merge key must exist in train X and ${mergeF.name}.`,
-        );
-      } else {
-        merges.push({
-          source: structuredClone(mergeF.spec),
-          key: chosenKey,
-          apply_to: input.mergeInTest ? "both" : "train",
-        });
+  const merge = buildMerge(input, trainX, testX, mergeF);
+  errors.push(...merge.errors);
+  Object.assign(info, merge.info);
+  Object.assign(originMap, merge.originMap);
 
-        // Extra merge columns get origin 'merge'
-        mergeF.cols
-          .filter((c) => c !== chosenKey)
-          .forEach((c) => {
-            originMap[c] = "merge";
-          });
-
-        const trainRows = trainX.rowCount ?? "n";
-        info.merge = `train: ${trainRows} / ${trainRows} rows matched`;
-        if (input.mergeInTest && testX) {
-          const testRows = testX.rowCount ?? "n";
-          info.merge += ` · test: ${testRows} / ${testRows}`;
-        }
-        info.merge += " · 0 rows lost (left join)";
-      }
-    }
-  }
-
+  const testXSpec = buildTestXSpec(testX, input.testDecimal);
   const datasets: Datasets = {
     train: {
-      x: trainXSpec,
+      x: trainX ? structuredClone(trainX.spec) : { kind: "csv", path: "" },
       ...(trainYSpec ? { y: trainYSpec } : {}),
       ...(targetColumn ? { target_column: targetColumn } : {}),
     },
@@ -327,18 +406,12 @@ export function buildWorkspaceJson(
     name: input.name,
     datasets,
     label: labelJoin,
-    merges,
+    merges: merge.merges,
     variables: [],
     steps: input.steps ?? [],
   };
 
-  return {
-    workspace,
-    errors,
-    info,
-    targetLabel,
-    originMap,
-  };
+  return { workspace, errors, info, targetLabel, originMap };
 }
 
 const FILE_KINDS = new Set(["csv", "parquet", "excel", "json"]);
