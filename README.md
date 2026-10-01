@@ -61,11 +61,16 @@ From a checkout, `docker compose up -d --build` builds both images locally.
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Vitest (unit): `tests/**/*.test.ts`, `src/**/*.test.ts` |
+| `npx knip@6 --exclude types` | Unused files / exports / dependencies (fetched by npx, not a dependency) |
 | `npm run e2e` | Playwright e2e suite with headless `dtk-api` + Vite |
 
-`fleet gate` runs `npm run lint`, `npm run typecheck` and `npm test`; the e2e
-suite is run separately. `knip.json` configures a dead-code scan
-(`npx knip`); knip is not a dependency and not part of the gate.
+`fleet gate` runs `npm run lint`, `npm run typecheck`, `npm test` and
+`npx knip@6 --exclude types` (one command per line in `GATE_CMDS` of the
+project's fleet config, outside this repo); the e2e suite is run separately.
+`.github/workflows/ci.yml` runs the same checks; e2e stays local.
+
+`eslint-plugin-sonarjs` enforces one rule, `sonarjs/cognitive-complexity` at 25
+(`error`): extract pure helpers rather than raising the ceiling.
 
 ### e2e (Playwright)
 
