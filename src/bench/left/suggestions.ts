@@ -194,3 +194,80 @@ export function filterCardsByStage(
   if (stage === "all") return cards;
   return cards.filter((c) => c.stage === stage);
 }
+
+/** JSON with object keys sorted, so equal values serialize identically. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    const body = Object.keys(o)
+      .filter((k) => o[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonicalJson(o[k])}`)
+      .join(",");
+    return `{${body}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/** cyrb53: small, well-spread 53-bit string hash (not cryptographic). */
+function hash53(text: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+/**
+ * Stable id used to dismiss a suggestion (datatoolkit-issues#15): derived from
+ * the key, the suggested step (op / target / params) and the finding itself
+ * (column, title, detail) — never from the card's position or the analysed
+ * version. The same finding keeps its id after an unrelated step; a finding
+ * whose content changes is a new instance and shows again. Generic: no
+ * knowledge of any particular key.
+ */
+export function suggestionDismissId(card: SuggestionCard): string {
+  return hash53(
+    canonicalJson({
+      key: card.sourceKey,
+      step: card.step,
+      finding: { column: card.column, title: card.title, detail: card.detail },
+    }),
+  );
+}
+
+export interface ListedSuggestion {
+  card: SuggestionCard;
+  dismissId: string;
+  dismissed: boolean;
+}
+
+/**
+ * Cards to list for a stage: dismissed ones only when `showDismissed`.
+ * `active` counts the stage's non-dismissed cards, `dismissed` the others.
+ */
+export function listSuggestions(
+  cards: SuggestionCard[],
+  stage: CourseStage,
+  dismissedIds: ReadonlySet<string>,
+  showDismissed: boolean,
+): { shown: ListedSuggestion[]; active: number; dismissed: number } {
+  const listed = filterCardsByStage(cards, stage).map((card) => {
+    const dismissId = suggestionDismissId(card);
+    return { card, dismissId, dismissed: dismissedIds.has(dismissId) };
+  });
+  const dismissed = listed.filter((s) => s.dismissed).length;
+  return {
+    shown: showDismissed ? listed : listed.filter((s) => !s.dismissed),
+    active: listed.length - dismissed,
+    dismissed,
+  };
+}
