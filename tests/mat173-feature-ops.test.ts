@@ -43,6 +43,23 @@ describe("MAT-173 formula autocomplete helpers", () => {
     ).toEqual(["@spend_median"]);
   });
 
+  it("offers the group functions in the palette and the autocomplete (#48)", () => {
+    const labels = FORMULA_FUNCS.map((f) => f.label);
+    expect(labels).toEqual(
+      expect.arrayContaining(["group_mean", "group_prev", "group_interp"]),
+    );
+    const group = FORMULA_FUNCS.find((f) => f.label === "group_interp")!;
+    expect(group.numpy).toBeUndefined();
+    expect(group.help).toContain("by=col, order=expr");
+    expect(formulaAutocomplete("group_", ["group_size"], [])).toEqual([
+      "group_size",
+      "group_mean(",
+      "group_prev(",
+      "group_interp(",
+    ]);
+    expect(formulaAutocomplete("group_i", [], [])).toEqual(["group_interp("]);
+  });
+
   it("applies a suggestion by replacing the current token", () => {
     const { expr, caret } = applyFormulaAutocomplete("where(Ag", 8, "Age");
     expect(expr).toBe("where(Age");
@@ -111,7 +128,7 @@ describe("MAT-241 python-style formulas", () => {
     expect(by.min!.help).toContain("np.minimum(a, b");
     expect(by.isnull!.help).toContain("np.isnan(x)");
     // Every numpy form is accepted by the engine whitelist.
-    for (const f of FORMULA_FUNCS) {
+    for (const f of FORMULA_FUNCS.filter((x) => x.numpy)) {
       expect(NUMPY_FUNCS).toContain(f.numpy!.slice(3));
     }
   });

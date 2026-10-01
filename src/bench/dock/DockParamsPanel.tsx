@@ -4,6 +4,7 @@ import { useKeyedAsync } from "../../hooks";
 import { useAppDispatch } from "../../state/AppStore";
 import { keySchemaDefaults, keyTunableFields } from "../left/keyTunable";
 import { fieldControl } from "../fieldControl";
+import { fieldActive } from "../schemaFields";
 import { defaultsWithSuggested } from "./suggestedParams";
 
 /** One-line `key=value` summary of the current params (collapsed panel). */
@@ -132,7 +133,7 @@ export function DockParamsPanel({
       </div>
       {open ? (
         <div className="dock-params-fields">
-          {fields.map((field) => {
+          {fields.filter((f) => fieldActive(f, params)).map((field) => {
             const control = fieldControl(
               field,
               params[field.key],

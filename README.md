@@ -116,6 +116,16 @@ hashes the key, the suggested step (op / target / params) and the finding
 and shows again once its content changes; "Show dismissed" lists the hidden
 ones with a Restore action. No key-specific logic.
 
+Step editor fields come from the transform schema (`src/bench/schemaFields.ts`),
+with two generic hints (datatoolkit-issues#48), no op-specific code:
+`x-dtk-when` (`{sibling: value or list of values}`) shows, validates and sends
+a param only while every listed sibling has one of those values (e.g. impute's
+`by` / `order` / `fallback` / `expr` / `fill_value` follow `strategy`); an
+empty `x-dtk-semantic` param (e.g. `impute.by`, `ffill.by` = `group_id`) is
+prefilled when the editor opens with the frame's column whose `workspace_rows`
+`semantic` matches, only when exactly one column does. The formula palette and
+autocomplete also offer `group_mean` / `group_prev` / `group_interp`.
+
 No router: the three screens (Sources, Alignment, Workbench) are reducer
 state (`SET_SCREEN`); nginx serves `index.html` for any path.
 

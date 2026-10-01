@@ -278,6 +278,25 @@ export function parkinsonLikeWorkspace(): Workspace {
   };
 }
 
+/**
+ * 120 patients x 3 visits, bmi missing at visit 2 for one patient in four:
+ * `patient_id` is the engine's `group_id` column (datatoolkit-issues#48).
+ */
+export function patientsVisitsWorkspace(): Workspace {
+  return {
+    name: "patients_visits",
+    datasets: {
+      train: {
+        x: { kind: "csv", path: join(fixturesDir, "patients_visits.csv") },
+      },
+    },
+    label: { mode: "order" },
+    merges: [],
+    variables: [],
+    steps: [],
+  };
+}
+
 export async function openWorkbench(
   page: Page,
   reset = false,

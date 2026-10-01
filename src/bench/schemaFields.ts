@@ -30,8 +30,13 @@ export interface EditorField {
   enumValues?: string[];
   dtypeFilter?: "any" | "numeric" | "text" | "date";
   description?: string;
-  /** Show only when params.strategy === 'constant' (impute fill_value). */
-  whenStrategyConstant?: boolean;
+  /**
+   * Schema `x-dtk-when`, lists normalised: the param applies (is shown,
+   * validated and sent) only when every listed sibling has one of its values.
+   */
+  when?: Record<string, unknown[]>;
+  /** Schema `x-dtk-semantic`: the column `semantic` this param is prefilled from. */
+  semantic?: string;
   /** Schema `minItems` of an array param. */
   minItems?: number;
 }
@@ -44,6 +49,8 @@ const HINT_KEYS = [
   "x-dtk-widget",
   "x-dtk-dtype",
   "x-dtk-source",
+  "x-dtk-when",
+  "x-dtk-semantic",
 ] as const;
 
 /** The outer prop's hints and default, falling back to `inner`'s. */
@@ -147,7 +154,7 @@ const SPECIAL_FIELDS: Record<
   string,
   Partial<EditorField> & { widget: FieldWidget; fixedLabel?: boolean }
 > = {
-  fill_value: { widget: "text", label: "Constant value", required: false, whenStrategyConstant: true },
+  fill_value: { widget: "text", label: "Constant value", required: false },
   sentinels: { widget: "sentinels", label: "Sentinels" },
   categories: { widget: "categories", label: "Categories" },
   "rename.mapping": { widget: "mapping", label: "Rename", fixedLabel: true },
@@ -236,6 +243,65 @@ function genericWidget(
   return scalar ? { widget: scalar } : null;
 }
 
+/** `x-dtk-when` (scalar values → one-item lists) and `x-dtk-semantic` of a prop. */
+function conditionHints(prop: JsonSchema): Pick<EditorField, "when" | "semantic"> {
+  const out: Pick<EditorField, "when" | "semantic"> = {};
+  const when = prop["x-dtk-when"];
+  if (when && typeof when === "object" && !Array.isArray(when)) {
+    out.when = Object.fromEntries(
+      Object.entries(when).map(([k, v]) => [k, Array.isArray(v) ? v : [v]]),
+    );
+  }
+  const semantic = prop["x-dtk-semantic"];
+  if (typeof semantic === "string" && semantic) out.semantic = semantic;
+  return out;
+}
+
+/** True when the field's `x-dtk-when` holds for `params` (always, without one). */
+export function fieldActive(
+  field: Pick<EditorField, "when">,
+  params: Record<string, unknown>,
+): boolean {
+  if (!field.when) return true;
+  return Object.entries(field.when).every(([k, values]) =>
+    values.includes(params[k]),
+  );
+}
+
+/** Params minus those whose field's `x-dtk-when` does not hold (never sent). */
+export function dropInactiveParams(
+  params: Record<string, unknown>,
+  fields: EditorField[],
+): Record<string, unknown> {
+  const inactive = new Set(
+    fields.filter((f) => !fieldActive(f, params)).map((f) => f.key),
+  );
+  if (!inactive.size) return params;
+  return Object.fromEntries(
+    Object.entries(params).filter(([k]) => !inactive.has(k)),
+  );
+}
+
+/**
+ * Prefill each empty `x-dtk-semantic` param with the frame's column of that
+ * semantic, only when exactly one column matches.
+ */
+export function prefillSemanticParams(
+  params: Record<string, unknown>,
+  fields: EditorField[],
+  columns: { name: string; semantic?: string }[],
+): Record<string, unknown> {
+  let out = params;
+  for (const f of fields) {
+    if (!f.semantic || fieldValuePresent(params[f.key])) continue;
+    const matches = columns.filter((c) => c.semantic === f.semantic);
+    if (matches.length !== 1) continue;
+    const name = matches[0]!.name;
+    out = { ...out, [f.key]: f.widget === "columns" ? [name] : name };
+  }
+  return out;
+}
+
 /**
  * Map GET /transforms/{op}/schema → editor field descriptors: dedicated
  * controls for the engine's structured params, otherwise a widget derived from
@@ -252,6 +318,7 @@ export function schemaToFields(schema: JsonSchema, op: string): EditorField[] {
       required: required.has(key),
       description: prop.description,
       ...(typeof prop.minItems === "number" ? { minItems: prop.minItems } : {}),
+      ...conditionHints(prop),
     };
     const special = SPECIAL_FIELDS[`${op}.${key}`] ?? SPECIAL_FIELDS[key];
     if (special) {
@@ -451,7 +518,7 @@ export function stepParamsValid(
   fields: EditorField[],
 ): { ok: boolean; missing?: string } {
   for (const f of fields) {
-    if (f.whenStrategyConstant && params.strategy !== "constant") continue;
+    if (!fieldActive(f, params)) continue;
     const problem = fieldProblem(f, params[f.key]);
     if (problem) return { ok: false, missing: problem };
   }

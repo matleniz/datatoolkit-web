@@ -10,6 +10,7 @@ import { Chips } from "../Chips";
 import { fieldControl } from "../fieldControl";
 import {
   featureOpColumnsNeedingImpute,
+  fieldActive,
   imputeConstantNeedsNumber,
   stepParamsValid,
   fieldValuePresent,
@@ -446,9 +447,7 @@ function Field({
 }) {
   const dispatch = useAppDispatch();
 
-  if (field.whenStrategyConstant && params.strategy !== "constant") {
-    return null;
-  }
+  if (!fieldActive(field, params)) return null;
 
   const set = (key: string, value: unknown) => {
     dispatch({

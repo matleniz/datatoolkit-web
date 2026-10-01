@@ -17,6 +17,9 @@ import {
 import {
   coerceImputeFillValue,
   defaultParams,
+  dropInactiveParams,
+  fieldActive,
+  prefillSemanticParams,
   featureOpColumnsNeedingImpute,
   imputeConstantNeedsNumber,
   resolveSchemaProp,
@@ -55,7 +58,11 @@ const imputeSchema: JsonSchema = {
       default: "median",
       title: "Strategy",
     },
-    fill_value: { type: "string", title: "Constant value" },
+    fill_value: {
+      type: "string",
+      title: "Constant value",
+      "x-dtk-when": { strategy: "constant" },
+    },
   },
   required: ["columns"],
 };
@@ -82,7 +89,7 @@ describe("schema → editor fields", () => {
     expect(fields[0]?.widget).toBe("columns");
     expect(fields[1]?.widget).toBe("enum");
     expect(fields[1]?.enumValues).toContain("most_frequent");
-    expect(fields[2]?.whenStrategyConstant).toBe(true);
+    expect(fields[2]?.when).toEqual({ strategy: ["constant"] });
   });
 
   it("maps sentinels to the special widget", () => {
@@ -254,24 +261,53 @@ describe("key tunable fields (MAT-174)", () => {
 });
 
 describe("real dtk-api schema fixtures", () => {
-  it("impute: columns, strategy, fill_value, add_indicator", () => {
+  it("impute: x-dtk-when / x-dtk-semantic hints of the group strategies", () => {
     const fields = schemaToFields(loadSchema("impute"), "impute");
     expect(fields.map((f) => f.key)).toEqual([
       "columns",
       "strategy",
       "fill_value",
+      "expr",
+      "by",
+      "order",
+      "fallback",
       "add_indicator",
     ]);
-    expect(fields.find((f) => f.key === "strategy")?.enumValues).toEqual([
+    const byKey = Object.fromEntries(fields.map((f) => [f.key, f]));
+    expect(byKey.strategy?.enumValues).toEqual([
       "median",
       "mean",
       "most_frequent",
       "constant",
+      "formula",
+      "group_mean",
+      "group_prev",
+      "group_interp",
     ]);
-    expect(fields.find((f) => f.key === "fill_value")?.whenStrategyConstant).toBe(
-      true,
-    );
-    expect(fields.find((f) => f.key === "add_indicator")?.widget).toBe("bool");
+    expect(byKey.fill_value?.when).toEqual({ strategy: ["constant"] });
+    expect(byKey.expr?.widget).toBe("formula");
+    expect(byKey.expr?.when).toEqual({ strategy: ["formula"] });
+    expect(byKey.by?.widget).toBe("column");
+    expect(byKey.by?.semantic).toBe("group_id");
+    expect(byKey.by?.when).toEqual({
+      strategy: ["group_mean", "group_prev", "group_interp"],
+    });
+    expect(byKey.order?.when).toEqual({ strategy: ["group_prev", "group_interp"] });
+    expect(byKey.order?.semantic).toBeUndefined();
+    expect(byKey.fallback?.enumValues).toEqual([
+      "median",
+      "mean",
+      "most_frequent",
+      "__null__",
+    ]);
+    expect(byKey.add_indicator?.widget).toBe("bool");
+    expect(byKey.add_indicator?.when).toBeUndefined();
+  });
+
+  it("ffill: by carries x-dtk-semantic and no x-dtk-when", () => {
+    const by = schemaToFields(loadSchema("ffill"), "ffill").find((f) => f.key === "by");
+    expect(by?.semantic).toBe("group_id");
+    expect(by?.when).toBeUndefined();
   });
 
   it("onehot: columns, min_frequency, drop_first, handle_unknown", () => {
@@ -645,5 +681,107 @@ describe("MAT-177 schema robustness + drop blockers", () => {
         missingByColumn,
       ),
     ).toEqual([]);
+  });
+});
+
+describe("x-dtk-when (datatoolkit-issues#48)", () => {
+  const schema: JsonSchema = {
+    type: "object",
+    properties: {
+      mode: { type: "string", enum: ["a", "b", "c"], default: "a" },
+      scalar: { type: "string", "x-dtk-when": { mode: "b" } },
+      listed: { type: "string", "x-dtk-when": { mode: ["b", "c"] } },
+      both: { type: "string", "x-dtk-when": { mode: "c", flag: true } },
+      flag: { type: "boolean" },
+    },
+    required: ["scalar", "listed"],
+  };
+  const fields = schemaToFields(schema, "anything");
+  const field = (k: string) => fields.find((f) => f.key === k)!;
+
+  it("normalises a scalar value to a one-item list", () => {
+    expect(field("scalar").when).toEqual({ mode: ["b"] });
+    expect(field("listed").when).toEqual({ mode: ["b", "c"] });
+    expect(field("mode").when).toBeUndefined();
+  });
+
+  it("applies a field only when every sibling matches one of its values", () => {
+    expect(fieldActive(field("scalar"), { mode: "a" })).toBe(false);
+    expect(fieldActive(field("scalar"), { mode: "b" })).toBe(true);
+    expect(fieldActive(field("listed"), { mode: "a" })).toBe(false);
+    expect(fieldActive(field("listed"), { mode: "b" })).toBe(true);
+    expect(fieldActive(field("listed"), { mode: "c" })).toBe(true);
+    expect(fieldActive(field("both"), { mode: "c" })).toBe(false);
+    expect(fieldActive(field("both"), { mode: "c", flag: true })).toBe(true);
+    expect(fieldActive(field("mode"), {})).toBe(true);
+  });
+
+  it("skips inactive required fields in validation", () => {
+    expect(stepParamsValid("anything", { mode: "a" }, fields).ok).toBe(true);
+    expect(stepParamsValid("anything", { mode: "c" }, fields)).toEqual({
+      ok: false,
+      missing: "Missing listed",
+    });
+    expect(
+      stepParamsValid("anything", { mode: "b", scalar: "x", listed: "y" }, fields).ok,
+    ).toBe(true);
+  });
+
+  it("drops the params of inactive fields only", () => {
+    expect(
+      dropInactiveParams({ mode: "a", scalar: "x", listed: "y", flag: true }, fields),
+    ).toEqual({ mode: "a", flag: true });
+    expect(
+      dropInactiveParams({ mode: "c", scalar: "x", listed: "y" }, fields),
+    ).toEqual({ mode: "c", listed: "y" });
+  });
+});
+
+describe("x-dtk-semantic prefill (datatoolkit-issues#48)", () => {
+  const fields = schemaToFields(loadSchema("impute"), "impute");
+  const col = (name: string, semantic: string) => ({ name, semantic });
+
+  it("prefills the only column of the matching semantic", () => {
+    const out = prefillSemanticParams(
+      { columns: ["bmi"] },
+      fields,
+      [col("patient_id", "group_id"), col("bmi", "numeric")],
+    );
+    expect(out).toEqual({ columns: ["bmi"], by: "patient_id" });
+  });
+
+  it("leaves the param empty with no or several matching columns", () => {
+    expect(
+      prefillSemanticParams({ columns: ["bmi"] }, fields, [col("bmi", "numeric")]),
+    ).toEqual({ columns: ["bmi"] });
+    expect(
+      prefillSemanticParams({ columns: ["bmi"] }, fields, [
+        col("patient_id", "group_id"),
+        col("site_id", "group_id"),
+        col("bmi", "numeric"),
+      ]),
+    ).toEqual({ columns: ["bmi"] });
+  });
+
+  it("never overrides a value already set; columns without semantic are ignored", () => {
+    expect(
+      prefillSemanticParams({ by: "site_id" }, fields, [col("patient_id", "group_id")]),
+    ).toEqual({ by: "site_id" });
+    expect(
+      prefillSemanticParams({}, fields, [{ name: "patient_id" }]),
+    ).toEqual({});
+  });
+
+  it("seeds the editor: by prefilled, hidden until a group strategy", () => {
+    const schema = loadSchema("impute");
+    const params = seedEditorParams(schema, "impute", { column: "bmi" }, [
+      { name: "patient_id", kind: "identifier", semantic: "group_id" },
+      { name: "bmi", kind: "numeric", semantic: "numeric" },
+    ]);
+    expect(params).toMatchObject({ columns: ["bmi"], strategy: "median", by: "patient_id" });
+    const by = fields.find((f) => f.key === "by")!;
+    expect(fieldActive(by, params)).toBe(false);
+    expect(fieldActive(by, { ...params, strategy: "group_interp" })).toBe(true);
+    expect(dropInactiveParams(params, fields)).not.toHaveProperty("by");
   });
 });
