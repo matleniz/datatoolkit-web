@@ -86,6 +86,9 @@ project's fleet config, outside this repo); the e2e suite is run separately.
 - The engine runs with `DTK_HOME` = `DTK_E2E_HOME` or a fresh temp dir,
   deleted after the run unless `DTK_E2E_KEEP=1` (`e2e/global-teardown.ts`).
 - One worker, not fully parallel; retries only on CI.
+- `e2e/vite.e2e.config.ts` pre-bundles all deps (`optimizeDeps.include`), so a
+  cold `node_modules/.vite` does not reload the page mid-spec. Add a dep there
+  when you import a new one lazily.
 - Screenshots always go to `e2e/screenshots/<flow>/` (gitignored). The
   committed copies under `docs/screenshots/t1-e2e/` are only rewritten with
   `DTK_E2E_SCREENSHOTS=1 npm run e2e`, so a plain run leaves the tree clean.

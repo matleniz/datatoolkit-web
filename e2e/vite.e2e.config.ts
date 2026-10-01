@@ -17,6 +17,20 @@ export default defineConfig({
   define: {
     __DTK_E2E_FIXTURES__: JSON.stringify(e2eFixtures),
   },
+  // Pre-bundle every dependency up front. Anything Vite discovers lazily on a
+  // cold `node_modules/.vite` (plotly is imported dynamically) triggers a
+  // "new dependencies optimized, reloading" page reload under a running spec.
+  optimizeDeps: {
+    include: [
+      "react",
+      "react/jsx-runtime",
+      "react/jsx-dev-runtime",
+      "react-dom",
+      "react-dom/client",
+      "react-grid-layout",
+      "plotly.js-dist-min",
+    ],
+  },
   server: {
     proxy: {
       "/api": {
