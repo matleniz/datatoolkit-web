@@ -269,6 +269,28 @@ export function formulaColumnRef(name: string): string {
     : `df[${JSON.stringify(name)}]`;
 }
 
+function numpyCandidates(pre: string, n: string, limit: number): string[] {
+  const fns = NUMPY_FUNCS.filter((f) => f.startsWith(n)).map(
+    (f) => `${pre}.${f}(`,
+  );
+  if ("pi".startsWith(n)) fns.push(`${pre}.pi`);
+  return fns.slice(0, limit);
+}
+
+/** Matches in order, stopping once `limit` is reached. */
+function collect<T>(
+  items: readonly T[],
+  pick: (t: T) => string | null,
+  out: string[],
+  limit: number,
+) {
+  for (const it of items) {
+    const hit = pick(it);
+    if (hit !== null) out.push(hit);
+    if (out.length >= limit) return;
+  }
+}
+
 /** Ranked autocomplete candidates for the current token. */
 export function formulaAutocomplete(
   token: string,
@@ -278,15 +300,7 @@ export function formulaAutocomplete(
 ): string[] {
   if (!token) return [];
   const npm = token.match(/^(np|numpy)\.(\w*)$/);
-  if (npm) {
-    const pre = npm[1]!;
-    const n = npm[2]!.toLowerCase();
-    const fns = NUMPY_FUNCS.filter((f) => f.startsWith(n)).map(
-      (f) => `${pre}.${f}(`,
-    );
-    if ("pi".startsWith(n)) fns.push(`${pre}.pi`);
-    return fns.slice(0, limit);
-  }
+  if (npm) return numpyCandidates(npm[1]!, npm[2]!.toLowerCase(), limit);
   const dfm = token.match(/^df\[\s*["']([^"'\]]*)$/);
   if (dfm) {
     const n = dfm[1]!.toLowerCase();
@@ -296,43 +310,45 @@ export function formulaAutocomplete(
       .map((c) => `df[${JSON.stringify(c)}]`);
   }
   const lower = token.toLowerCase();
-  const wantAt = token.startsWith("@");
-  const needle = wantAt ? lower.slice(1) : lower;
+  const needle = token.startsWith("@") ? lower.slice(1) : lower;
   const out: string[] = [];
-  if (wantAt || token.startsWith("@")) {
-    for (const v of variables) {
-      if (
-        v.toLowerCase().startsWith(needle) ||
-        v.toLowerCase().includes(needle)
-      ) {
-        out.push(`@${v}`);
-      }
-      if (out.length >= limit) return out;
-    }
+  if (token.startsWith("@")) {
+    collect(
+      variables,
+      (v) => (v.toLowerCase().includes(needle) ? `@${v}` : null),
+      out,
+      limit,
+    );
     return out;
   }
-  for (const c of columns) {
-    if (c.toLowerCase().startsWith(needle)) out.push(formulaColumnRef(c));
-    if (out.length >= limit) return out;
-  }
-  for (const c of columns) {
-    if (
-      !c.toLowerCase().startsWith(needle) &&
-      c.toLowerCase().includes(needle)
-    ) {
-      out.push(formulaColumnRef(c));
-    }
-    if (out.length >= limit) return out;
-  }
-  for (const v of variables) {
-    if (
+  const colStarts = (c: string) => c.toLowerCase().startsWith(needle);
+  collect(
+    columns,
+    (c) => (colStarts(c) ? formulaColumnRef(c) : null),
+    out,
+    limit,
+  );
+  if (out.length >= limit) return out;
+  collect(
+    columns,
+    (c) =>
+      !colStarts(c) && c.toLowerCase().includes(needle)
+        ? formulaColumnRef(c)
+        : null,
+    out,
+    limit,
+  );
+  if (out.length >= limit) return out;
+  collect(
+    variables,
+    (v) =>
       v.toLowerCase().startsWith(needle) ||
       `@${v}`.toLowerCase().startsWith(lower)
-    ) {
-      out.push(`@${v}`);
-    }
-    if (out.length >= limit) return out;
-  }
+        ? `@${v}`
+        : null,
+    out,
+    limit,
+  );
   return out;
 }
 

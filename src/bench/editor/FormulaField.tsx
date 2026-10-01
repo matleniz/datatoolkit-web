@@ -22,6 +22,41 @@ import {
   formulaTokenAt,
 } from "./formulaFuncs";
 
+interface PaletteItem {
+  insert: string;
+  label: string;
+  help: string;
+}
+
+function Palette<T extends PaletteItem>({
+  items,
+  marker,
+  aria,
+  onPick,
+}: {
+  items: readonly T[];
+  marker: Record<string, string>;
+  aria: (item: T) => string;
+  onPick: (item: T) => void;
+}) {
+  return (
+    <div className="chip-row formula-palette" {...marker}>
+      {items.map((f) => (
+        <button
+          key={f.insert}
+          type="button"
+          className="tiny-chip"
+          title={f.help}
+          aria-label={aria(f)}
+          onClick={() => onPick(f)}
+        >
+          {f.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Formula expression widget: chips, function palette, autocomplete, inline status. */
 export function FormulaField({
   label,
@@ -247,52 +282,28 @@ export function FormulaField({
       ) : null}
 
       <span className="ed-help">Functions</span>
-      <div className="chip-row formula-palette" data-formula-func-palette="">
-        {FORMULA_FUNCS.map((f) => (
-          <button
-            key={f.insert}
-            type="button"
-            className="tiny-chip"
-            title={f.help}
-            aria-label={f.help}
-            onClick={() => insertAtCaret(f.insert, false)}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      <Palette
+        items={FORMULA_FUNCS}
+        marker={{ "data-formula-func-palette": "" }}
+        aria={(f) => f.help}
+        onPick={(f) => insertAtCaret(f.insert, false)}
+      />
 
       <span className="ed-help">Python</span>
-      <div className="chip-row formula-palette" data-formula-py-palette="">
-        {FORMULA_PY_EXAMPLES.map((f) => (
-          <button
-            key={f.insert}
-            type="button"
-            className="tiny-chip"
-            title={f.help}
-            aria-label={`Insert ${f.label}`}
-            onClick={() => insertAtCaret(f.insert)}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      <Palette
+        items={FORMULA_PY_EXAMPLES}
+        marker={{ "data-formula-py-palette": "" }}
+        aria={(f) => `Insert ${f.label}`}
+        onPick={(f) => insertAtCaret(f.insert)}
+      />
 
       <span className="ed-help">Operators</span>
-      <div className="chip-row formula-palette" data-formula-op-palette="">
-        {FORMULA_OPS.map((f) => (
-          <button
-            key={f.insert}
-            type="button"
-            className="tiny-chip"
-            title={f.help}
-            aria-label={f.help}
-            onClick={() => insertAtCaret(f.insert)}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      <Palette
+        items={FORMULA_OPS}
+        marker={{ "data-formula-op-palette": "" }}
+        aria={(f) => f.help}
+        onPick={(f) => insertAtCaret(f.insert)}
+      />
 
       <div className={statusClass} data-formula-status="">
         {status}

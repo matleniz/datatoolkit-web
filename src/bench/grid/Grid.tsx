@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import type { ColumnProfile } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { colAlerts, isOutlierValue, missPct, profileBars } from "../alerts";
-import { cellTone } from "../diff";
+import { cellTone, type DisplayCol, type DisplayRow } from "../diff";
 import {
   cellDisplay,
   EMPTY_DATA_ROWS_MSG,
@@ -13,6 +14,195 @@ import { colWidth, isNumericKind, KIND_BAR, KIND_LABEL } from "../kinds";
 import { stepSummary } from "../stages";
 import { useWorkbenchData } from "../WorkbenchData";
 import { columnWindow } from "./columnWindow";
+
+type Dispatch = ReturnType<typeof useAppDispatch>;
+type Selection = ReturnType<typeof useAppState>["selection"];
+
+function selectionText(selection: Selection): string {
+  const n = selection.columns.length;
+  if (n > 0) return n === 1 ? "1 column selected" : `${n} columns selected`;
+  return selection.row !== null ? "1 row selected" : "Nothing selected";
+}
+
+function ColSpacer({ width }: { width: number }) {
+  if (width <= 0) return null;
+  return <div className="grid-col-spacer" aria-hidden="true" style={{ width }} />;
+}
+
+function headerAlerts(c: DisplayCol, pr: ColumnProfile | undefined) {
+  if (c.status === "added") return [{ text: "new", tone: "ok" as const }];
+  if (c.status === "removed") return [{ text: "removed", tone: "bad" as const }];
+  return colAlerts(pr);
+}
+
+function cellTip(
+  row: DisplayRow,
+  c: DisplayCol,
+  v: DisplayRow["vals"][string] | undefined,
+  outlier: boolean,
+): string {
+  const tip = `${c.name} = ${fmtPreview(v as never)}`;
+  if (row.status === "removed" || c.status === "removed") {
+    return `${tip} (removed by this step)`;
+  }
+  if (row.changed[c.name]) return `${tip} (was ${fmtPreview(row.prev[c.name] as never)})`;
+  return outlier ? `${tip} (IQR outlier)` : tip;
+}
+
+function ColumnHeader({
+  c,
+  sel,
+  isTarget,
+  profile: pr,
+  dispatch,
+}: {
+  c: DisplayCol;
+  sel: boolean;
+  isTarget: boolean;
+  profile: ColumnProfile | undefined;
+  dispatch: Dispatch;
+}) {
+  const bars = pr ? profileBars(pr, 22) : [];
+  const alerts = headerAlerts(c, pr);
+  const miss = missPct(pr);
+  const barColor = sel ? "#1d5b86" : KIND_BAR[c.kind] ?? "#c9c5ba";
+  return (
+    <button
+      type="button"
+      className={[
+        "grid-th",
+        sel ? "selected" : "",
+        c.status === "added" ? "added" : "",
+        c.status === "removed" ? "removed" : "",
+        isTarget || sel ? "accent-top" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      style={{ width: colWidth(c.kind) }}
+      aria-label={`${c.name}, ${KIND_LABEL[c.kind] ?? c.kind}`}
+      title={`${c.name} · ${KIND_LABEL[c.kind]} · ${pr?.distinct ?? "?"} distinct · ${pr?.missing ?? "?"} missing · right-click for actions`}
+      onClick={(e) =>
+        dispatch({
+          type: "PICK_COL",
+          name: c.name,
+          add: e.shiftKey || e.metaKey || e.ctrlKey,
+        })
+      }
+      onContextMenu={(e) => {
+        e.preventDefault();
+        if (c.status === "removed") return;
+        const root = (e.currentTarget as HTMLElement).closest("[data-root]");
+        const rc = root?.getBoundingClientRect();
+        dispatch({
+          type: "OPEN_CTX",
+          col: c.name,
+          x: rc ? e.clientX - rc.left : e.clientX,
+          y: rc ? e.clientY - rc.top : e.clientY,
+        });
+      }}
+    >
+      <span className="th-name-row">
+        <span className={c.status === "removed" ? "th-name struck" : "th-name"}>
+          {nameDisplay(c.name)}
+        </span>
+        {isTarget ? (
+          <svg width="13" height="13" viewBox="0 0 14 14" aria-label="target">
+            <circle
+              cx="7"
+              cy="7"
+              r="5.5"
+              fill="none"
+              stroke="#1d5b86"
+              strokeWidth="1.4"
+            />
+            <circle cx="7" cy="7" r="2" fill="#1d5b86" />
+          </svg>
+        ) : null}
+      </span>
+      <span className="th-meta">
+        <span className="kind-chip">{KIND_LABEL[c.kind] ?? c.kind}</span>
+        <span className="miss-label">{miss ? `${miss}% ∅` : ""}</span>
+      </span>
+      <span className="th-bars">
+        {bars.map((b, i) => (
+          <span
+            key={i}
+            title={b.tip}
+            style={{
+              flex: "1 1 0",
+              minWidth: 2,
+              height: b.heightPx,
+              background: barColor,
+              borderRadius: "1px 1px 0 0",
+            }}
+          />
+        ))}
+      </span>
+      <span className="miss-bar">
+        <span style={{ width: `${miss}%` }} />
+      </span>
+      <span className="th-alerts" aria-hidden="true">
+        {alerts.map((a) => (
+          <span key={a.text} className={`alert alert-${a.tone}`}>
+            {a.text}
+          </span>
+        ))}
+      </span>
+    </button>
+  );
+}
+
+function DataCell({
+  row,
+  c,
+  profile,
+  selection,
+  dispatch,
+}: {
+  row: DisplayRow;
+  c: DisplayCol;
+  profile: ColumnProfile | undefined;
+  selection: Selection;
+  dispatch: Dispatch;
+}) {
+  const v = row.vals[c.name];
+  const csel = selection.cell?.rid === row.rid && selection.cell.col === c.name;
+  const outlier = isOutlierValue(profile, v, c.kind);
+  const tone = cellTone({
+    rowRemoved: row.status === "removed",
+    colRemoved: c.status === "removed",
+    colAdded: c.status === "added",
+    changed: !!row.changed[c.name],
+    value: v,
+    kind: c.kind,
+    isOutlier: outlier,
+    rowSelected: selection.row === row.rid,
+    colSelected: selection.columns.includes(c.name),
+  });
+  return (
+    <button
+      type="button"
+      className={[
+        "grid-td",
+        `tone-${tone}`,
+        csel ? "cell-sel" : "",
+        isNumericKind(c.kind) ? "num" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      style={{ width: colWidth(c.kind) }}
+      title={cellTip(row, c, v, outlier)}
+      onClick={() => dispatch({ type: "PICK_CELL", rid: row.rid, col: c.name })}
+    >
+      {cellDisplay(v as never)}
+    </button>
+  );
+}
+
+function rowNumClass(selected: boolean, removed: boolean): string {
+  if (selected) return "grid-rn on";
+  return removed ? "grid-rn removed" : "grid-rn";
+}
 
 /** W2 — data grid with horizontally windowed columns (MAT-152). */
 export function Grid() {
@@ -49,13 +239,7 @@ export function Grid() {
   const totalW =
     44 + display.cols.reduce((w, c) => w + colWidth(c.kind), 0);
 
-  const selText = selection.columns.length
-    ? selection.columns.length === 1
-      ? "1 column selected"
-      : `${selection.columns.length} columns selected`
-    : selection.row !== null
-      ? "1 row selected"
-      : "Nothing selected";
+  const selText = selectionText(selection);
 
   const rowNum = new Map<number, number>();
   display.rows.forEach((r, i) => rowNum.set(r.rid, i + 1));
@@ -214,237 +398,47 @@ export function Grid() {
         <div className="grid-inner" style={{ width: totalW, minWidth: "100%" }}>
           <div className="grid-header-row">
             <div className="grid-corner" />
-            {windowed.leftPad > 0 ? (
-              <div
-                className="grid-col-spacer"
-                aria-hidden="true"
-                style={{ width: windowed.leftPad }}
+            <ColSpacer width={windowed.leftPad} />
+            {windowed.visible.map((c) => (
+              <ColumnHeader
+                key={c.name}
+                c={c}
+                sel={selection.columns.includes(c.name)}
+                isTarget={c.name === targetColumn}
+                profile={profiles.get(c.name)}
+                dispatch={dispatch}
               />
-            ) : null}
-            {windowed.visible.map((c) => {
-              const sel = selection.columns.includes(c.name);
-              const isT = c.name === targetColumn;
-              const pr = profiles.get(c.name);
-              const bars = pr ? profileBars(pr, 22) : [];
-              const alerts =
-                c.status === "added"
-                  ? [{ text: "new", tone: "ok" as const }]
-                  : c.status === "removed"
-                    ? [{ text: "removed", tone: "bad" as const }]
-                    : colAlerts(pr);
-              const miss = missPct(pr);
-              const barColor = sel
-                ? "#1d5b86"
-                : KIND_BAR[c.kind] ?? "#c9c5ba";
-              return (
-                <button
-                  key={c.name}
-                  type="button"
-                  className={[
-                    "grid-th",
-                    sel ? "selected" : "",
-                    c.status === "added" ? "added" : "",
-                    c.status === "removed" ? "removed" : "",
-                    isT || sel ? "accent-top" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  style={{ width: colWidth(c.kind) }}
-                  aria-label={`${c.name}, ${KIND_LABEL[c.kind] ?? c.kind}`}
-                  title={`${c.name} · ${KIND_LABEL[c.kind]} · ${pr?.distinct ?? "?"} distinct · ${pr?.missing ?? "?"} missing · right-click for actions`}
-                  onClick={(e) =>
-                    dispatch({
-                      type: "PICK_COL",
-                      name: c.name,
-                      add: e.shiftKey || e.metaKey || e.ctrlKey,
-                    })
-                  }
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    if (c.status === "removed") return;
-                    const root = (e.currentTarget as HTMLElement).closest(
-                      "[data-root]",
-                    );
-                    let x = e.clientX;
-                    let y = e.clientY;
-                    if (root) {
-                      const rc = root.getBoundingClientRect();
-                      x = e.clientX - rc.left;
-                      y = e.clientY - rc.top;
-                    }
-                    dispatch({
-                      type: "OPEN_CTX",
-                      col: c.name,
-                      x,
-                      y,
-                    });
-                  }}
-                >
-                  <span className="th-name-row">
-                    <span
-                      className={
-                        c.status === "removed" ? "th-name struck" : "th-name"
-                      }
-                    >
-                      {nameDisplay(c.name)}
-                    </span>
-                    {isT ? (
-                      <svg
-                        width="13"
-                        height="13"
-                        viewBox="0 0 14 14"
-                        aria-label="target"
-                      >
-                        <circle
-                          cx="7"
-                          cy="7"
-                          r="5.5"
-                          fill="none"
-                          stroke="#1d5b86"
-                          strokeWidth="1.4"
-                        />
-                        <circle cx="7" cy="7" r="2" fill="#1d5b86" />
-                      </svg>
-                    ) : null}
-                  </span>
-                  <span className="th-meta">
-                    <span className="kind-chip">
-                      {KIND_LABEL[c.kind] ?? c.kind}
-                    </span>
-                    <span className="miss-label">
-                      {miss ? `${miss}% ∅` : ""}
-                    </span>
-                  </span>
-                  <span className="th-bars">
-                    {bars.map((b, i) => (
-                      <span
-                        key={i}
-                        title={b.tip}
-                        style={{
-                          flex: "1 1 0",
-                          minWidth: 2,
-                          height: b.heightPx,
-                          background: barColor,
-                          borderRadius: "1px 1px 0 0",
-                        }}
-                      />
-                    ))}
-                  </span>
-                  <span className="miss-bar">
-                    <span style={{ width: `${miss}%` }} />
-                  </span>
-                  <span className="th-alerts" aria-hidden="true">
-                    {alerts.map((a) => (
-                      <span key={a.text} className={`alert alert-${a.tone}`}>
-                        {a.text}
-                      </span>
-                    ))}
-                  </span>
-                </button>
-              );
-            })}
-            {windowed.rightPad > 0 ? (
-              <div
-                className="grid-col-spacer"
-                aria-hidden="true"
-                style={{ width: windowed.rightPad }}
-              />
-            ) : null}
+            ))}
+            <ColSpacer width={windowed.rightPad} />
           </div>
 
           {display.rows.map((row) => {
-            const rsel = selection.row === row.rid;
             const num = rowNum.get(row.rid) ?? 0;
             return (
               <div key={row.rid} className="grid-row">
                 <button
                   type="button"
-                  className={
-                    rsel
-                      ? "grid-rn on"
-                      : row.status === "removed"
-                        ? "grid-rn removed"
-                        : "grid-rn"
-                  }
+                  className={rowNumClass(
+                    selection.row === row.rid,
+                    row.status === "removed",
+                  )}
                   aria-label={`Select row ${num}`}
-                  onClick={() =>
-                    dispatch({ type: "PICK_ROW", rid: row.rid })
-                  }
+                  onClick={() => dispatch({ type: "PICK_ROW", rid: row.rid })}
                 >
                   {num}
                 </button>
-                {windowed.leftPad > 0 ? (
-                  <div
-                    className="grid-col-spacer"
-                    aria-hidden="true"
-                    style={{ width: windowed.leftPad }}
+                <ColSpacer width={windowed.leftPad} />
+                {windowed.visible.map((c) => (
+                  <DataCell
+                    key={c.name}
+                    row={row}
+                    c={c}
+                    profile={profiles.get(c.name)}
+                    selection={selection}
+                    dispatch={dispatch}
                   />
-                ) : null}
-                {windowed.visible.map((c) => {
-                  const v = row.vals[c.name];
-                  const csel =
-                    selection.cell?.rid === row.rid &&
-                    selection.cell.col === c.name;
-                  const colSel = selection.columns.includes(c.name);
-                  const changed = !!row.changed[c.name];
-                  const tone = cellTone({
-                    rowRemoved: row.status === "removed",
-                    colRemoved: c.status === "removed",
-                    colAdded: c.status === "added",
-                    changed,
-                    value: v,
-                    kind: c.kind,
-                    isOutlier: isOutlierValue(
-                      profiles.get(c.name),
-                      v,
-                      c.kind,
-                    ),
-                    rowSelected: rsel,
-                    colSelected: colSel,
-                  });
-                  let tip = `${c.name} = ${fmtPreview(v as never)}`;
-                  if (row.status === "removed" || c.status === "removed") {
-                    tip += " (removed by this step)";
-                  } else if (changed) {
-                    tip += ` (was ${fmtPreview(row.prev[c.name] as never)})`;
-                  } else if (
-                    isOutlierValue(profiles.get(c.name), v, c.kind)
-                  ) {
-                    tip += " (IQR outlier)";
-                  }
-                  return (
-                    <button
-                      key={c.name}
-                      type="button"
-                      className={[
-                        "grid-td",
-                        `tone-${tone}`,
-                        csel ? "cell-sel" : "",
-                        isNumericKind(c.kind) ? "num" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      style={{ width: colWidth(c.kind) }}
-                      title={tip}
-                      onClick={() =>
-                        dispatch({
-                          type: "PICK_CELL",
-                          rid: row.rid,
-                          col: c.name,
-                        })
-                      }
-                    >
-                      {cellDisplay(v as never)}
-                    </button>
-                  );
-                })}
-                {windowed.rightPad > 0 ? (
-                  <div
-                    className="grid-col-spacer"
-                    aria-hidden="true"
-                    style={{ width: windowed.rightPad }}
-                  />
-                ) : null}
+                ))}
+                <ColSpacer width={windowed.rightPad} />
               </div>
             );
           })}
