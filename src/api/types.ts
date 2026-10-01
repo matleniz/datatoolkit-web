@@ -455,4 +455,9 @@ export class EngineError extends Error {
   }
 }
 
+/** What to show for a thrown value: the engine message, else its string form. */
+export function errorText(e: unknown): string {
+  return e instanceof EngineError ? e.message : String(e);
+}
+
 export type Role = "train" | "test";

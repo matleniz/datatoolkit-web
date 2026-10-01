@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "../../api/client";
-import type { Result } from "../../api/types";
-import { EngineError } from "../../api/types";
+import { errorText } from "../../api/types";
+import { useKeyedAsync } from "../../hooks";
 import {
   ensureWorkspaceSaved,
   useAppDispatch,
@@ -11,6 +11,7 @@ import {
 import { identityLabel, identitySource, withRole } from "../dataIdentity";
 import type { CourseStage } from "../../state/reducer";
 import { toEngineParams } from "../presets";
+import { Chips } from "../Chips";
 import { useWorkbenchData } from "../WorkbenchData";
 import { targetColumnOf } from "./datasetSource";
 import { keyParamsFromSchema } from "./keyParams";
@@ -20,16 +21,15 @@ import {
   SUGGESTION_KEYS,
   filterCardsByStage,
   mapSuggestionCards,
-  type SuggestionCard,
 } from "./suggestions";
 
-const STAGE_FILTERS: { id: CourseStage; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "import", label: "Import" },
-  { id: "clean", label: "Clean" },
-  { id: "transform", label: "Transform" },
-  { id: "select", label: "Select" },
-];
+const STAGE_FILTERS: Partial<Record<CourseStage, string>> = {
+  all: "All",
+  import: "Import",
+  clean: "Clean",
+  transform: "Transform",
+  select: "Select",
+};
 
 export function SuggestionsTab() {
   const { workspace, sugStage } = useAppState();
@@ -40,9 +40,6 @@ export function SuggestionsTab() {
     identity: viewIdentity,
     pendingStep,
   } = useWorkbenchData();
-  const [cards, setCards] = useState<SuggestionCard[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   /** Per-card subset picks for duplicates "pass subset" cards (MAT-155). */
   const [subsetPicks, setSubsetPicks] = useState<Record<string, string[]>>({});
 
@@ -57,107 +54,65 @@ export function SuggestionsTab() {
     [workspace, viewIdentity],
   );
   const identityKey = identity.key;
-  /** Identity the current cards were computed for. */
-  const [shownIdentity, setShownIdentity] = useState<string | null>(null);
-  const rechecking = loading && cards.length > 0;
+  const hasTrain = !!workspace?.datasets.train.x.path;
 
-  useEffect(() => {
-    if (!workspace?.datasets.train.x.path) {
-      setCards([]);
-      dispatch({ type: "SET_SUG_COUNT", count: 0 });
-      return;
-    }
-    // Run once per workspace change, after the grid is ready (MAT-144).
-    if (!gridReady) return;
-
-    let cancelled = false;
-
-    const run = async () => {
-      if (cancelled) return;
-      setLoading(true);
-      setError(null);
-      try {
-        await ensureWorkspaceSaved(workspace);
-        if (cancelled) return;
-        const source = identitySource(identity, true);
-        let target = targetColumnOf(workspace);
-        if (!target && workspace.datasets.train.y) {
-          target = workspace.name === "churn" ? "churn" : "target";
-        }
-        const available: Record<string, unknown> = { source };
-        if (target) available.target = target;
-        if (workspace.datasets.test?.x) {
-          available.test = identitySource(
-            withRole(workspace, identity, "test"),
-            false,
-          );
-        }
-
-        // Parallel across keys (schema→run stays sequential per key).
-        const settled = await Promise.all(
-          SUGGESTION_KEYS.map(async (keyId) => {
-            if (keyId === "feature_selection" && !target) {
-              return null;
-            }
+  // Once per analysed identity, after the grid is ready (MAT-144). A grid
+  // reload of the same identity does not re-run the keys (MAT-219).
+  const run = useKeyedAsync(
+    hasTrain ? identityKey : null,
+    async () => {
+      if (!workspace) return { cards: [], errors: [] };
+      await ensureWorkspaceSaved(workspace);
+      const source = identitySource(identity, true);
+      let target = targetColumnOf(workspace);
+      if (!target && workspace.datasets.train.y) {
+        target = workspace.name === "churn" ? "churn" : "target";
+      }
+      const available: Record<string, unknown> = { source };
+      if (target) available.target = target;
+      if (workspace.datasets.test?.x) {
+        available.test = identitySource(
+          withRole(workspace, identity, "test"),
+          false,
+        );
+      }
+      // Parallel across keys (schema→run stays sequential per key).
+      const settled = await Promise.all(
+        SUGGESTION_KEYS.filter((k) => target || k !== "feature_selection").map(
+          async (keyId) => {
             try {
               const schema = await apiClient.keySchema(keyId);
               const params = keyParamsFromSchema(schema, available);
-              const result = await apiClient.runKey(keyId, params);
-              return { keyId, result, error: null as string | null };
+              return { keyId, result: await apiClient.runKey(keyId, params) };
             } catch (e) {
-              const msg = e instanceof EngineError ? e.message : String(e);
-              return {
-                keyId,
-                result: null as Result | null,
-                error: `${keyId}: ${msg}`,
-              };
+              return { keyId, error: `${keyId}: ${errorText(e)}` };
             }
-          }),
-        );
-        if (cancelled) return;
-
-        const results: { keyId: string; result: Result }[] = [];
-        const errors: string[] = [];
-        for (const item of settled) {
-          if (!item) continue;
-          if (item.result) results.push({ keyId: item.keyId, result: item.result });
-          if (item.error) errors.push(item.error);
-        }
-        const next = mapSuggestionCards(results);
-        setCards(next);
-        setShownIdentity(identity.key);
-        dispatch({ type: "SET_SUG_COUNT", count: next.length });
-        if (errors.length) {
-          setError(errors.join("\n"));
-        } else {
-          setError(null);
-        }
-      } catch (e) {
-        if (cancelled) return;
-        setError(e instanceof EngineError ? e.message : String(e));
-        setCards([]);
-        setShownIdentity(identity.key);
-        dispatch({ type: "SET_SUG_COUNT", count: 0 });
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    // Run promptly after the save gate — no multi-second idle defer
-    // (that made applied suggestions look stuck until a manual reload).
-    void run();
-
-    return () => {
-      cancelled = true;
-    };
-    // identityKey stands for workspace content at the analysed version; the
-    // workspace object itself churns on unrelated edits (charts, variables).
-  }, [identityKey, gridReady, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const shown = useMemo(
-    () => filterCardsByStage(cards, sugStage),
-    [cards, sugStage],
+          },
+        ),
+      );
+      return {
+        cards: mapSuggestionCards(
+          settled.flatMap((r) => (r.result ? [{ keyId: r.keyId, result: r.result }] : [])),
+        ),
+        errors: settled.flatMap((r) => (r.error ? [r.error] : [])),
+      };
+    },
+    gridReady,
   );
+  const cards = run.value?.cards ?? [];
+  const error = run.ready
+    ? (run.error ?? (run.value?.errors.join("\n") || null))
+    : null;
+  const loading = !run.ready && gridReady;
+  /** Identity the current cards were computed for. */
+  const shownIdentity = run.settledKey;
+  const rechecking = loading && cards.length > 0;
+
+  useEffect(() => {
+    dispatch({ type: "SET_SUG_COUNT", count: cards.length });
+  }, [cards.length, dispatch]);
+
+  const shown = filterCardsByStage(cards, sugStage);
 
   return (
     <div className="left-tab-body">
@@ -183,20 +138,13 @@ export function SuggestionsTab() {
           ) : null}
         </div>
       ) : null}
-      <div className="chip-row" role="group" aria-label="Suggestion stage">
-        {STAGE_FILTERS.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            className={sugStage === s.id ? "chip on" : "chip"}
-            onClick={() =>
-              dispatch({ type: "SET_SUG_STAGE", stage: s.id })
-            }
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
+      <Chips
+        label="Suggestion stage"
+        options={Object.keys(STAGE_FILTERS) as CourseStage[]}
+        isOn={(id) => sugStage === id}
+        onPick={(stage) => dispatch({ type: "SET_SUG_STAGE", stage })}
+        text={(id) => STAGE_FILTERS[id]!}
+      />
       {rechecking ? (
         <div className="muted" role="status" data-sug-rechecking="1">
           Re-checking…
@@ -231,31 +179,21 @@ export function SuggestionsTab() {
                 <div className="sug-subset-label muted">
                   Pick identity columns (subset), then open Drop duplicates
                 </div>
-                <div className="chip-row" role="group" aria-label="Duplicate subset">
-                  {columns.map((c) => {
-                    const picked = subsetPicks[cd.id] ?? [];
-                    const on = picked.includes(c.name);
-                    return (
-                      <button
-                        key={c.name}
-                        type="button"
-                        className={on ? "small-chip on" : "small-chip"}
-                        aria-pressed={on}
-                        onClick={() => {
-                          setSubsetPicks((prev) => {
-                            const cur = prev[cd.id] ?? [];
-                            const next = on
-                              ? cur.filter((n) => n !== c.name)
-                              : [...cur, c.name];
-                            return { ...prev, [cd.id]: next };
-                          });
-                        }}
-                      >
-                        {c.name}
-                      </button>
-                    );
-                  })}
-                </div>
+                <Chips
+                  small
+                  label="Duplicate subset"
+                  options={columns.map((c) => c.name)}
+                  isOn={(n) => (subsetPicks[cd.id] ?? []).includes(n)}
+                  onPick={(n) =>
+                    setSubsetPicks((prev) => {
+                      const cur = prev[cd.id] ?? [];
+                      const next = cur.includes(n)
+                        ? cur.filter((x) => x !== n)
+                        : [...cur, n];
+                      return { ...prev, [cd.id]: next };
+                    })
+                  }
+                />
                 <button
                   type="button"
                   className="open-editor-btn"

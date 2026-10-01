@@ -1,12 +1,9 @@
-import { useEffect, useState } from "react";
-
 import { apiClient } from "../../api/client";
-import type { ColumnKind, ColumnProfile, JsonSchema } from "../../api/types";
-import { EngineError } from "../../api/types";
+import type { ColumnKind, ColumnProfile } from "../../api/types";
+import { useKeyedAsync } from "../../hooks";
 import { useAppDispatch } from "../../state/AppStore";
-import type { EditorField } from "../schemaFields";
 import { keySchemaDefaults, keyTunableFields } from "../left/keyTunable";
-import { DockParamField } from "./DockParamField";
+import { fieldControl } from "../fieldControl";
 import { defaultsWithSuggested } from "./suggestedParams";
 
 /** One-line `key=value` summary of the current params (collapsed panel). */
@@ -41,46 +38,25 @@ export function DockParamsPanel({
   profile?: ColumnProfile;
 }) {
   const dispatch = useAppDispatch();
-  const [fields, setFields] = useState<EditorField[]>([]);
-  const [schemaDefaults, setSchemaDefaults] = useState<Record<string, unknown>>(
-    {},
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setReady(false);
-      setError(null);
-      try {
-        const schema: JsonSchema = await apiClient.keySchema(keyId);
-        if (cancelled) return;
-        const nextFields = keyTunableFields(schema, keyId);
-        const defaults = keySchemaDefaults(schema, keyId);
-        setFields(nextFields);
-        setSchemaDefaults(defaults);
-        // Seed once when this window/column has no persisted params.
-        if (Object.keys(params).length === 0 && nextFields.length > 0) {
-          dispatch({
-            type: "SET_TOOL_PARAMS",
-            key: storageKey,
-            params: defaultsWithSuggested(defaults, profile),
-          });
-        }
-      } catch (e) {
-        if (cancelled) return;
-        setError(e instanceof EngineError ? e.message : String(e));
-      } finally {
-        if (!cancelled) setReady(true);
+  // Re-seed when key/column/profile suggestions change; ignore params edits.
+  const { value, error, ready } = useKeyedAsync(
+    [keyId, storageKey, profile?.name, profile?.suggested_params?.bins].join("\0"),
+    async (alive) => {
+      const schema = await apiClient.keySchema(keyId);
+      const fields = keyTunableFields(schema, keyId);
+      const defaults = keySchemaDefaults(schema, keyId);
+      // Seed once when this window/column has no persisted params.
+      if (alive() && Object.keys(params).length === 0 && fields.length > 0) {
+        dispatch({
+          type: "SET_TOOL_PARAMS",
+          key: storageKey,
+          params: defaultsWithSuggested(defaults, profile),
+        });
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // Seed when key/column/profile suggestions change; ignore params edits.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
-  }, [keyId, storageKey, profile?.name, profile?.suggested_params?.bins]);
+      return { fields, defaults };
+    },
+  );
+  const fields = value?.fields ?? [];
 
   if (error) {
     return (
@@ -118,7 +94,7 @@ export function DockParamsPanel({
     dispatch({
       type: "SET_TOOL_PARAMS",
       key: storageKey,
-      params: defaultsWithSuggested(schemaDefaults, profile),
+      params: defaultsWithSuggested(value?.defaults ?? {}, profile),
     });
   };
 
@@ -156,15 +132,21 @@ export function DockParamsPanel({
       </div>
       {open ? (
         <div className="dock-params-fields">
-          {fields.map((field) => (
-            <DockParamField
-              key={field.key}
-              field={field}
-              params={params}
-              columns={columns}
-              onChange={setField}
-            />
-          ))}
+          {fields.map((field) => {
+            const control = fieldControl(
+              field,
+              params[field.key],
+              (v) => setField(field.key, v),
+              columns,
+              { dock: true },
+            );
+            return control ? (
+              <label key={field.key} className="dock-param" data-dock-param={field.key}>
+                <span className="dock-param-label">{field.label}</span>
+                {control}
+              </label>
+            ) : null;
+          })}
         </div>
       ) : null}
     </div>
