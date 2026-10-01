@@ -4,7 +4,9 @@ import {
   captureFlowScreenshot,
   clearFlowScreenshots,
   churnWorkspace,
+  expectSuggestions,
   fixturesDir,
+  waitForAlignReady,
   waitForGridReady,
 } from "./helpers";
 
@@ -54,6 +56,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   await expect(
     page.getByRole("main").getByText("Train / test alignment"),
   ).toBeVisible();
+  await waitForAlignReady(page);
 
   // Apply alignment fixes (schema + city spelling near-matches; MAT-179)
   await page
@@ -70,6 +73,8 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
     .locator(".align-table-row", { hasText: "city" })
     .getByRole("button", { name: "Map on test" })
     .click();
+  // Each fix refetches the report: assert on the one for all four fixes.
+  await waitForAlignReady(page);
   await expect(page.getByText("0 to decide")).toBeVisible();
 
   // Open Workbench
@@ -95,13 +100,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   }
 
   // (a) Assert suggestions count > 0 after load
-  await expect
-    .poll(
-      async () =>
-        page.evaluate(() => window.__DTK_STATE__?.()?.sugCount ?? 0),
-      { timeout: 30_000 },
-    )
-    .toBeGreaterThan(0);
+  await expectSuggestions(page);
   await expect(page.locator(".left-title")).toHaveText(
     /Suggestions · [1-9]/,
   );
@@ -137,13 +136,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   ).toBeVisible({ timeout: 15_000 });
 
   // (a) Assert suggestions > 0 after applied step
-  await expect
-    .poll(
-      async () =>
-        page.evaluate(() => window.__DTK_STATE__?.()?.sugCount ?? 0),
-      { timeout: 30_000 },
-    )
-    .toBeGreaterThan(0);
+  await expectSuggestions(page);
 
   // 3. Impute age (median)
   await ageHeader.click({ button: "right" });
@@ -177,13 +170,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   await expect(imputeNode).toContainText(/20\s*×\s*10/, { timeout: 20_000 });
 
   // (a) Assert suggestions > 0 after applied step
-  await expect
-    .poll(
-      async () =>
-        page.evaluate(() => window.__DTK_STATE__?.()?.sugCount ?? 0),
-      { timeout: 30_000 },
-    )
-    .toBeGreaterThan(0);
+  await expectSuggestions(page);
 
   // 4. One-hot city with diff preview
   const cityHeader = page.locator(".grid-th", { hasText: "city" }).first();
@@ -238,13 +225,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   ).toBeVisible({ timeout: 15_000 });
 
   // (a) Assert suggestions > 0 after applied step
-  await expect
-    .poll(
-      async () =>
-        page.evaluate(() => window.__DTK_STATE__?.()?.sugCount ?? 0),
-      { timeout: 30_000 },
-    )
-    .toBeGreaterThan(0);
+  await expectSuggestions(page);
 
   // 5. Time travel to an earlier version (v1)
   const v1Node = page
@@ -256,6 +237,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   const travelBanner = page.locator(".travel-banner");
   await expect(travelBanner).toBeVisible();
   await expect(travelBanner).toContainText("v1");
+  await waitForGridReady(page);
 
   // Row 3 age cell shows -999 (not 36)
   const row3 = page.locator(".grid-row").nth(2);
@@ -281,13 +263,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   ).toHaveCount(0, { timeout: 15_000 });
 
   // (a) Assert suggestions > 0 after deleting step
-  await expect
-    .poll(
-      async () =>
-        page.evaluate(() => window.__DTK_STATE__?.()?.sugCount ?? 0),
-      { timeout: 30_000 },
-    )
-    .toBeGreaterThan(0);
+  await expectSuggestions(page);
 
   await waitForGridReady(page);
   await captureFlowScreenshot(page, "3-workbench", "06-after-delete.png");

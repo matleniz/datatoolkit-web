@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  applyEditorStep,
   clearFlowScreenshots,
   openWorkbench,
   waitForGridReady,
@@ -68,11 +69,7 @@ test("Flow 8: MAT-150 exposed ops (Section 6 ffill, Section 9 bin, Section 11 se
   await page.locator(".ed-field").filter({ hasText: "Sort By" }).getByRole("button", { name: "customer_id" }).click();
   // Select column to fill (e.g. age)
   await page.locator(".ed-field").filter({ hasText: "Columns" }).getByRole("button", { name: "age" }).click();
-  await expect(page.getByRole("button", { name: "Apply step" }).first()).toBeEnabled({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Apply step" }).first().click();
-
-  const ffillNode = page.locator(".pipeline-node", { hasText: "Forward fill" }).first();
-  await expect(ffillNode).toBeVisible({ timeout: 20_000 });
+  await applyEditorStep(page, "Forward fill");
 
   // 4b. Filter rows: apply numeric filter and check row count in pipeline node
   await page.getByRole("button", { name: "+ Step" }).click();
@@ -81,11 +78,7 @@ test("Flow 8: MAT-150 exposed ops (Section 6 ffill, Section 9 bin, Section 11 se
   await page.getByLabel("Condition 1 column").selectOption("sessions");
   await page.getByLabel("Condition 1 operator").selectOption("gt");
   await page.getByLabel("Condition 1 value").fill("5");
-  await expect(page.getByRole("button", { name: "Apply step" }).first()).toBeEnabled({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Apply step" }).first().click();
-
-  const filterNode = page.locator(".pipeline-node", { hasText: "Filter rows" }).first();
-  await expect(filterNode).toBeVisible({ timeout: 20_000 });
+  const filterNode = await applyEditorStep(page, "Filter rows");
   await expect(filterNode.locator(".pipeline-shape")).toContainText("13 × 10");
   await expect(filterNode.locator(".pipeline-delta")).toContainText("−7r");
 
@@ -94,21 +87,13 @@ test("Flow 8: MAT-150 exposed ops (Section 6 ffill, Section 9 bin, Section 11 se
   await picker.getByRole("button", { name: "Bin column" }).click();
   // Select column: age
   await page.locator(".ed-field").filter({ hasText: "Column" }).getByRole("button", { name: "age" }).click();
-  await expect(page.getByRole("button", { name: "Apply step" }).first()).toBeEnabled({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Apply step" }).first().click();
-
-  const binNode = page.locator(".pipeline-node", { hasText: "Bin column" }).first();
-  await expect(binNode).toBeVisible({ timeout: 20_000 });
+  await applyEditorStep(page, "Bin column");
 
   // 6. Course Section 11 op: Apply Feature Selection (select_k_best or pca)
   await page.getByRole("button", { name: "+ Step" }).click();
   await picker.getByRole("button", { name: "Select k best" }).click();
   // Verify target is already prefilled or select churn
-  await expect(page.getByRole("button", { name: "Apply step" }).first()).toBeEnabled({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Apply step" }).first().click();
-
-  const selectNode = page.locator(".pipeline-node", { hasText: "Select k best" }).first();
-  await expect(selectNode).toBeVisible({ timeout: 20_000 });
+  const selectNode = await applyEditorStep(page, "Select k best");
   // Verify it has the fitted badge
   await expect(selectNode.locator(".pipeline-badge")).toContainText("fit");
 

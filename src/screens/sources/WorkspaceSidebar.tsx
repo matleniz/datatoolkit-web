@@ -1,7 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 
 import { apiClient } from "../../api/client";
-import type { Workspace, WorkspaceSummary } from "../../api/types";
+import {
+  EngineError,
+  type Workspace,
+  type WorkspaceSummary,
+} from "../../api/types";
 import { abandonPendingWorkspaceSave } from "../../state/AppStore";
 import { engineMessage } from "./sourcesLogic";
 import {
@@ -16,6 +20,16 @@ import {
   type WorkspaceSortDir,
   type WorkspaceSortKey,
 } from "./workspaceManagerLogic";
+
+/** DELETE that treats "already gone" (404) as done: the save gate may have
+ *  undone a PUT of this name first (#13). */
+async function deleteIfPresent(name: string): Promise<void> {
+  try {
+    await apiClient.deleteWorkspace(name);
+  } catch (e) {
+    if (!(e instanceof EngineError) || e.status !== 404) throw e;
+  }
+}
 
 export interface WorkspaceSidebarProps {
   summaries: WorkspaceSummary[];
@@ -236,15 +250,14 @@ export function WorkspaceSidebar({
         : multiDeleteConfirmMessage(unique);
     if (!window.confirm(message)) return;
 
-    // Cancel autosave BEFORE DELETEs so a debounced / in-flight PUT cannot
-    // resurrect these names (MAT-217).
-    abandonPendingWorkspaceSave(unique);
-
     setBusy(true);
     const deleted: string[] = [];
     try {
+      // Cancel autosave BEFORE the DELETEs and wait for a PUT already on the
+      // wire, so no save of these names can land after them (MAT-217, #13).
+      await abandonPendingWorkspaceSave(unique);
       for (const name of unique) {
-        await apiClient.deleteWorkspace(name);
+        await deleteIfPresent(name);
         deleted.push(name);
       }
       setSelected({});

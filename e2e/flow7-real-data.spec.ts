@@ -4,7 +4,9 @@ import { join } from "node:path";
 import {
   captureFlowScreenshot,
   clearFlowScreenshots,
+  waitForAlignReady,
   waitForGridReady,
+  waitForSuggestionsReady,
 } from "./helpers";
 
 const REAL_DATA_DIR = "/mnt/c/Users/mat24/Downloads";
@@ -132,6 +134,7 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
     timeout: 30_000,
   });
   await expect(page.getByText("Loading alignment report...")).toHaveCount(0);
+  await waitForAlignReady(page);
 
   await captureFlowScreenshot(page, "7-real-data", "02-parkinson-align.png");
 
@@ -182,13 +185,15 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
   expect(firstPatientVal).toBeTruthy();
   expect(firstPatientVal).not.toMatch(/^[–—∅]?$/);
 
-  await expect
-    .poll(
-      async () =>
-        page.evaluate(() => window.__DTK_STATE__?.()?.sugCount ?? 0),
-      { timeout: 45_000 },
-    )
-    .toBeGreaterThan(0);
+  // Cold analysis cache on 55k rows when run alone: wait for the run to
+  // settle, then check its outcome (#13).
+  await waitForSuggestionsReady(page);
+  await expect(
+    page.getByRole("complementary", { name: "Suggestions" }).locator(".engine-error"),
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(() => window.__DTK_STATE__?.()?.sugCount ?? 0),
+  ).toBeGreaterThan(0);
   await expect(page.locator(".left-title")).toHaveText(
     /Suggestions · [1-9]/,
   );

@@ -89,6 +89,12 @@ project's fleet config, outside this repo); the e2e suite is run separately.
 - `e2e/vite.e2e.config.ts` pre-bundles all deps (`optimizeDeps.include`), so a
   cold `node_modules/.vite` does not reload the page mid-spec. Add a dep there
   when you import a new one lazily.
+- Specs wait on readiness signals, not fixed timeouts, so they pass alone, in
+  any order and under load (datatoolkit-issues#13): `waitForAlignReady`
+  (`.align-layout[data-align-state="ready"]`: the report matches the current
+  fixes), `waitForSuggestionsReady` (`.sug-identity` `data-identity` caught up
+  with `data-identity-current`), `applyEditorStep` (editor closed, grid
+  ready, the step's pipeline node shows its shape) and `waitForGridReady`.
 - Screenshots always go to `e2e/screenshots/<flow>/` (gitignored). The
   committed copies under `docs/screenshots/t1-e2e/` are only rewritten with
   `DTK_E2E_SCREENSHOTS=1 npm run e2e`, so a plain run leaves the tree clean.
@@ -123,6 +129,16 @@ steps), and are left out of frame / analysis request bodies and of the data
 identity, so a chart save never refetches data. Charts saved by older builds
 in `localStorage["dtk.charts.<workspace>"]` are adopted once when the engine
 workspace has none, and the key is removed after the next successful save.
+
+Workspace saves (`src/state/workspaceSaveGate.ts`): every autosave and
+explicit gate save runs on one ordered chain. A workspace read from the engine
+(bootstrap, selecting it on Sources) is marked as saved, so it is not PUT
+straight back. Deleting workspaces tombstones their names (no queued or
+debounced save runs for them; other workspaces keep saving) and waits for the
+PUT already on the wire before the DELETE: an aborted fetch could still be
+applied by the engine after the delete (datatoolkit-issues#13). A PUT that
+lands for a tombstoned name is deleted again, and the sidebar treats a 404 on
+DELETE as already deleted.
 
 Suggestions can be dismissed (datatoolkit-issues#15): browser-local, per
 workspace (`localStorage["dtk.dismissedSuggestions.<workspace>"]`). The id

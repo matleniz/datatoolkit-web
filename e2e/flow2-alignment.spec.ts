@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { captureFlowScreenshot, clearFlowScreenshots } from "./helpers";
+import {
+  captureFlowScreenshot,
+  clearFlowScreenshots,
+  waitForAlignReady,
+} from "./helpers";
 
 test("Flow 2: alignment (decimal, rename, drop, city map -> 0 to decide)", async ({
   page,
@@ -49,6 +53,7 @@ test("Flow 2: alignment (decimal, rename, drop, city map -> 0 to decide)", async
   ).toBeVisible();
 
   // 2. Verify initial alignment issues
+  await waitForAlignReady(page);
   await expect(page.getByText("to decide")).toBeVisible();
   await expect(
     page.getByText("Test stores numbers as text with a comma decimal."),
@@ -75,18 +80,21 @@ test("Flow 2: alignment (decimal, rename, drop, city map -> 0 to decide)", async
   // 3. Apply fix 1: Decimal fix
   await rereadBtn.click();
   await expect(page.getByText('churn_test.csv · decimal ","')).toBeVisible();
+  await waitForAlignReady(page);
 
   // 4. Apply fix 2: Rename nb_support_calls → support_calls
   await renameBtn.click();
   await expect(
     page.getByText("rename · nb_support_calls → support_calls · test"),
   ).toBeVisible();
+  await waitForAlignReady(page);
 
   // 5. Apply fix 3: Drop extra column promo_code from test
   await dropPromoTestBtn.click();
   await expect(
     page.getByText("drop_columns · promo_code · test"),
   ).toBeVisible();
+  await waitForAlignReady(page);
 
   // 6. Resolve city spelling near-matches (Lyon␠ / lille). Leftover rare
   // categories (Nice / nice) stay visible as value_mismatch but are not
@@ -96,7 +104,8 @@ test("Flow 2: alignment (decimal, rename, drop, city map -> 0 to decide)", async
   await cityRow.getByRole("button", { name: "Map on test" }).click();
   await expect(page.getByText(/standardize_text · city · map/)).toBeVisible();
 
-  // 7. Verify resolved state: "0 to decide"
+  // 7. Verify resolved state: "0 to decide" (on the report for every fix)
+  await waitForAlignReady(page);
   await expect(
     page.getByText("Train and test have the same columns and types."),
   ).toBeVisible();

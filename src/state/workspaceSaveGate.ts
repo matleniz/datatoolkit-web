@@ -3,17 +3,21 @@ import type { Workspace } from "../api/types";
 import { dropLegacyCharts } from "./chartStorage";
 
 /**
- * Coordinates AppStore autosave vs delete/rename (MAT-149 / MAT-171 / MAT-217).
+ * Coordinates AppStore autosave vs delete/rename (MAT-149 / MAT-171 / MAT-217,
+ * datatoolkit-issues#13).
  *
- * A delete must always win over a debounced or in-flight PUT: bump the epoch,
- * tombstone deleted names, abort in-flight requests, and undo a PUT that still
- * landed after the tombstone was set.
+ * A delete must always win over a debounced or in-flight PUT: tombstone the
+ * deleted names so no queued save runs for them, wait for the PUT already on
+ * the wire to get its answer before deleting (an aborted fetch can still be
+ * applied by the engine after the DELETE), and undo a PUT that still landed
+ * for a tombstoned name.
  */
 
 let saveEpoch = 0;
 let lastSavedWorkspaceJson: string | null = null;
 const suppressedNames = new Set<string>();
-const inflightAborts = new Set<AbortController>();
+/** Every gate PUT runs on this chain, one at a time, in request order. */
+let saveChain: Promise<void> = Promise.resolve();
 
 export function getWorkspaceSaveEpoch(): number {
   return saveEpoch;
@@ -30,6 +34,16 @@ export function markWorkspaceSaved(ws: Workspace): void {
   dropLegacyCharts(ws.name);
 }
 
+/**
+ * Call with a workspace just read from the engine store, so AppStore does not
+ * PUT the same JSON straight back (#13: that echo PUT was still pending when
+ * the user deleted the workspace). Unlike `markWorkspaceSaved`, a tombstone
+ * set meanwhile (deleted while loading) stays.
+ */
+export function markWorkspaceLoaded(ws: Workspace): void {
+  lastSavedWorkspaceJson = serializeWorkspace(ws);
+}
+
 /** Clear a tombstone when the user intentionally selects/creates that name. */
 export function allowWorkspaceSave(name: string): void {
   if (name) suppressedNames.delete(name);
@@ -40,49 +54,43 @@ export function isWorkspaceSaveSuppressed(name: string): boolean {
 }
 
 /**
- * Invalidate any pending / in-flight AppStore workspace PUT.
- * Pass `names` when deleting (or renaming away) so those workspaces cannot be
- * resurrected by a stale save.
+ * Cancel pending AppStore workspace PUTs.
+ *
+ * With `names` (delete, rename away): tombstone those names, so no debounced
+ * or queued save can resurrect them; saves of other workspaces go on.
+ * Without: bump the epoch, dropping every pending save.
+ *
+ * Resolves once the save already on the wire (if any) has its answer: await
+ * it before DELETE so the engine cannot apply that PUT after the delete. A
+ * PUT that lands for a tombstoned name is then undone (`commitWorkspaceSave`).
  */
 export function abandonPendingWorkspaceSave(
   names?: readonly string[],
-): void {
-  saveEpoch += 1;
-  lastSavedWorkspaceJson = null;
+): Promise<void> {
   if (names) {
     for (const n of names) {
       if (n) suppressedNames.add(n);
     }
+  } else {
+    saveEpoch += 1;
+    lastSavedWorkspaceJson = null;
   }
-  for (const ac of inflightAborts) {
-    ac.abort();
-  }
-  inflightAborts.clear();
-}
-
-function beginWorkspaceSave(): AbortController {
-  const ac = new AbortController();
-  inflightAborts.add(ac);
-  return ac;
-}
-
-function finishWorkspaceSave(ac: AbortController): void {
-  inflightAborts.delete(ac);
+  return saveChain;
 }
 
 export type WorkspaceSaveOutcome = "saved" | "skipped" | "undone";
 
 /**
  * PUT a workspace only if the save generation is still current and the name
- * is not tombstoned. If a PUT still completes after abandon, delete again so
- * the delete remains authoritative (MAT-217).
+ * is not tombstoned. If a PUT still completes after the name was tombstoned,
+ * delete again so the delete remains authoritative (MAT-217).
  */
 export async function commitWorkspaceSave(opts: {
   ws: Workspace;
   serialized: string;
   epochAtStart: number;
   isCurrent: (epochAtStart: number) => boolean;
-  save: (ws: Workspace, signal: AbortSignal) => Promise<unknown>;
+  save: (ws: Workspace) => Promise<unknown>;
   remove: (name: string) => Promise<unknown>;
   /** Reject with the save error instead of reporting "skipped". */
   rethrow?: boolean;
@@ -97,49 +105,26 @@ export async function commitWorkspaceSave(opts: {
     return "skipped";
   }
 
-  const ac = beginWorkspaceSave();
   try {
-    if (
-      !isCurrent(epochAtStart) ||
-      isWorkspaceSaveSuppressed(ws.name) ||
-      ac.signal.aborted
-    ) {
-      return "skipped";
-    }
-
-    await save(ws, ac.signal);
-
-    if (!isCurrent(epochAtStart) || isWorkspaceSaveSuppressed(ws.name)) {
-      if (isWorkspaceSaveSuppressed(ws.name)) {
-        try {
-          await remove(ws.name);
-        } catch {
-          /* best-effort undo; list refresh will surface leftovers */
-        }
-        return "undone";
-      }
-      return "skipped";
-    }
-
-    lastSavedWorkspaceJson = serialized;
-    dropLegacyCharts(ws.name);
-    return "saved";
+    await save(ws);
   } catch (e) {
-    // Abort (or engine error) after the request may still have hit the
-    // server — if this name is tombstoned, delete again so delete wins.
-    if (isWorkspaceSaveSuppressed(ws.name)) {
-      try {
-        await remove(ws.name);
-      } catch {
-        /* already gone or engine error */
-      }
-      return "undone";
-    }
-    if (opts.rethrow) throw e;
+    if (opts.rethrow && !isWorkspaceSaveSuppressed(ws.name)) throw e;
     return "skipped";
-  } finally {
-    finishWorkspaceSave(ac);
   }
+
+  if (isWorkspaceSaveSuppressed(ws.name)) {
+    try {
+      await remove(ws.name);
+    } catch {
+      /* already gone (the delete ran after us); list refresh shows leftovers */
+    }
+    return "undone";
+  }
+  if (!isCurrent(epochAtStart)) return "skipped";
+
+  lastSavedWorkspaceJson = serialized;
+  dropLegacyCharts(ws.name);
+  return "saved";
 }
 
 /** @internal vitest helper — reset module state between cases. */
@@ -147,10 +132,6 @@ export function resetWorkspaceSaveGateForTests(): void {
   saveEpoch = 0;
   lastSavedWorkspaceJson = null;
   suppressedNames.clear();
-  for (const ac of inflightAborts) {
-    ac.abort();
-  }
-  inflightAborts.clear();
   saveChain = Promise.resolve();
   committedWorkspace = null;
 }
@@ -158,7 +139,6 @@ export function resetWorkspaceSaveGateForTests(): void {
 /** Workspace of the current React commit (set in a layout effect, before any
  *  passive effect of the same commit runs) — MAT-175. */
 let committedWorkspace: Workspace | null = null;
-let saveChain: Promise<void> = Promise.resolve();
 
 export function setCommittedWorkspace(ws: Workspace | null): void {
   committedWorkspace = ws;
@@ -183,7 +163,7 @@ export function saveWorkspaceNow(ws: Workspace): Promise<WorkspaceSaveOutcome> {
       serialized: serializeWorkspace(ws),
       epochAtStart,
       isCurrent: (e) => e === saveEpoch,
-      save: (body, signal) => apiClient.saveWorkspace(body, signal),
+      save: (body) => apiClient.saveWorkspace(body),
       remove: (name) => apiClient.deleteWorkspace(name),
       rethrow: true,
     }),
@@ -218,7 +198,7 @@ function queueWorkspaceSave(
       serialized,
       epochAtStart,
       isCurrent: (e) => e === saveEpoch,
-      save: (body, signal) => apiClient.saveWorkspace(body, signal),
+      save: (body) => apiClient.saveWorkspace(body),
       remove: (name) => apiClient.deleteWorkspace(name),
     });
   });

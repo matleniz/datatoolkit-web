@@ -1,14 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { serializeWorkspace } from "../src/api/client";
+import { apiClient, serializeWorkspace } from "../src/api/client";
 import type { Workspace } from "../src/api/types";
 import {
   abandonPendingWorkspaceSave,
   allowWorkspaceSave,
   commitWorkspaceSave,
+  ensureWorkspaceSaved,
   getLastSavedWorkspaceJson,
   getWorkspaceSaveEpoch,
   isWorkspaceSaveSuppressed,
+  markWorkspaceLoaded,
   markWorkspaceSaved,
   resetWorkspaceSaveGateForTests,
 } from "../src/state/workspaceSaveGate";
@@ -27,6 +29,7 @@ function ws(name: string, path = "/tmp/train.csv"): Workspace {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   resetWorkspaceSaveGateForTests();
 });
 
@@ -76,43 +79,64 @@ describe("workspaceSaveGate (MAT-217)", () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  it("aborts an in-flight save when abandon is called", async () => {
+  it("abandon(names) waits for the PUT on the wire, then undoes it (#13)", async () => {
     const body = ws("mat171_a");
-    const serialized = serializeWorkspace(body);
-    const epoch = getWorkspaceSaveEpoch();
-    let release!: () => void;
-    const saveStarted = new Promise<void>((resolve) => {
-      release = resolve;
+    const disk = new Map<string, Workspace>();
+    let started!: () => void;
+    const onWire = new Promise<void>((r) => {
+      started = r;
     });
-    const save = vi.fn(async (_w: Workspace, signal: AbortSignal) => {
-      release();
-      await new Promise<void>((_resolve, reject) => {
-        if (signal.aborted) {
-          reject(new DOMException("Aborted", "AbortError"));
-          return;
-        }
-        signal.addEventListener("abort", () => {
-          reject(new DOMException("Aborted", "AbortError"));
-        });
-      });
-      return body;
+    let releaseSave!: () => void;
+    const hold = new Promise<void>((r) => {
+      releaseSave = r;
     });
-    const remove = vi.fn(async () => undefined);
+    // A request already on the wire: the engine applies it whatever the
+    // client does, so the gate must not delete before its answer.
+    const slowSave = vi.fn(async (w: Workspace) => {
+      started();
+      await hold;
+      disk.set(w.name, structuredClone(w));
+      return w;
+    });
+    vi.spyOn(apiClient, "saveWorkspace").mockImplementation(slowSave);
+    vi.spyOn(apiClient, "deleteWorkspace").mockImplementation(async (name) => {
+      disk.delete(name);
+    });
 
-    const pending = commitWorkspaceSave({
-      ws: body,
-      serialized,
+    const queued = ensureWorkspaceSaved(body);
+    await onWire;
+    let settled = false;
+    const gate = abandonPendingWorkspaceSave(["mat171_a"]).then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    releaseSave();
+    await gate;
+    await queued;
+    // Once abandon resolves the PUT has landed and been undone, so the
+    // caller's DELETE can no longer be overtaken by it.
+    expect(disk.has("mat171_a")).toBe(false);
+    expect(apiClient.deleteWorkspace).toHaveBeenCalledWith("mat171_a");
+  });
+
+  it("abandon(names) leaves other workspaces' pending saves alone", async () => {
+    const epoch = getWorkspaceSaveEpoch();
+    abandonPendingWorkspaceSave(["mat171_a"]);
+    expect(getWorkspaceSaveEpoch()).toBe(epoch);
+
+    const other = ws("mat171_b");
+    const save = vi.fn(async () => other);
+    const outcome = await commitWorkspaceSave({
+      ws: other,
+      serialized: serializeWorkspace(other),
       epochAtStart: epoch,
       isCurrent: (e) => e === getWorkspaceSaveEpoch(),
       save,
-      remove,
+      remove: async () => undefined,
     });
-
-    await saveStarted;
-    abandonPendingWorkspaceSave(["mat171_a"]);
-    // Tombstoned + aborted → best-effort undo delete (idempotent if never PUT).
-    await expect(pending).resolves.toBe("undone");
-    expect(remove).toHaveBeenCalledWith("mat171_a");
+    expect(outcome).toBe("saved");
   });
 
   it("undoes a PUT that lands after the name was tombstoned (delete wins)", async () => {
@@ -130,11 +154,9 @@ describe("workspaceSaveGate (MAT-217)", () => {
       releaseSave = r;
     });
 
-    // Models a request already on the wire: ignore AbortSignal and still write.
-    const slowSave = vi.fn(async (w: Workspace, signal: AbortSignal) => {
+    const slowSave = vi.fn(async (w: Workspace) => {
       afterStarted();
       await hold;
-      void signal;
       disk.set(w.name, structuredClone(w));
       return w;
     });
@@ -152,12 +174,32 @@ describe("workspaceSaveGate (MAT-217)", () => {
     });
 
     await started;
-    abandonPendingWorkspaceSave(["mat171_a"]);
+    void abandonPendingWorkspaceSave(["mat171_a"]);
     releaseSave();
 
     await expect(pending).resolves.toBe("undone");
     expect(disk.has("mat171_a")).toBe(false);
     expect(remove).toHaveBeenCalledWith("mat171_a");
+  });
+
+  it("markWorkspaceLoaded skips the echo PUT but keeps a tombstone", async () => {
+    const body = ws("mat171_a");
+    const save = vi.fn(async () => body);
+    markWorkspaceLoaded(body);
+    const echo = await commitWorkspaceSave({
+      ws: body,
+      serialized: serializeWorkspace(body),
+      epochAtStart: getWorkspaceSaveEpoch(),
+      isCurrent: (e) => e === getWorkspaceSaveEpoch(),
+      save,
+      remove: async () => undefined,
+    });
+    expect(echo).toBe("skipped");
+    expect(save).not.toHaveBeenCalled();
+
+    void abandonPendingWorkspaceSave(["mat171_a"]);
+    markWorkspaceLoaded(body);
+    expect(isWorkspaceSaveSuppressed("mat171_a")).toBe(true);
   });
 
   it("saves when current and not suppressed", async () => {
