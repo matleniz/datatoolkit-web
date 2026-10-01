@@ -16,6 +16,7 @@ import { toolParamsKey } from "../left/keyTunable";
 import { computeStat, fmtStat } from "../left/stats";
 import { stripNullParams } from "../schemaFields";
 import { toolDef } from "../toolrail/tools";
+import { useDebounced } from "../../hooks";
 import { useWorkbenchData } from "../WorkbenchData";
 import {
   SCOPEABLE_TOOLS,
@@ -190,14 +191,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
   const storageKey = toolParamsKey(id, paramColumn);
   const userParams = toolParams[storageKey] ?? {};
   const paramsJson = JSON.stringify(userParams);
-  const [debouncedParamsJson, setDebouncedParamsJson] = useState(paramsJson);
-
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      setDebouncedParamsJson(paramsJson);
-    }, PARAM_DEBOUNCE_MS);
-    return () => window.clearTimeout(t);
-  }, [paramsJson]);
+  const debouncedParamsJson = useDebounced(paramsJson, PARAM_DEBOUNCE_MS);
 
   const debouncedUserParams = useMemo(() => {
     try {
