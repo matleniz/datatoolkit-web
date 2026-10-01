@@ -153,7 +153,11 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
     timeout: 15_000,
   });
   const editor = page.getByLabel("Step editor");
-  await expect(editor.getByRole("button", { name: "median" })).toBeVisible();
+  await expect(
+    editor
+      .getByRole("group", { name: "Strategy" })
+      .getByRole("button", { name: "median" }),
+  ).toBeVisible();
   await expect(
     page.getByText("Learned on train", { exact: true }),
   ).toBeVisible();
