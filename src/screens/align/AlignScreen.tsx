@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "../../api/client";
 import type {
   AlignReportRow,
@@ -69,12 +69,21 @@ export function AlignScreen() {
     };
   }, [workspace]);
 
-  // Load alignment report
+  /** JSON of the alignment workspace the shown report was computed for. */
+  const alignKey = useMemo(() => JSON.stringify(alignWorkspace), [alignWorkspace]);
+  const [reportKey, setReportKey] = useState<string | null>(null);
+  const fetchGen = useRef(0);
+
+  // Load alignment report. Fixes clicked in a row each start a fetch: only the
+  // latest one may set state, or a slower older report would win (#13).
   const fetchAlignReport = useCallback(async () => {
+    const gen = ++fetchGen.current;
+    const latest = () => gen === fetchGen.current;
     setLoading(true);
     setAlignReportError(null);
     try {
       const rep = await apiClient.alignReport(alignWorkspace);
+      if (!latest()) return;
       const rows = rep.columns || [];
       setAlignRows(rows);
 
@@ -101,14 +110,25 @@ export function AlignScreen() {
           }
         }
       }
+      if (!latest()) return;
       setCastErrors(errors);
     } catch (err: unknown) {
+      if (!latest()) return;
       const msg = (err as EngineError).message || String(err);
       setAlignReportError(msg);
     } finally {
-      setLoading(false);
+      if (latest()) {
+        setLoading(false);
+        setReportKey(alignKey);
+      }
     }
-  }, [alignWorkspace, dispatch]);
+  }, [alignWorkspace, alignKey, dispatch]);
+
+  /** "ready" only once the report matches the current fixes (e2e signal). */
+  let alignState = "loading";
+  if (!loading && reportKey === alignKey) {
+    alignState = alignReportError ? "error" : "ready";
+  }
 
   useEffect(() => {
     fetchAlignReport();
@@ -185,7 +205,12 @@ export function AlignScreen() {
   }, [workspace]);
 
   return (
-    <div className="align-layout" aria-label="Train / test alignment">
+    <div
+      className="align-layout"
+      aria-label="Train / test alignment"
+      aria-busy={alignState === "loading"}
+      data-align-state={alignState}
+    >
       {/* Main Table Area */}
       <main className="align-main">
         <div className="align-header">

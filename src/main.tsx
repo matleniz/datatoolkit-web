@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { loadInitialWorkspace } from "./bootstrap";
 import { AppProvider, useAppDispatch } from "./state/AppStore";
+import { markWorkspaceLoaded } from "./state/workspaceSaveGate";
 import "./theme/tokens.css";
 
 function Bootstrap({ children }: { children: ReactNode }) {
@@ -16,7 +17,10 @@ function Bootstrap({ children }: { children: ReactNode }) {
     loadInitialWorkspace()
       .then((ws) => {
         if (cancelled) return;
-        if (ws) dispatch({ type: "SET_WORKSPACE", workspace: ws });
+        if (ws) {
+          markWorkspaceLoaded(ws);
+          dispatch({ type: "SET_WORKSPACE", workspace: ws });
+        }
         setReady(true);
       })
       .catch((e) => {

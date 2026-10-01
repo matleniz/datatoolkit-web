@@ -41,11 +41,24 @@ export async function captureFlowScreenshot(
 
 /**
  * Wait until the workbench grid is ready for a screenshot:
- * ≥1 data row, grid not loading rows, raw pipeline shape not "—".
+ * rows loaded for the viewed identity (`data-identity` caught up with
+ * `data-identity-current`, so not the previous version's rows), ≥1 data row,
+ * grid not loading rows, raw pipeline shape not "—".
  * Does not wait for Suggestions analysis (that can run after grid ready).
  */
 export async function waitForGridReady(page: Page): Promise<void> {
-  await expect(page.getByLabel("Data grid")).toBeVisible({ timeout: 60_000 });
+  const grid = page.getByLabel("Data grid");
+  await expect(grid).toBeVisible({ timeout: 60_000 });
+  await expect
+    .poll(
+      async () => {
+        const shown = await grid.getAttribute("data-identity");
+        const current = await grid.getAttribute("data-identity-current");
+        return !!shown && shown === current;
+      },
+      { timeout: 60_000, message: "grid rows loaded for the viewed identity" },
+    )
+    .toBe(true);
   await expect(page.locator(".grid-row").first()).toBeVisible({
     timeout: 60_000,
   });
@@ -69,6 +82,69 @@ export async function waitForGridReady(page: Page): Promise<void> {
     /\d+\s*×\s*\d+/,
     { timeout: 60_000 },
   );
+}
+
+/**
+ * Wait until the Alignment screen shows the report for the current fixes
+ * (`data-align-state`, #13): every fix starts a new report, and a cold engine
+ * can take well over the 5 s default to answer.
+ */
+export async function waitForAlignReady(page: Page): Promise<void> {
+  await expect(page.locator(".align-layout")).toHaveAttribute(
+    "data-align-state",
+    "ready",
+    { timeout: 90_000 },
+  );
+}
+
+/**
+ * Wait until Suggestions settled for the identity being viewed (the cards'
+ * `data-identity` caught up with `data-identity-current`, #13). On a cold
+ * analysis cache a large frame takes longer than any fixed count poll.
+ */
+export async function waitForSuggestionsReady(page: Page): Promise<void> {
+  const strip = page.locator(".sug-identity");
+  await expect
+    .poll(
+      async () => {
+        const shown = await strip.getAttribute("data-identity");
+        const current = await strip.getAttribute("data-identity-current");
+        return !!shown && shown === current;
+      },
+      { timeout: 180_000, message: "Suggestions settled for the viewed identity" },
+    )
+    .toBe(true);
+}
+
+/** Suggestions settled for the viewed identity and flagged something. */
+export async function expectSuggestions(page: Page): Promise<void> {
+  await waitForSuggestionsReady(page);
+  expect(
+    await page.evaluate(() => window.__DTK_STATE__?.()?.sugCount ?? 0),
+    "suggestions count",
+  ).toBeGreaterThan(0);
+}
+
+/**
+ * Click the step editor's Apply, then wait for the step to be in the pipeline
+ * with its shape computed (#13): the editor closes on ADD_STEP, the grid
+ * reloads, and the node's shape is filled once the version replayed.
+ */
+export async function applyEditorStep(
+  page: Page,
+  nodeTitle: string,
+): Promise<Locator> {
+  const apply = page.getByRole("button", { name: "Apply step" }).first();
+  await expect(apply).toBeEnabled({ timeout: 60_000 });
+  await apply.click();
+  await expect(page.getByLabel("Step editor")).toBeHidden({ timeout: 15_000 });
+  await waitForGridReady(page);
+  const node = page.locator(".pipeline-node", { hasText: nodeTitle }).first();
+  await expect(node).toBeVisible();
+  await expect(node.locator(".pipeline-shape")).toHaveText(/\d+\s*×\s*\d+/, {
+    timeout: 60_000,
+  });
+  return node;
 }
 
 export function churnWorkspace(): Workspace {

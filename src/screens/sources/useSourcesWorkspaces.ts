@@ -6,7 +6,10 @@ import {
   markWorkspaceSaved,
   abandonPendingWorkspaceSave,
 } from "../../state/AppStore";
-import { allowWorkspaceSave } from "../../state/workspaceSaveGate";
+import {
+  allowWorkspaceSave,
+  markWorkspaceLoaded,
+} from "../../state/workspaceSaveGate";
 import {
   emptyWorkspaceSources,
   engineMessage,
@@ -148,6 +151,8 @@ export function useSourcesWorkspaces(core: SourcesCore): SourcesWorkspaceActions
     try {
       const ws = await fetchStored(name, gen);
       if (ws === undefined || gen !== selectGenRef.current) return;
+      // Already in the store: no echo PUT that a delete would have to race.
+      if (ws) markWorkspaceLoaded(ws);
       dispatch({ type: "SET_WORKSPACE", workspace: ws ?? emptyWorkspace(name) });
       rememberWorkspaceName(name);
       await loadWorkspaceSources(name, ws, cacheAfterSave, gen);
@@ -185,7 +190,7 @@ export function useSourcesWorkspaces(core: SourcesCore): SourcesWorkspaceActions
     // Invalidate any in-flight select of the old name (e.g. auto-select after
     // duplicate still loading when the user renames immediately).
     selectGenRef.current += 1;
-    abandonPendingWorkspaceSave([oldName]);
+    void abandonPendingWorkspaceSave([oldName]);
     const cached = filesByWorkspace[oldName] ??
       (oldName === activeWsName ? src : null);
     dispatch({ type: "CLEAR_WORKSPACE_FILES", name: oldName });
@@ -211,7 +216,7 @@ export function useSourcesWorkspaces(core: SourcesCore): SourcesWorkspaceActions
   };
 
   const activeRemoved = (deletedNames: string[], fallback: string | null) => {
-    abandonPendingWorkspaceSave(deletedNames);
+    void abandonPendingWorkspaceSave(deletedNames);
     for (const name of deletedNames) {
       dispatch({ type: "CLEAR_WORKSPACE_FILES", name });
       forgetWorkspaceName(name);
@@ -238,7 +243,7 @@ export function useSourcesWorkspaces(core: SourcesCore): SourcesWorkspaceActions
         await select(name);
       }
       const ws = await apiClient.getWorkspace(name);
-      abandonPendingWorkspaceSave();
+      void abandonPendingWorkspaceSave();
       dispatch({ type: "SET_WORKSPACE", workspace: ws });
       markWorkspaceSaved(ws);
       rememberWorkspaceName(name);
