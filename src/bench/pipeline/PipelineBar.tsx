@@ -1,3 +1,4 @@
+import type { Role, Step } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { openStepPicker } from "../toolrail/tools";
 import {
@@ -9,7 +10,7 @@ import {
   stepSubLabel,
   stepSummary,
 } from "../stages";
-import { useWorkbenchData } from "../WorkbenchData";
+import { useWorkbenchData, type PipelineShape } from "../WorkbenchData";
 import { rawNodeSubLabel } from "./rawNodeSubLabel";
 
 function Arrow({ dashed = false, accent = false }: { dashed?: boolean; accent?: boolean }) {
@@ -34,6 +35,103 @@ function Arrow({ dashed = false, accent = false }: { dashed?: boolean; accent?: 
   );
 }
 
+interface PipelineNodeData {
+  key: string;
+  ver: string;
+  title: string;
+  sub: string;
+  shape: string;
+  delta: string;
+  deltaClass: string;
+  badge: string;
+  tip: string;
+  stage: string;
+  on: boolean;
+  canDelete: boolean;
+  error?: boolean;
+  stepIndex: number | null;
+  version: number;
+}
+
+const signed = (n: number, unit: string) =>
+  `${n > 0 ? "+" : "−"}${Math.abs(n)}${unit}`;
+
+function stepDelta(
+  step: Step,
+  role: Role,
+  prev: PipelineShape,
+  shape: PipelineShape,
+): { delta: string; deltaClass: string } {
+  const dr = shape.rows - prev.rows;
+  const dc = shape.cols - prev.cols;
+  const parts: string[] = [];
+  if (dr) parts.push(signed(dr, "r"));
+  if (dc) parts.push(signed(dc, "c"));
+  if (!parts.length) {
+    parts.push(step.target !== "both" && step.target !== role ? "skipped" : "values");
+  }
+  let deltaClass = "delta-muted";
+  if (dr < 0 || dc < 0) deltaClass = "delta-neg";
+  else if (dc > 0) deltaClass = "delta-pos";
+  return { delta: parts.join(" "), deltaClass };
+}
+
+function stepShapeLabel(
+  err: string | undefined,
+  shape: PipelineShape | undefined,
+  known: boolean,
+): string {
+  if (err) return "—";
+  if (shape) return `${shape.rows} × ${shape.cols}`;
+  return known ? "…" : "—";
+}
+
+function stepTip(step: Step, err: string | undefined): string {
+  if (err) return err;
+  return `${step.op} ${JSON.stringify(step.params)} · applies to ${step.target}${step.align ? " · alignment" : ""}`;
+}
+
+function stepNode(
+  step: Step,
+  i: number,
+  ctx: {
+    err: string | undefined;
+    shapes: PipelineShape[];
+    role: Role;
+    vi: number;
+    canDelete: boolean;
+  },
+): PipelineNodeData {
+  const { err, shapes, role, vi, canDelete } = ctx;
+  const shape = shapes[i + 1];
+  const prev = shapes[i];
+  let d = { delta: "", deltaClass: "delta-muted" };
+  if (err) d = { delta: "error", deltaClass: "delta-neg" };
+  else if (prev && shape) d = stepDelta(step, role, prev, shape);
+  const fitted = FITTING_OPS.has(step.op) && step.target !== "test";
+  return {
+    key: `v${i + 1}`,
+    ver: `v${i + 1}`,
+    title: opTitle(step.op),
+    sub: err ? `fails: ${err}` : stepSubLabel(step.op, step.params),
+    shape: stepShapeLabel(err, shape, shapes.length > 0),
+    ...d,
+    badge: `${step.target}${fitted ? " · fit" : ""}${step.align ? " · align" : ""}`,
+    tip: stepTip(step, err),
+    stage: stepStage(step.op, step.align),
+    on: vi === i + 1,
+    canDelete,
+    error: !!err,
+    stepIndex: i,
+    version: i + 1,
+  };
+}
+
+function nodeClass(n: PipelineNodeData): string {
+  if (n.error) return "pipeline-node error";
+  return n.on ? "pipeline-node on" : "pipeline-node";
+}
+
 /** W2 — pipeline bar (96px). */
 export function PipelineBar() {
   const { workspace, role, viewVersion, editor } = useAppState();
@@ -51,110 +149,30 @@ export function PipelineBar() {
   const last = steps.length;
   const vi =
     viewVersion === null || viewVersion > last ? last : viewVersion;
-  const editing = !!editor;
+  const canDelete = isLatest && !editor;
 
-  const nodes: {
-    key: string;
-    ver: string;
-    title: string;
-    sub: string;
-    shape: string;
-    delta: string;
-    deltaClass: string;
-    badge: string;
-    tip: string;
-    stage: string;
-    on: boolean;
-    canDelete: boolean;
-    error?: boolean;
-    stepIndex: number | null;
-    version: number;
-  }[] = [];
-
-  // raw
   const rawShape = shapes[0];
-  nodes.push({
-    key: "raw",
-    ver: "raw",
-    title: "sources",
-    sub: workspace ? rawNodeSubLabel(workspace, role) : "—",
-    shape: rawShape
-      ? `${rawShape.rows} × ${rawShape.cols}`
-      : "—",
-    delta: "",
-    deltaClass: "",
-    badge: "",
-    tip: "Sources, as set on the Sources screen",
-    stage: "import",
-    on: vi === 0,
-    canDelete: false,
-    stepIndex: null,
-    version: 0,
-  });
-
+  const nodes: PipelineNodeData[] = [
+    {
+      key: "raw",
+      ver: "raw",
+      title: "sources",
+      sub: workspace ? rawNodeSubLabel(workspace, role) : "—",
+      shape: rawShape ? `${rawShape.rows} × ${rawShape.cols}` : "—",
+      delta: "",
+      deltaClass: "",
+      badge: "",
+      tip: "Sources, as set on the Sources screen",
+      stage: "import",
+      on: vi === 0,
+      canDelete: false,
+      stepIndex: null,
+      version: 0,
+    },
+  ];
   for (let i = 0; i < steps.length; i++) {
-    const step = steps[i]!;
     const err = stepErrors.get(i);
-    const shape = shapes[i + 1];
-    const prev = shapes[i];
-    let delta = "";
-    let deltaClass = "delta-muted";
-    if (prev && shape && !err) {
-      const dr = shape.rows - prev.rows;
-      const dc = shape.cols - prev.cols;
-      const parts: string[] = [];
-      if (dr) parts.push(`${dr > 0 ? "+" : "−"}${Math.abs(dr)}r`);
-      if (dc) parts.push(`${dc > 0 ? "+" : "−"}${Math.abs(dc)}c`);
-      if (!parts.length) {
-        parts.push(
-          step.target !== "both" && step.target !== role
-            ? "skipped"
-            : "values",
-        );
-      }
-      delta = parts.join(" ");
-      deltaClass =
-        dr < 0 || dc < 0
-          ? "delta-neg"
-          : dc > 0
-            ? "delta-pos"
-            : "delta-muted";
-    }
-    if (err) {
-      delta = "error";
-      deltaClass = "delta-neg";
-    }
-    const fitted =
-      FITTING_OPS.has(step.op) && step.target !== "test";
-    nodes.push({
-      key: `v${i + 1}`,
-      ver: `v${i + 1}`,
-      title: opTitle(step.op),
-      sub: err ? `fails: ${err}` : stepSubLabel(step.op, step.params),
-      shape: err
-        ? "—"
-        : shape
-          ? `${shape.rows} × ${shape.cols}`
-          : shapes.length > 0
-            ? "…"
-            : "—",
-      delta,
-      deltaClass,
-      badge: `${step.target}${fitted ? " · fit" : ""}${
-        step.align ? " · align" : ""
-      }`,
-      tip: err
-        ? err
-        : `${step.op} ${JSON.stringify(step.params)} · applies to ${step.target}${
-            step.align ? " · alignment" : ""
-          }`,
-      stage: stepStage(step.op, step.align),
-      on: vi === i + 1,
-      canDelete: isLatest && !editing,
-      error: !!err,
-      stepIndex: i,
-      version: i + 1,
-    });
+    nodes.push(stepNode(steps[i]!, i, { err, shapes, role, vi, canDelete }));
     if (err) break;
   }
 
@@ -167,13 +185,7 @@ export function PipelineBar() {
             <div className="pipeline-node-rel">
               <button
                 type="button"
-                className={
-                  n.error
-                    ? "pipeline-node error"
-                    : n.on
-                      ? "pipeline-node on"
-                      : "pipeline-node"
-                }
+                className={nodeClass(n)}
                 style={{
                   opacity: n.version > vi ? 0.5 : 1,
                 }}

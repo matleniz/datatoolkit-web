@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "../../api/client";
 import type { ExportManifest, ExportOutputEntry } from "../../api/types";
-import { EngineError } from "../../api/types";
+import { errorText } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import {
   defaultExportOutDir,
@@ -162,7 +162,7 @@ export function ExportPanel() {
                 setExportedOutDir(requested);
                 setManifest(m);
               } catch (e) {
-                setError(e instanceof EngineError ? e.message : String(e));
+                setError(errorText(e));
                 setManifest(null);
                 setExportedOutDir(null);
               } finally {

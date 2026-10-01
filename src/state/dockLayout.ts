@@ -120,6 +120,80 @@ function clampRect(rect: DockRect, spec: DockGridSpec): DockRect {
   return { x, y, w, h };
 }
 
+/** Step 2 of the sizing strategy: narrow the window until a visible slot fits. */
+function placeReduced(
+  out: DockLayout,
+  id: ToolId,
+  size: { w: number; h: number },
+  pos: DockPos,
+  spec: DockGridSpec,
+): boolean {
+  const minW = pos === "bottom" ? Math.max(spec.minW, 4) : spec.minW;
+  for (let w = size.w - 1; w >= minW; w--) {
+    const spot = findVisibleSpot(out, spec.cols, spec.rows, w, size.h);
+    if (spot) {
+      out[id] = { x: spot.x, y: spot.y, w, h: size.h };
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Split `total` units into `n` near-equal parts (the first `total % n` get one extra). */
+const evenSplit = (total: number, n: number): number[] =>
+  Array.from({ length: n }, (_, i) => Math.floor(total / n) + (i < total % n ? 1 : 0));
+
+/** Step 3: lay all open windows out evenly along the dock's long axis. */
+function redistribute(
+  out: DockLayout,
+  pos: DockPos,
+  spec: DockGridSpec,
+  tools: readonly ToolId[],
+): boolean {
+  if (tools.length === 0 || (pos !== "bottom" && pos !== "right")) return false;
+  const horizontal = pos === "bottom";
+  const total = horizontal ? spec.cols : spec.rows;
+  if (Math.floor(total / tools.length) < (horizontal ? spec.minW : spec.minH)) {
+    return false;
+  }
+  let cur = 0;
+  evenSplit(total, tools.length).forEach((len, i) => {
+    out[tools[i]!] = horizontal
+      ? { x: cur, y: 0, w: len, h: spec.rows }
+      : { x: 0, y: cur, w: spec.cols, h: len };
+    cur += len;
+  });
+  return true;
+}
+
+function placeNewWindow(
+  out: DockLayout,
+  id: ToolId,
+  pos: DockPos,
+  spec: DockGridSpec,
+  tools: readonly ToolId[],
+): void {
+  const size = defaultWindowSize(id, pos);
+
+  // 1. Try tool's default size in visible dock area.
+  const spot = findVisibleSpot(out, spec.cols, spec.rows, size.w, size.h);
+  if (spot) {
+    out[id] = { x: spot.x, y: spot.y, w: size.w, h: size.h };
+    return;
+  }
+  // 2. Reduce width to the available visible free space.
+  if (placeReduced(out, id, size, pos, spec)) return;
+  // 3. Reduce/rearrange open windows so everything fits visible without scroll.
+  if (redistribute(out, pos, spec, tools)) return;
+  // Fallback: place top-right in minimum width.
+  out[id] = {
+    x: Math.max(0, spec.cols - spec.minW),
+    y: 0,
+    w: spec.minW,
+    h: Math.min(size.h, spec.rows),
+  };
+}
+
 /**
  * Keep exactly the open `tools` in every position's layout: drop closed
  * windows, give new ones their default size or fit them in the visible dock
@@ -146,88 +220,7 @@ export function syncDockLayouts(
       if (r) out[id] = clampRect(r, spec);
     }
     for (const id of tools) {
-      if (out[id]) continue;
-      const size = defaultWindowSize(id, pos);
-
-      // 1. Try tool's default size in visible dock area.
-      let placed = false;
-      const visibleSpot = findVisibleSpot(
-        out,
-        spec.cols,
-        spec.rows,
-        size.w,
-        size.h,
-      );
-      if (visibleSpot) {
-        out[id] = { x: visibleSpot.x, y: visibleSpot.y, w: size.w, h: size.h };
-        placed = true;
-      }
-
-      // 2. If no visible spot, reduce width to available visible free space
-      //    (minimum 4 columns for bottom dock, minW for narrow panes).
-      if (!placed) {
-        const minW = pos === "bottom" ? Math.max(spec.minW, 4) : spec.minW;
-        for (let candidateW = size.w - 1; candidateW >= minW; candidateW--) {
-          const reducedSpot = findVisibleSpot(
-            out,
-            spec.cols,
-            spec.rows,
-            candidateW,
-            size.h,
-          );
-          if (reducedSpot) {
-            out[id] = {
-              x: reducedSpot.x,
-              y: reducedSpot.y,
-              w: candidateW,
-              h: size.h,
-            };
-            placed = true;
-            break;
-          }
-        }
-      }
-
-      // 3. Otherwise reduce/rearrange open windows so everything fits visible without scroll.
-      if (!placed) {
-        if (pos === "bottom" && tools.length > 0) {
-          const baseW = Math.floor(spec.cols / tools.length);
-          if (baseW >= spec.minW) {
-            const rem = spec.cols % tools.length;
-            let curX = 0;
-            tools.forEach((tid, i) => {
-              const itemW = baseW + (i < rem ? 1 : 0);
-              out[tid] = { x: curX, y: 0, w: itemW, h: spec.rows };
-              curX += itemW;
-            });
-            placed = true;
-          }
-        } else if (pos === "right" && tools.length > 0) {
-          const baseH = Math.floor(spec.rows / tools.length);
-          if (baseH >= spec.minH) {
-            const rem = spec.rows % tools.length;
-            let curY = 0;
-            tools.forEach((tid, i) => {
-              const itemH = baseH + (i < rem ? 1 : 0);
-              out[tid] = { x: 0, y: curY, w: spec.cols, h: itemH };
-              curY += itemH;
-            });
-            placed = true;
-          }
-        }
-
-        // Fallback: place top-right in minimum width
-        if (!placed) {
-          const fallbackW = spec.minW;
-          const fallbackH = Math.min(size.h, spec.rows);
-          out[id] = {
-            x: Math.max(0, spec.cols - fallbackW),
-            y: 0,
-            w: fallbackW,
-            h: fallbackH,
-          };
-        }
-      }
+      if (!out[id]) placeNewWindow(out, id, pos, spec, tools);
     }
     next[pos] = out;
   }

@@ -127,3 +127,17 @@ a {
 a:hover {
   color: var(--dtk-accent-deep);
 }
+
+/* Header row shared by the Sources files table and the Align report. */
+.files-table-header,
+.align-table-header {
+  display: flex;
+  padding: 10px 14px;
+  background: var(--dtk-bg-subtle);
+  border-bottom: 1px solid var(--dtk-border);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dtk-muted);
+}

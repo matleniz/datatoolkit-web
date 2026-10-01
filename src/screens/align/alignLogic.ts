@@ -22,54 +22,50 @@ export interface RowFixes {
   actions: AlignFixAction[];
 }
 
+/** "a → b" for the first entry of a mapping-like param, or null if absent / empty. */
+function firstPairSummary(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const first = Object.entries(value as Record<string, string>)[0];
+  return first ? `${first[0]} → ${first[1]}` : null;
+}
+
+function standardizeTextSummary(p: Record<string, unknown>): string {
+  const cols = Array.isArray(p.columns) ? (p.columns as string[]).join(", ") : "";
+  const mapping =
+    p.mapping && typeof p.mapping === "object"
+      ? (p.mapping as Record<string, string>)
+      : null;
+  if (mapping && Object.keys(mapping).length > 0) {
+    const pairs = Object.entries(mapping)
+      .slice(0, 3)
+      .map(([from, to]) => `${from} → ${to}`)
+      .join(", ");
+    const extra = Object.keys(mapping).length > 3 ? "…" : "";
+    return cols ? `${cols} · map ${pairs}${extra}` : `map ${pairs}${extra}`;
+  }
+  const bits = [p.strip ? "strip" : "", p.lower ? "lower" : ""].filter(Boolean);
+  return `${cols} · ${bits.join(" + ") || "no change"}`;
+}
+
 /**
  * Format step subtitle / parameter summary in the style of the prototype.
  */
 export function formatStepSummary(step: Step): string {
-  const op = step.op;
   const p = step.params as Record<string, unknown>;
-
-  if (op === "rename" && p.mapping && typeof p.mapping === "object") {
-    const entries = Object.entries(p.mapping as Record<string, string>);
-    const first = entries[0];
-    if (first) {
-      return `${first[0]} → ${first[1]}`;
-    }
+  switch (step.op) {
+    case "rename":
+      return firstPairSummary(p.mapping) ?? JSON.stringify(p);
+    case "cast":
+      return firstPairSummary(p.dtypes) ?? JSON.stringify(p);
+    case "drop_columns":
+      return Array.isArray(p.columns)
+        ? (p.columns as string[]).join(", ")
+        : JSON.stringify(p);
+    case "standardize_text":
+      return standardizeTextSummary(p);
+    default:
+      return JSON.stringify(p);
   }
-
-  if (op === "drop_columns" && Array.isArray(p.columns)) {
-    return (p.columns as string[]).join(", ");
-  }
-
-  if (op === "cast" && p.dtypes && typeof p.dtypes === "object") {
-    const entries = Object.entries(p.dtypes as Record<string, string>);
-    const first = entries[0];
-    if (first) {
-      return `${first[0]} → ${first[1]}`;
-    }
-  }
-
-  if (op === "standardize_text") {
-    const cols = Array.isArray(p.columns) ? (p.columns as string[]).join(", ") : "";
-    const mapping =
-      p.mapping && typeof p.mapping === "object"
-        ? (p.mapping as Record<string, string>)
-        : null;
-    if (mapping && Object.keys(mapping).length > 0) {
-      const pairs = Object.entries(mapping)
-        .slice(0, 3)
-        .map(([from, to]) => `${from} → ${to}`)
-        .join(", ");
-      const extra = Object.keys(mapping).length > 3 ? "…" : "";
-      return cols ? `${cols} · map ${pairs}${extra}` : `map ${pairs}${extra}`;
-    }
-    const bits = [p.strip ? "strip" : "", p.lower ? "lower" : ""].filter(
-      Boolean,
-    );
-    return `${cols} · ${bits.join(" + ") || "no change"}`;
-  }
-
-  return JSON.stringify(p);
 }
 
 /**
@@ -173,6 +169,134 @@ export function isSimilarCandidate(
   return stringSimilarityRatio(t, c) >= 0.6;
 }
 
+const alignStep = (
+  op: string,
+  target: Step["target"],
+  params: Record<string, unknown>,
+): Step => ({ op, target, params, align: true });
+
+const castTestAction = (
+  id: string,
+  label: string,
+  colName: string,
+  dtype: string,
+  extra: Partial<AlignFixAction> = {},
+): AlignFixAction => ({
+  id,
+  label,
+  type: "add_step",
+  ...extra,
+  step: alignStep("cast", "test", { dtypes: { [colName]: dtype } }),
+});
+
+const dropAction = (
+  target: "train" | "test",
+  colName: string,
+): AlignFixAction => ({
+  id: `drop_${target}_${colName}`,
+  label: `Drop from ${target}`,
+  type: "add_step",
+  step: alignStep("drop_columns", target, { columns: [colName] }),
+});
+
+function typeMismatchFixes(row: AlignReportRow, castError?: string | null): RowFixes {
+  const colName = row.train?.name ?? row.test?.name ?? "";
+  if (row.numbers_as_text) {
+    return {
+      note: "Test stores numbers as text with a comma decimal.",
+      actions: [
+        {
+          id: "re_read_decimal",
+          label: 'Re-read test with decimal ","',
+          type: "set_decimal",
+          decimal: ",",
+          primary: true,
+          tip: 'Source option: csv decimal=","',
+        },
+        castTestAction("cast_test_float", "Cast test to float", colName, "float", {
+          disabled: Boolean(castError),
+          tip: castError || "",
+        }),
+      ],
+    };
+  }
+  const trainKind = row.train?.kind ?? "unknown";
+  const testKind = row.test?.kind ?? "unknown";
+  const targetType = trainKind === "text" || trainKind === "cat" ? "str" : "float";
+  return {
+    note: `Types differ: ${trainKind} vs ${testKind}.`,
+    actions: [
+      castTestAction(
+        "cast_test_train_type",
+        "Cast test to train type",
+        colName,
+        targetType,
+      ),
+    ],
+  };
+}
+
+function missingInTestFixes(row: AlignReportRow, testOnlyCols: string[]): RowFixes {
+  const colName = row.train?.name ?? "";
+  const note =
+    testOnlyCols.length > 0
+      ? "Match it with a test-only column (renames it in test), or drop it from train."
+      : "No test column left to match: drop it from train.";
+  // Similar candidate names first
+  const similar = new Map(
+    testOnlyCols.map((t) => [t, isSimilarCandidate(colName, t)] as const),
+  );
+  const sorted = [...testOnlyCols].sort((a, b) => {
+    if (similar.get(a) !== similar.get(b)) return similar.get(a) ? -1 : 1;
+    return a.localeCompare(b);
+  });
+  const actions: AlignFixAction[] = sorted.map((t) => ({
+    id: `rename_${t}_to_${colName}`,
+    label: `↔ ${t}${similar.get(t) ? " (similar name)" : ""}`,
+    type: "add_step",
+    tip: `rename ${t} → ${colName} in test`,
+    step: alignStep("rename", "test", { mapping: { [t]: colName } }),
+  }));
+  actions.push(dropAction("train", colName));
+  return { note, actions };
+}
+
+function valueMismatchFixes(row: AlignReportRow): RowFixes {
+  const colName = row.train?.name ?? row.test?.name ?? "";
+  const actions: AlignFixAction[] = [];
+  const nearMatches = row.near_matches ?? [];
+  if (nearMatches.length > 0) {
+    const mapping: Record<string, string> = {};
+    for (const pair of nearMatches) mapping[pair.test] = pair.train;
+    actions.push({
+      id: `map_test_${colName}`,
+      label: "Map on test",
+      type: "add_step",
+      primary: true,
+      tip: "standardize_text mapping: test value → train value",
+      step: alignStep("standardize_text", "test", {
+        columns: [colName],
+        strip: false,
+        lower: false,
+        mapping,
+      }),
+    });
+  }
+  actions.push({
+    id: `standardize_text_test_${colName}`,
+    label: "Standardize text on test",
+    type: "add_step",
+    tip: "strip whitespace on test",
+    step: alignStep("standardize_text", "test", {
+      columns: [colName],
+      strip: true,
+      lower: false,
+    }),
+  });
+  // Details (only_in_test, pct, hint) are rendered by AlignScreen; keep note empty.
+  return { note: "", actions };
+}
+
 /**
  * Compute the note and fix actions for an alignment report row.
  */
@@ -181,168 +305,26 @@ export function computeRowFixes(
   testOnlyCols: string[],
   castError?: string | null,
 ): RowFixes {
-  const actions: AlignFixAction[] = [];
-  let note = "";
-
-  if (row.status === "type_mismatch") {
-    if (row.numbers_as_text) {
-      note = "Test stores numbers as text with a comma decimal.";
-      actions.push({
-        id: "re_read_decimal",
-        label: 'Re-read test with decimal ","',
-        type: "set_decimal",
-        decimal: ",",
-        primary: true,
-        tip: 'Source option: csv decimal=","',
-      });
-
-      const colName = row.train?.name ?? row.test?.name ?? "";
-      actions.push({
-        id: "cast_test_float",
-        label: "Cast test to float",
-        type: "add_step",
-        disabled: Boolean(castError),
-        tip: castError || "",
-        step: {
-          op: "cast",
-          target: "test",
-          params: { dtypes: { [colName]: "float" } },
-          align: true,
-        },
-      });
-    } else {
-      const trainKind = row.train?.kind ?? "unknown";
-      const testKind = row.test?.kind ?? "unknown";
-      note = `Types differ: ${trainKind} vs ${testKind}.`;
-
-      const colName = row.train?.name ?? row.test?.name ?? "";
-      const targetType =
-        trainKind === "text" || trainKind === "cat" ? "str" : "float";
-      actions.push({
-        id: "cast_test_train_type",
-        label: "Cast test to train type",
-        type: "add_step",
-        step: {
-          op: "cast",
-          target: "test",
-          params: { dtypes: { [colName]: targetType } },
-          align: true,
-        },
-      });
-    }
-  } else if (row.status === "missing_in_test") {
-    const colName = row.train?.name ?? "";
-    if (testOnlyCols.length > 0) {
-      note =
-        "Match it with a test-only column (renames it in test), or drop it from train.";
-    } else {
-      note = "No test column left to match: drop it from train.";
-    }
-    // Sort similar candidate names first
-    const sortedTestCols = [...testOnlyCols].sort((a, b) => {
-      const aSim = isSimilarCandidate(colName, a);
-      const bSim = isSimilarCandidate(colName, b);
-      if (aSim && !bSim) return -1;
-      if (!aSim && bSim) return 1;
-      return a.localeCompare(b);
-    });
-
-    for (const t of sortedTestCols) {
-      const isSimilar = isSimilarCandidate(colName, t);
-      actions.push({
-        id: `rename_${t}_to_${colName}`,
-        label: `↔ ${t}${isSimilar ? " (similar name)" : ""}`,
-        type: "add_step",
-        tip: `rename ${t} → ${colName} in test`,
-        step: {
-          op: "rename",
-          target: "test",
-          params: { mapping: { [t]: colName } },
-          align: true,
-        },
-      });
-    }
-
-    actions.push({
-      id: `drop_train_${colName}`,
-      label: "Drop from train",
-      type: "add_step",
-      step: {
-        op: "drop_columns",
-        target: "train",
-        params: { columns: [colName] },
-        align: true,
-      },
-    });
-  } else if (row.status === "extra_in_test") {
-    const colName = row.test?.name ?? "";
-    note = "Only in test: a model fitted on train cannot use it.";
-    actions.push({
-      id: `drop_test_${colName}`,
-      label: "Drop from test",
-      type: "add_step",
-      step: {
-        op: "drop_columns",
-        target: "test",
-        params: { columns: [colName] },
-        align: true,
-      },
-    });
-  } else if (row.status === "value_mismatch") {
-    const colName = row.train?.name ?? row.test?.name ?? "";
-    // Details (only_in_test, pct, hint) are rendered by AlignScreen; keep note empty.
-    note = "";
-
-    const nearMatches = row.near_matches ?? [];
-    if (nearMatches.length > 0) {
-      const mapping: Record<string, string> = {};
-      for (const pair of nearMatches) {
-        mapping[pair.test] = pair.train;
-      }
-      actions.push({
-        id: `map_test_${colName}`,
-        label: "Map on test",
-        type: "add_step",
-        primary: true,
-        tip: "standardize_text mapping: test value → train value",
-        step: {
-          op: "standardize_text",
-          target: "test",
-          params: {
-            columns: [colName],
-            strip: false,
-            lower: false,
-            mapping,
-          },
-          align: true,
-        },
-      });
-    }
-
-    actions.push({
-      id: `standardize_text_test_${colName}`,
-      label: "Standardize text on test",
-      type: "add_step",
-      tip: "strip whitespace on test",
-      step: {
-        op: "standardize_text",
-        target: "test",
-        params: {
-          columns: [colName],
-          strip: true,
-          lower: false,
-        },
-        align: true,
-      },
-    });
-  } else if (row.status === "label") {
-    note = "Expected: test has no label.";
-  } else if (row.status !== "match") {
-    // Unknown / future statuses: never break the screen; show a generic note.
-    note = `Status “${row.status}”: no guided fix yet.`;
+  switch (row.status) {
+    case "type_mismatch":
+      return typeMismatchFixes(row, castError);
+    case "missing_in_test":
+      return missingInTestFixes(row, testOnlyCols);
+    case "extra_in_test":
+      return {
+        note: "Only in test: a model fitted on train cannot use it.",
+        actions: [dropAction("test", row.test?.name ?? "")],
+      };
+    case "value_mismatch":
+      return valueMismatchFixes(row);
+    case "label":
+      return { note: "Expected: test has no label.", actions: [] };
+    case "match":
+      return { note: "", actions: [] };
+    default:
+      // Unknown / future statuses: never break the screen; show a generic note.
+      return { note: `Status “${row.status}”: no guided fix yet.`, actions: [] };
   }
-
-  return { note, actions };
 }
 
 /**
