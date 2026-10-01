@@ -72,6 +72,78 @@ jobs:
         if: always()
         run: docker compose down -v
 
+  launcher:
+    # The one-command launchers (scripts/datatoolkit.{sh,ps1}) against the
+    # published `latest` images, with this branch's compose.yml.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DTK_NO_OPEN: "1"
+      DTK_COMPOSE_SRC: ${{ github.workspace }}/compose.yml
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck datatoolkit.sh
+        run: |
+          if command -v shellcheck >/dev/null; then shellcheck scripts/datatoolkit.sh; else echo "shellcheck not available"; fi
+      - name: Parse-check datatoolkit.ps1 (PowerShell 5.1 syntax)
+        shell: pwsh
+        run: |
+          $errs = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/scripts/datatoolkit.ps1", [ref]$null, [ref]$errs) | Out-Null
+          if ($errs) { $errs; exit 1 }
+          if (Get-Module -ListAvailable PSScriptAnalyzer) {
+            $settings = @{ Rules = @{ PSUseCompatibleSyntax = @{ Enable = $true; TargetVersions = @('5.1', '7.0') } } }
+            $r = Invoke-ScriptAnalyzer -Path scripts/datatoolkit.ps1 -IncludeRule PSUseCompatibleSyntax -Settings $settings
+            $r
+            if ($r) { exit 1 }
+          } else { 'PSScriptAnalyzer not available' }
+      - name: sh launcher - start
+        run: sh scripts/datatoolkit.sh
+      - name: sh launcher - start again through a pipe (idempotent)
+        run: sh -s < scripts/datatoolkit.sh
+      - name: Studio and /api/keys through nginx
+        run: |
+          curl -fsS http://127.0.0.1:8080/ | grep -q 'datatoolkit Studio'
+          curl -fsS http://127.0.0.1:8080/api/keys | grep -q dataset_overview
+          cat ~/datatoolkit/.env
+          test -d ~/datatoolkit/datatoolkit-data
+      - name: sh launcher - stop
+        run: |
+          sh scripts/datatoolkit.sh stop
+          if curl -fsS -o /dev/null http://127.0.0.1:8080/; then echo 'still answering after stop'; exit 1; fi
+          [ -z "$(docker compose -p datatoolkit ps -q)" ]
+      - name: sh launcher - uninstall keeps the data
+        run: |
+          sh scripts/datatoolkit.sh uninstall
+          test -d ~/datatoolkit/datatoolkit-data
+          test ! -e ~/datatoolkit/compose.yml
+          [ -z "$(docker compose -p datatoolkit ps -aq)" ]
+      - name: sh launcher - custom port, then uninstall --purge
+        env:
+          DTK_PORT: "8090"
+        run: |
+          sh scripts/datatoolkit.sh
+          curl -fsS http://127.0.0.1:8090/api/keys | grep -q dataset_overview
+          sh scripts/datatoolkit.sh uninstall --purge
+          test ! -e ~/datatoolkit
+      - name: ps1 launcher (pwsh) - start, stop, uninstall -Purge
+        shell: pwsh
+        run: |
+          ./scripts/datatoolkit.ps1
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          if (-not ((Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8080/api/keys).Content -match 'dataset_overview')) { exit 1 }
+          ./scripts/datatoolkit.ps1 stop
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          ./scripts/datatoolkit.ps1 uninstall -Purge
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          if (Test-Path ~/datatoolkit) { exit 1 }
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -p datatoolkit -f ~/datatoolkit/compose.yml logs || true
+      - name: Tear down
+        if: always()
+        run: docker compose -p datatoolkit -f compose.yml down -v || true
+
   image:
     needs: smoke
     if: github.event_name != 'pull_request'

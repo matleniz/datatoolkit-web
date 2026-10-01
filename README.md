@@ -7,6 +7,33 @@ never imports `dtk_engine`. Specs live in the docs hub (`FRONT-WEB.md`,
 Suggestions-only left panel and the grid dock, so `FRONT-WEB.md` and the code
 are the reference where they differ).
 
+## Share it / run it anywhere
+
+Needs only [Docker](https://docs.docker.com/get-started/get-docker/) (Docker
+Desktop on macOS / Windows, Docker Engine on Linux), running. One line starts
+the engine + Studio, waits until they answer and opens
+http://localhost:8080:
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/datatoolkit.sh | sh
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/datatoolkit.ps1 | iex
+```
+
+Other commands: `stop`, `update` (latest images), `uninstall` (keeps your
+data; add `--purge` / `-Purge` to delete it). Piped, pass them as
+`curl -fsSL …/datatoolkit.sh | sh -s -- stop` or
+`& ([scriptblock]::Create((irm …/datatoolkit.ps1))) stop`. Files live in
+`~/datatoolkit` (`%USERPROFILE%\datatoolkit`): `compose.yml`, `.env` and the
+data dir `datatoolkit-data`. Env: `DTK_PORT` (8080), `DTK_DATA`, `DTK_HOME`
+(install dir), `DTK_NO_OPEN=1` (no browser), `DTK_TIMEOUT` (seconds, 300).
+Running it again is safe: it just makes sure the app is up. More in
+[Run with Docker](#run-with-docker).
+
 ## Requirements
 
 - Node **22+** (`engines.node` is `>=22`; the Docker build uses `node:22-alpine`)
@@ -35,7 +62,15 @@ churn CSVs from `public/fixtures/` and saves a `churn` workspace
 
 ## Run with Docker
 
-Engine + Studio in one command (images from GHCR):
+The launchers above wrap this. `scripts/datatoolkit.sh` / `.ps1` check Docker,
+install `compose.yml` into `~/datatoolkit` (`DTK_COMPOSE_SRC` overrides the
+source: URL or local path), persist `DTK_PORT` / `DTK_DATA` in its `.env`, run
+`docker compose -p datatoolkit pull` + `up -d --no-build`, wait for `/` and
+`/api/keys` (logs tail on timeout), then open the browser. They refuse an
+install dir that is a git checkout (set `DTK_HOME`). The `launcher` job in
+`.github/workflows/docker.yml` runs both on ubuntu against the `latest` images.
+
+Engine + Studio by hand (images from GHCR):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/compose.yml -o datatoolkit.yml && docker compose -f datatoolkit.yml up -d
