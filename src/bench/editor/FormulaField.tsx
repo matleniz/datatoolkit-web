@@ -192,7 +192,10 @@ export function FormulaField({
           aria-autocomplete="list"
           aria-controls="formula-suggest"
           aria-expanded={suggestOpen}
-          className="ed-input formula"
+          className={
+            previewError ? "ed-input formula invalid" : "ed-input formula"
+          }
+          aria-invalid={previewError ? true : undefined}
           value={expr}
           placeholder={formulaPlaceholder(columns, variables)}
           onChange={(e) => {
@@ -236,6 +239,10 @@ export function FormulaField({
             ))}
           </ul>
         ) : null}
+      </div>
+
+      <div className={statusClass} data-formula-status="">
+        {status}
       </div>
 
       <span className="ed-help">
@@ -304,10 +311,6 @@ export function FormulaField({
         aria={(f) => f.help}
         onPick={(f) => insertAtCaret(f.insert)}
       />
-
-      <div className={statusClass} data-formula-status="">
-        {status}
-      </div>
     </div>
   );
 }
