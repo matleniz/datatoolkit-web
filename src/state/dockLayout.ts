@@ -1,4 +1,10 @@
-import type { DockPos, ToolId } from "./reducer";
+import type {
+  DockLayout,
+  DockLayouts,
+  DockPos,
+  DockRect,
+  ToolId,
+} from "./dockTypes";
 
 /**
  * Dock window grid layout (MAT-234 / MAT-206). Pure helpers shared by the
@@ -6,16 +12,6 @@ import type { DockPos, ToolId } from "./reducer";
  * position, in grid units. Bottom and right docks keep separate layouts so
  * switching position never squashes a hand-made arrangement.
  */
-export interface DockRect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-export type DockLayout = Partial<Record<ToolId, DockRect>>;
-export type DockLayouts = Record<DockPos, DockLayout>;
-
 export interface DockGridSpec {
   cols: number;
   /** Rows that fit the dock's visible height (row height is derived). */
