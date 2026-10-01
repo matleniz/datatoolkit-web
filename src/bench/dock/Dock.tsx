@@ -13,7 +13,7 @@ import { useAppDispatch, useAppState } from "../../state/AppStore";
 import type { DockPos, DockSize, ToolId } from "../../state/reducer";
 import { DOCK_SIZES, toolDef } from "../toolrail/tools";
 import { ChartDockBody } from "./ChartDockBody";
-import { DOCK_GRID, dockRowHeight, toGridItems } from "./dockLayout";
+import { DOCK_GRID, dockRowHeight, toGridItems } from "../../state/dockLayout";
 import { DockWindowBody } from "./DockWindowBody";
 import "./Dock.css";
 

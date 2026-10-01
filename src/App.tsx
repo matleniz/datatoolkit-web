@@ -2,7 +2,7 @@ import { AlignScreen } from "./screens/align/AlignScreen";
 import { SourcesScreen } from "./screens/sources/SourcesScreen";
 import { Workbench } from "./bench/Workbench";
 import { useAppDispatch, useAppState } from "./state/AppStore";
-import type { ScreenId } from "./state";
+import type { ScreenId } from "./state/reducer";
 import "./App.css";
 
 const SCREENS: { id: ScreenId; n: number; label: string }[] = [

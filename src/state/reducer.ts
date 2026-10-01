@@ -6,13 +6,9 @@ import type {
   Workspace,
 } from "../api/types";
 import type { ChartDraft } from "../bench/dock/chartPrefill";
-import {
-  hydrateWorkspaceCharts,
-  saveStoredCharts,
-} from "../bench/dock/chartStorage";
+import { hydrateWorkspaceCharts } from "./chartStorage";
 import {
   loadPanels,
-  savePanels,
   type PanelSide,
   type PanelsState,
 } from "./panelStorage";
@@ -22,8 +18,8 @@ import {
   syncDockLayouts,
   type DockLayouts,
   type DockRect,
-} from "../bench/dock/dockLayout";
-import { loadStoredDock, saveStoredDock } from "../bench/dock/dockStorage";
+} from "./dockLayout";
+import { loadStoredDock } from "./dockStorage";
 import type { ToolViewState } from "../bench/dock/windowView";
 import type { WorkspaceSourcesState } from "../screens/sources/sourcesLogic";
 
@@ -275,15 +271,11 @@ function openTool(tools: ToolId[], id: ToolId): ToolId[] {
   return next;
 }
 
-/** Apply a dock change, keep layouts in step with open tools, persist. */
+/** Apply a dock change and keep layouts in step with open tools. */
 function withDock(state: AppState, patch: Partial<DockState>): AppState {
   const merged = { ...state.dock, ...patch };
-  const dock = {
-    ...merged,
-    layouts: syncDockLayouts(merged.layouts, merged.tools),
-  };
-  if (state.workspace) saveStoredDock(state.workspace.name, dock);
-  return { ...state, dock };
+  const layouts = syncDockLayouts(merged.layouts, merged.tools);
+  return { ...state, dock: { ...merged, layouts } };
 }
 
 /**
@@ -296,11 +288,7 @@ function dockForWorkspace(
 ): DockState {
   if (!ws || ws.name === state.workspace?.name) return state.dock;
   const stored = loadStoredDock(ws.name, MAX_DOCK_TOOLS);
-  const dock = stored
-    ? { ...state.dock, ...stored, maximized: null }
-    : state.dock;
-  saveStoredDock(ws.name, dock);
-  return dock;
+  return stored ? { ...state.dock, ...stored, maximized: null } : state.dock;
 }
 
 /**
@@ -329,16 +317,32 @@ export function pickCol(
   return { ...selection, columns, row: null, cell: null };
 }
 
-function withVariables(
+/** Patch the open workspace (no-op without one); `extra` patches the state. */
+function withWorkspace(
   state: AppState,
-  variables: VariableSpec[],
+  patch: Partial<Workspace>,
+  extra: Partial<AppState> = {},
 ): AppState {
   if (!state.workspace) return state;
-  return {
-    ...state,
-    workspace: { ...state.workspace, variables },
-  };
+  return { ...state, ...extra, workspace: { ...state.workspace, ...patch } };
 }
+
+const DEFAULT_CHART_DRAFT: ChartDraft = {
+  chart: "histogram",
+  x: null,
+  y: null,
+  color: null,
+  facet_row: null,
+  facet_col: null,
+  size: null,
+  columns: [],
+  agg: null,
+  trendline: false,
+  log_x: false,
+  log_y: false,
+  bins: 30,
+  sample_size: 10_000,
+};
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -376,20 +380,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         return state;
       }
       if (state.panels[action.side] === action.collapsed) return state;
-      const panels = { ...state.panels, [action.side]: action.collapsed };
-      savePanels(panels);
-      return { ...state, panels };
-    }
-    case "SET_STEPS": {
-      if (!state.workspace) return state;
       return {
         ...state,
-        workspace: {
-          ...state.workspace,
-          steps: orderSteps(action.steps),
-        },
+        panels: { ...state.panels, [action.side]: action.collapsed },
       };
     }
+    case "SET_STEPS":
+      return withWorkspace(state, { steps: orderSteps(action.steps) });
     case "TOGGLE_MULTI":
       return {
         ...state,
@@ -522,26 +519,18 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "SET_SUG_COUNT":
       return { ...state, sugCount: action.count };
     case "ADD_VARIABLE": {
-      if (!state.workspace) return state;
-      if (
-        state.workspace.variables.some((v) => v.name === action.variable.name)
-      ) {
-        return state;
-      }
-      return withVariables(state, [
-        ...state.workspace.variables,
-        action.variable,
-      ]);
+      const vars = state.workspace?.variables ?? [];
+      if (vars.some((v) => v.name === action.variable.name)) return state;
+      return withWorkspace(state, { variables: [...vars, action.variable] });
     }
-    case "REMOVE_VARIABLE": {
-      if (!state.workspace) return state;
-      return withVariables(
-        state,
-        state.workspace.variables.filter((v) => v.name !== action.name),
-      );
-    }
+    case "REMOVE_VARIABLE":
+      return withWorkspace(state, {
+        variables: (state.workspace?.variables ?? []).filter(
+          (v) => v.name !== action.name,
+        ),
+      });
     case "SET_VARIABLES":
-      return withVariables(state, action.variables);
+      return withWorkspace(state, { variables: action.variables });
     case "INSERT_FORMULA_TOKEN": {
       const token = action.token;
       if (state.editor?.op === "formula") {
@@ -578,26 +567,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const alignCount = current.filter((x) => x.align).length;
       const steps = [...current];
       steps.splice(alignCount, 0, s);
-      return {
-        ...state,
-        workspace: {
-          ...state.workspace,
-          steps,
-        },
-      };
+      return withWorkspace(state, { steps });
     }
 
-    case "REMOVE_STEP_BY_INDEX": {
-      if (!state.workspace) return state;
-      const steps = state.workspace.steps.filter((_, i) => i !== action.index);
-      return {
-        ...state,
-        workspace: {
-          ...state.workspace,
-          steps,
-        },
-      };
-    }
+    case "REMOVE_STEP_BY_INDEX":
+      return withWorkspace(state, {
+        steps: (state.workspace?.steps ?? []).filter(
+          (_, i) => i !== action.index,
+        ),
+      });
 
     case "SET_TEST_DECIMAL": {
       if (!state.workspace || !state.workspace.datasets.test) return state;
@@ -607,19 +585,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ...testX,
         decimal: action.decimal ?? undefined,
       };
-      return {
-        ...state,
-        workspace: {
-          ...state.workspace,
-          datasets: {
-            ...state.workspace.datasets,
-            test: {
-              ...state.workspace.datasets.test,
-              x: updatedX,
-            },
-          },
+      return withWorkspace(state, {
+        datasets: {
+          ...state.workspace.datasets,
+          test: { ...state.workspace.datasets.test, x: updatedX },
         },
-      };
+      });
     }
 
     case "SET_WORKSPACE_FILES":
@@ -674,100 +645,58 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
     case "SET_CHART_DRAFT":
       return { ...state, chartDraft: action.draft };
-    case "PATCH_CHART_DRAFT": {
-      if (!state.chartDraft) {
-        return {
-          ...state,
-          chartDraft: {
-            chart: "histogram",
-            x: null,
-            y: null,
-            color: null,
-            facet_row: null,
-            facet_col: null,
-            size: null,
-            columns: [],
-            agg: null,
-            trendline: false,
-            log_x: false,
-            log_y: false,
-            bins: 30,
-            sample_size: 10_000,
-            ...action.patch,
-          },
-        };
-      }
+    case "PATCH_CHART_DRAFT":
       return {
         ...state,
-        chartDraft: { ...state.chartDraft, ...action.patch },
+        chartDraft: {
+          ...(state.chartDraft ?? DEFAULT_CHART_DRAFT),
+          ...action.patch,
+        },
       };
-    }
-    case "ADD_CHART": {
-      if (!state.workspace) return state;
-      const charts = [
-        ...(state.workspace.charts ?? []).filter(
-          (c) => c.name !== action.chart.name,
+    case "ADD_CHART":
+      return withWorkspace(state, {
+        charts: [
+          ...(state.workspace?.charts ?? []).filter(
+            (c) => c.name !== action.chart.name,
+          ),
+          action.chart,
+        ],
+      });
+    case "REMOVE_CHART":
+      return withWorkspace(state, {
+        charts: (state.workspace?.charts ?? []).filter(
+          (c) => c.name !== action.name,
         ),
-        action.chart,
-      ];
-      saveStoredCharts(state.workspace.name, charts);
-      return {
-        ...state,
-        workspace: { ...state.workspace, charts },
-      };
-    }
-    case "REMOVE_CHART": {
-      if (!state.workspace) return state;
-      const charts = (state.workspace.charts ?? []).filter(
-        (c) => c.name !== action.name,
-      );
-      saveStoredCharts(state.workspace.name, charts);
-      return {
-        ...state,
-        workspace: { ...state.workspace, charts },
-      };
-    }
-    case "SET_CHARTS": {
-      if (!state.workspace) return state;
-      saveStoredCharts(state.workspace.name, action.charts);
-      return {
-        ...state,
-        workspace: { ...state.workspace, charts: action.charts },
-      };
-    }
+      });
+    case "SET_CHARTS":
+      return withWorkspace(state, { charts: action.charts });
     case "SET_BENCH_ERROR":
       return { ...state, benchError: action.message };
-    case "ADD_STEP": {
-      if (!state.workspace) return state;
-      return {
-        ...state,
-        workspace: {
-          ...state.workspace,
-          steps: orderSteps([...state.workspace.steps, action.step]),
+    case "ADD_STEP":
+      return withWorkspace(
+        state,
+        { steps: orderSteps([...(state.workspace?.steps ?? []), action.step]) },
+        {
+          editor: null,
+          viewVersion: null,
+          selection: { ...state.selection, row: null, cell: null },
+          benchError: null,
         },
-        editor: null,
-        viewVersion: null,
-        selection: {
-          ...state.selection,
-          row: null,
-          cell: null,
-        },
-        benchError: null,
-      };
-    }
+      );
     case "REMOVE_STEP": {
-      if (!state.workspace) return state;
-      const steps = state.workspace.steps.slice();
+      const steps = (state.workspace?.steps ?? []).slice();
       if (action.index < 0 || action.index >= steps.length) return state;
       steps.splice(action.index, 1);
-      return {
-        ...state,
-        workspace: { ...state.workspace, steps: orderSteps(steps) },
-        editor: null,
-        viewVersion: null,
-        selection: { ...state.selection, cell: null },
-        benchError: null,
-      };
+      return withWorkspace(
+        state,
+        { steps: orderSteps(steps) },
+        {
+          editor: null,
+          viewVersion: null,
+          selection: { ...state.selection, cell: null },
+          benchError: null,
+        },
+      );
     }
     default:
       return state;
