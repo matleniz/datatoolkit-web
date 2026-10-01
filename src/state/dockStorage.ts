@@ -7,17 +7,17 @@ const keyFor = (workspaceName: string) => `dtk.dock.${workspaceName}`;
 type StoredDock = Pick<DockState, "tools" | "pos" | "size" | "layouts">;
 
 /** Dock windows only; the rail's Transform entry opens the step picker, never a window. */
-const KNOWN_TOOLS: ToolId[] = [
-  "compare",
-  "corr",
-  "dist",
-  "missing",
-  "outliers",
-  "target",
-  "drift",
-  "feature_selection",
-  "chart",
-];
+const KNOWN_TOOLS = Object.keys({
+  compare: 1,
+  corr: 1,
+  dist: 1,
+  missing: 1,
+  outliers: 1,
+  target: 1,
+  drift: 1,
+  feature_selection: 1,
+  chart: 1,
+} satisfies Record<ToolId, 1>) as ToolId[];
 
 function parseStoredDock(raw: unknown, maxTools: number): StoredDock | null {
   if (typeof raw !== "object" || raw === null) return null;
