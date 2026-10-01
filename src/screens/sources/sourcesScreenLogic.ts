@@ -23,10 +23,10 @@ const FIXTURE_BASE = E2E_FIXTURES_DIR;
 export const EMPTY_TRAIN_MESSAGE =
   "This train file has no columns (empty or unreadable). Replace it before opening the workbench or checking alignment.";
 
-export const LOADING_SOURCES_MESSAGE = "Loading workspace sources…";
+const LOADING_SOURCES_MESSAGE = "Loading workspace sources…";
 
 /** Prefix shared by every stored-source parse failure (MAT-167). */
-export const STORED_SOURCE_FAILED_PREFIX = "Stored train source failed to parse:";
+const STORED_SOURCE_FAILED_PREFIX = "Stored train source failed to parse:";
 
 /** MAT-167: stored path unreadable or kind-mismatched (not a truly empty file). */
 export function storedSourceFailedMessage(detail: string): string {
@@ -47,7 +47,7 @@ export function trainParseErrorDisplay(detail: string): string {
 }
 
 /** Minimal workspace: one train X source, order-joined label. */
-export function bareWorkspace(name: string, x: FileSourceSpec): Workspace {
+function bareWorkspace(name: string, x: FileSourceSpec): Workspace {
   return {
     name,
     datasets: { train: { x } },

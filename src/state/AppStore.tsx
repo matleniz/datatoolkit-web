@@ -2,7 +2,6 @@ import {
   createContext,
   useContext,
   useEffect,
-  useMemo,
   useLayoutEffect,
   useReducer,
   useRef,
@@ -164,15 +163,6 @@ export function useAppDispatch(): Dispatch<AppAction> {
   const ctx = useContext(AppDispatchContext);
   if (!ctx) throw new Error("useAppDispatch requires AppProvider");
   return ctx;
-}
-
-export function useAppStore(): {
-  state: AppState;
-  dispatch: Dispatch<AppAction>;
-} {
-  const state = useAppState();
-  const dispatch = useAppDispatch();
-  return useMemo(() => ({ state, dispatch }), [state, dispatch]);
 }
 
 export type { AppAction, AppState };

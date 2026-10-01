@@ -12,7 +12,7 @@ import {
 } from "./chartPrefill";
 import type { ChartVisibility } from "./chartDockModel";
 
-export function ColSelect({
+function ColSelect({
   id,
   label,
   value,
