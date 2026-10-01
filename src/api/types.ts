@@ -209,8 +209,9 @@ export interface Workspace {
   variables: VariableSpec[];
   steps: Step[];
   /**
-   * Saved chart specs (MAT-172). Front-owned until the engine Workspace
-   * gains a `charts` field (MAT-185); stripped on PUT and kept in localStorage.
+   * Saved chart specs (MAT-172), stored on the engine workspace (MAT-185):
+   * sent on PUT, never on frame / analysis calls. Names must be unique (the
+   * engine answers 422 `duplicate chart name`).
    */
   charts?: ChartSpec[];
 }

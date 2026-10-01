@@ -7,7 +7,7 @@ import {
   waitForGridReady,
 } from "./helpers";
 
-test("MAT-172: Chart builder — box, scatter+trendline, saved survives reload+step", async ({
+test("MAT-172 / #11: Chart builder — box, scatter+trendline, saved on the engine, survives reload+step", async ({
   page,
 }) => {
   test.setTimeout(240_000);
@@ -126,13 +126,33 @@ test("MAT-172: Chart builder — box, scatter+trendline, saved survives reload+s
     chart.locator("#chart-open-saved option", { hasText: "Age vs Fare trend" }),
   ).toHaveCount(1);
 
-  // Survive reload
+  // Stored on the engine workspace (datatoolkit-issues#11), not in the browser
+  await expect
+    .poll(async () => {
+      const res = await page.request.get("/api/workspaces/titanic");
+      return ((await res.json()) as { charts?: { name: string }[] }).charts?.map(
+        (c) => c.name,
+      );
+    })
+    .toEqual(["Age vs Fare trend"]);
+  expect(
+    await page.evaluate(() => localStorage.getItem("dtk.charts.titanic")),
+  ).toBeNull();
+
+  // Survive reload: Studio reopens titanic from the engine store
   await page.reload();
-  await openWorkspaceBench(page, titanicWorkspace(), "Age");
+  await expect(page.getByText("Loading workspace…")).toBeHidden({
+    timeout: 60_000,
+  });
+  await page.waitForFunction(
+    () => window.__DTK_STATE__?.().workspace?.name === "titanic",
+  );
   await page.evaluate(() => {
     const d = window.__DTK_DISPATCH__!;
+    d({ type: "SET_SCREEN", screen: "bench" });
     d({ type: "OPEN_TOOL", id: "chart" });
   });
+  await waitForGridReady(page);
   const chart2 = page.locator('[data-tool="chart"]');
   await expect(chart2.getByLabel("Open saved chart")).toBeVisible({
     timeout: 60_000,
@@ -151,6 +171,19 @@ test("MAT-172: Chart builder — box, scatter+trendline, saved survives reload+s
   });
   await waitForGridReady(page);
   await captureFlowScreenshot(page, "10-chart", "03-saved-after-reload.png");
+
+  // Same name again: the engine's 422 is shown, Replace overwrites it
+  await chart2.getByLabel("Chart name").fill("Age vs Fare trend");
+  await chart2.locator("[data-chart-save]").click();
+  const saveError = chart2.locator("[data-chart-save-error]");
+  await expect(saveError).toContainText(
+    "duplicate chart name 'Age vs Fare trend'",
+  );
+  await saveError.locator("[data-chart-replace]").click();
+  await expect(saveError).toHaveCount(0);
+  await expect(
+    chart2.locator("#chart-open-saved option", { hasText: "Age vs Fare trend" }),
+  ).toHaveCount(1);
 
   // Survive adding an impute step (re-render on current pipeline version)
   await page.evaluate(() => {

@@ -89,12 +89,20 @@ function sanitizeStep(step: Step): Record<string, unknown> {
 
 /** Stable JSON for workspace equality (PUT skip / debounce). */
 export function serializeWorkspace(ws: Workspace): string {
-  return JSON.stringify(sanitizeWorkspace(ws));
+  return JSON.stringify(workspaceBody(ws));
 }
 
-function sanitizeWorkspace(ws: Workspace): Record<string, unknown> {
-  // Strip front-only fields the engine Workspace model forbids (MAT-172 charts
-  // until MAT-185; Step.align is front-only pipeline ordering).
+/** PUT body: the stored workspace, saved charts included (MAT-185). */
+function workspaceBody(ws: Workspace): Record<string, unknown> {
+  return { ...frameBody(ws), charts: ws.charts ?? [] };
+}
+
+/**
+ * Workspace sent to frame / analysis calls: saved charts never feed a frame,
+ * so a chart save does not change those request bodies (MAT-175 identity).
+ * Step.align is front-only pipeline ordering.
+ */
+function frameBody(ws: Workspace): Record<string, unknown> {
   const { charts: _charts, ...rest } = ws;
   return {
     ...rest,
@@ -235,7 +243,7 @@ class HttpApiClient implements ApiClient {
     return this.request(
       "PUT",
       `/workspaces/${encodeURIComponent(ws.name)}`,
-      sanitizeWorkspace(ws),
+      workspaceBody(ws),
       undefined,
       signal,
     );
@@ -279,7 +287,7 @@ class HttpApiClient implements ApiClient {
     headRows = 5,
   ): Promise<WorkspacePreview> {
     return this.request("POST", "/workspace/preview", {
-      workspace: sanitizeWorkspace(workspace),
+      workspace: frameBody(workspace),
       role,
       head_rows: headRows,
     });
@@ -297,7 +305,7 @@ class HttpApiClient implements ApiClient {
       "POST",
       "/workspace/rows",
       {
-        workspace: sanitizeWorkspace(workspace),
+        workspace: frameBody(workspace),
         role,
         version,
         offset,
@@ -315,7 +323,7 @@ class HttpApiClient implements ApiClient {
     columns: string[] | null = null,
   ): Promise<ColumnProfiles> {
     const body: Record<string, unknown> = {
-      workspace: sanitizeWorkspace(workspace),
+      workspace: frameBody(workspace),
       role,
       version,
     };
@@ -336,7 +344,7 @@ class HttpApiClient implements ApiClient {
       "POST",
       "/workspace/preview-step",
       {
-        workspace: sanitizeWorkspace(workspace),
+        workspace: frameBody(workspace),
         step: sanitizeStep(step),
         role,
       },
@@ -347,7 +355,7 @@ class HttpApiClient implements ApiClient {
 
   alignReport(workspace: Workspace): Promise<AlignReport> {
     return this.request("POST", "/workspace/align", {
-      workspace: sanitizeWorkspace(workspace),
+      workspace: frameBody(workspace),
     });
   }
 

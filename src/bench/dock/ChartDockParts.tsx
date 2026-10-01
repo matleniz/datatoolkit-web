@@ -1,7 +1,8 @@
 import { useState } from "react";
 
-import type { ChartSpec } from "../../api/types";
-import { useAppDispatch } from "../../state/AppStore";
+import { errorText, type ChartSpec, type Workspace } from "../../api/types";
+import { useAppDispatch, useAppState } from "../../state/AppStore";
+import { saveWorkspaceNow } from "../../state/workspaceSaveGate";
 import { ResultView } from "./ResultView";
 import {
   CHART_AGGS,
@@ -328,6 +329,19 @@ export function ChartRunStatus({
   );
 }
 
+/** Save the chart list on the engine workspace; resolves to an error text. */
+async function storeCharts(
+  workspace: Workspace,
+  charts: ChartSpec[],
+): Promise<string | null> {
+  try {
+    await saveWorkspaceNow({ ...workspace, charts });
+    return null;
+  } catch (e) {
+    return errorText(e);
+  }
+}
+
 export function ChartSavedBar({
   draft,
   saved,
@@ -335,21 +349,39 @@ export function ChartSavedBar({
   draft: ChartDraft;
   saved: ChartSpec[];
 }) {
+  const { workspace } = useAppState();
   const dispatch = useAppDispatch();
   const [saveName, setSaveName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  /** Name the engine refused as a duplicate: offer to replace that chart. */
+  const [duplicate, setDuplicate] = useState<string | null>(null);
+
+  // Appended as-is: the engine owns name uniqueness and its 422 is shown.
+  const store = async (name: string, replace: boolean) => {
+    if (!workspace) return;
+    const chart = { name, params: chartDraftToParams(draft) };
+    const kept = replace ? saved.filter((c) => c.name !== name) : saved;
+    const charts = [...kept, chart];
+    setSaving(true);
+    const err = await storeCharts(workspace, charts);
+    setSaving(false);
+    setSaveError(err);
+    setDuplicate(err && /duplicate chart name/i.test(err) ? name : null);
+    if (!err) dispatch({ type: "SET_CHARTS", charts });
+  };
   const save = () => {
     const name = (saveName.trim() || defaultChartName(draft)).slice(0, 64);
-    dispatch({
-      type: "ADD_CHART",
-      chart: { name, params: chartDraftToParams(draft) },
-    });
     setSaveName(name);
+    void store(name, false);
   };
   const open = (name: string) => {
     const found = saved.find((c) => c.name === name);
     if (!found) return;
     dispatch({ type: "SET_CHART_DRAFT", draft: chartParamsToDraft(found.params) });
     setSaveName(found.name);
+    setSaveError(null);
+    setDuplicate(null);
   };
   return (
     <div className="chart-saved-bar">
@@ -361,7 +393,13 @@ export function ChartSavedBar({
         placeholder={defaultChartName(draft)}
         onChange={(e) => setSaveName(e.target.value)}
       />
-      <button type="button" className="chart-pill on" data-chart-save onClick={save}>
+      <button
+        type="button"
+        className="chart-pill on"
+        data-chart-save
+        disabled={saving || !workspace}
+        onClick={save}
+      >
         Save chart
       </button>
       {saved.length > 0 ? (
@@ -379,6 +417,22 @@ export function ChartSavedBar({
             </option>
           ))}
         </select>
+      ) : null}
+      {saveError ? (
+        <div className="engine-error chart-save-error" role="alert" data-chart-save-error>
+          {saveError}
+          {duplicate ? (
+            <button
+              type="button"
+              className="chart-pill"
+              data-chart-replace
+              disabled={saving}
+              onClick={() => void store(duplicate, true)}
+            >
+              Replace “{duplicate}”
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
