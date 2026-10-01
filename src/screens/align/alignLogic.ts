@@ -354,7 +354,7 @@ export function computeRowFixes(
  * low `pct_test_rows_unseen` stay visible but do not count as "to decide"
  * (one-hot `handle_unknown` absorbs them).
  */
-export const VALUE_MISMATCH_BLOCKING_PCT = 50;
+const VALUE_MISMATCH_BLOCKING_PCT = 50;
 
 export function isBlockingValueMismatch(row: AlignReportRow): boolean {
   if (row.status !== "value_mismatch") return false;

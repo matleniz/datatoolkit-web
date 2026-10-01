@@ -15,7 +15,7 @@ export function same(a: unknown, b: unknown): boolean {
   return (isNull(a) && isNull(b)) || a === b;
 }
 
-export function r3(v: number | null | undefined): number | null {
+function r3(v: number | null | undefined): number | null {
   if (v === null || v === undefined || Number.isNaN(v)) return null;
   return Math.round(v * 1000) / 1000;
 }
