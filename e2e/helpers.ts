@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 import type { Workspace } from "../src/api/types";
 
 const here = dirname(fileURLToPath(import.meta.url));
-export const e2eScreenshotsDir = join(here, "screenshots");
-export const docsScreenshotsDir = join(here, "../docs/screenshots/t1-e2e");
+const e2eScreenshotsDir = join(here, "screenshots");
+const docsScreenshotsDir = join(here, "../docs/screenshots/t1-e2e");
 export const fixturesDir = join(here, "fixtures");
 
 /** Set DTK_E2E_SCREENSHOTS=1 to also refresh the committed PNGs under docs/screenshots. */
