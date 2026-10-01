@@ -233,3 +233,21 @@
   font-size: 12px;
   color: var(--dtk-ok-fg);
 }
+
+/* datatoolkit-issues#15: dismiss / restore a suggestion. */
+.sug-dismiss {
+  padding: 0;
+}
+
+.sug-card.dismissed {
+  opacity: 0.6;
+  border-style: dashed;
+}
+
+.sug-show-dismissed {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  margin: 6px 0 8px;
+}

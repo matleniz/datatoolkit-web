@@ -10,18 +10,18 @@ import {
 } from "../../state/AppStore";
 import { identityLabel, identitySource, withRole } from "../dataIdentity";
 import type { CourseStage } from "../../state/reducer";
-import { toEngineParams } from "../presets";
 import { Chips } from "../Chips";
 import { useWorkbenchData } from "../WorkbenchData";
 import { targetColumnOf } from "./datasetSource";
 import { keyParamsFromSchema } from "./keyParams";
+import { SuggestionCardView } from "./SuggestionCardView";
 import {
-  STAGE_COLOR,
-  STAGE_LABEL,
   SUGGESTION_KEYS,
-  filterCardsByStage,
+  listSuggestions,
   mapSuggestionCards,
+  type SuggestionCard,
 } from "./suggestions";
+import { useDismissedSuggestions } from "./useDismissedSuggestions";
 
 const STAGE_FILTERS: Partial<Record<CourseStage, string>> = {
   all: "All",
@@ -30,6 +30,8 @@ const STAGE_FILTERS: Partial<Record<CourseStage, string>> = {
   transform: "Transform",
   select: "Select",
 };
+
+const NO_CARDS: SuggestionCard[] = [];
 
 export function SuggestionsTab() {
   const { workspace, sugStage } = useAppState();
@@ -42,6 +44,9 @@ export function SuggestionsTab() {
   } = useWorkbenchData();
   /** Per-card subset picks for duplicates "pass subset" cards (MAT-155). */
   const [subsetPicks, setSubsetPicks] = useState<Record<string, string[]>>({});
+  const { dismissed: dismissedIds, toggle: toggleDismissed } =
+    useDismissedSuggestions(workspace?.name);
+  const [showDismissed, setShowDismissed] = useState(false);
 
   const gridReady = !gridLoading && columns.length > 0;
   /**
@@ -99,7 +104,7 @@ export function SuggestionsTab() {
     },
     gridReady,
   );
-  const cards = run.value?.cards ?? [];
+  const cards = run.value?.cards ?? NO_CARDS;
   const error = run.ready
     ? (run.error ?? (run.value?.errors.join("\n") || null))
     : null;
@@ -108,11 +113,20 @@ export function SuggestionsTab() {
   const shownIdentity = run.settledKey;
   const rechecking = loading && cards.length > 0;
 
-  useEffect(() => {
-    dispatch({ type: "SET_SUG_COUNT", count: cards.length });
-  }, [cards.length, dispatch]);
+  const { shown, dismissed: dismissedCount } = useMemo(
+    () => listSuggestions(cards, sugStage, dismissedIds, showDismissed),
+    [cards, sugStage, dismissedIds, showDismissed],
+  );
+  /** The badge counts every stage's non-dismissed cards. */
+  const activeCount = useMemo(
+    () => listSuggestions(cards, "all", dismissedIds, false).active,
+    [cards, dismissedIds],
+  );
+  const columnNames = columns.map((c) => c.name);
 
-  const shown = filterCardsByStage(cards, sugStage);
+  useEffect(() => {
+    dispatch({ type: "SET_SUG_COUNT", count: activeCount });
+  }, [activeCount, dispatch]);
 
   return (
     <div className="left-tab-body">
@@ -157,87 +171,37 @@ export function SuggestionsTab() {
           {error}
         </div>
       ) : null}
+      {dismissedCount > 0 || showDismissed ? (
+        <label className="sug-show-dismissed muted">
+          <input
+            type="checkbox"
+            checked={showDismissed}
+            onChange={(e) => setShowDismissed(e.target.checked)}
+          />{" "}
+          Show dismissed ({dismissedCount})
+        </label>
+      ) : null}
       <div className="sug-list" data-sug-cards={shown.length}>
-        {shown.map((cd) => (
-          <div
-            key={cd.id}
-            className="sug-card"
-            data-sug-id={cd.id}
-            data-sug-stale={rechecking ? "1" : undefined}
-          >
-            <div className="sug-stage">
-              <span
-                className="sug-dot"
-                style={{ background: STAGE_COLOR[cd.stage] }}
-              />
-              <span className="muted">{STAGE_LABEL[cd.stage]}</span>
-            </div>
-            <div className="sug-title">{cd.title}</div>
-            <div className="sug-detail">{cd.detail}</div>
-            {cd.pickSubset ? (
-              <div className="sug-subset" data-sug-subset={cd.id}>
-                <div className="sug-subset-label muted">
-                  Pick identity columns (subset), then open Drop duplicates
-                </div>
-                <Chips
-                  small
-                  label="Duplicate subset"
-                  options={columns.map((c) => c.name)}
-                  isOn={(n) => (subsetPicks[cd.id] ?? []).includes(n)}
-                  onPick={(n) =>
-                    setSubsetPicks((prev) => {
-                      const cur = prev[cd.id] ?? [];
-                      const next = cur.includes(n)
-                        ? cur.filter((x) => x !== n)
-                        : [...cur, n];
-                      return { ...prev, [cd.id]: next };
-                    })
-                  }
-                />
-                <button
-                  type="button"
-                  className="open-editor-btn"
-                  disabled={(subsetPicks[cd.id] ?? []).length === 0}
-                  onClick={() => {
-                    const subset = subsetPicks[cd.id] ?? [];
-                    dispatch({
-                      type: "OPEN_EDITOR",
-                      op: "drop_duplicates",
-                      params: toEngineParams("drop_duplicates", {
-                        subset,
-                        keep: "none",
-                        sort_by: null,
-                      }),
-                      target: "train",
-                    });
-                  }}
-                >
-                  Open Drop duplicates →
-                </button>
-              </div>
-            ) : cd.step ? (
-              <button
-                type="button"
-                className="open-editor-btn"
-                onClick={() => {
-                  if (cd.column) {
-                    dispatch({ type: "PICK_COL", name: cd.column });
-                  }
-                  dispatch({
-                    type: "OPEN_EDITOR",
-                    op: cd.step!.op,
-                    params: toEngineParams(cd.step!.op, cd.step!.params),
-                    target: cd.step!.target,
-                  });
-                }}
-              >
-                Open in editor →
-              </button>
-            ) : null}
-          </div>
+        {shown.map((item) => (
+          <SuggestionCardView
+            key={item.card.id}
+            item={item}
+            stale={rechecking}
+            columns={columnNames}
+            picks={subsetPicks[item.card.id] ?? []}
+            onPicks={(next) =>
+              setSubsetPicks((prev) => ({ ...prev, [item.card.id]: next }))
+            }
+            onToggleDismiss={() => toggleDismissed(item.dismissId)}
+            dispatch={dispatch}
+          />
         ))}
         {!loading && gridReady && !shown.length && !error ? (
-          <div className="empty-dash">Nothing flagged here.</div>
+          <div className="empty-dash">
+            {dismissedCount > 0
+              ? "Nothing flagged here (all dismissed)."
+              : "Nothing flagged here."}
+          </div>
         ) : null}
       </div>
     </div>

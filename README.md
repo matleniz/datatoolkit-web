@@ -101,13 +101,20 @@ modules — see `src/theme/README.md`. No CSS framework.
 | Path | Contents |
 |---|---|
 | `src/api/` | `client.ts` (the only module calling `dtk-api`), request dedupe, contract types |
-| `src/state/` | `AppStore` (React context + reducer), browser storage (dock, panels, charts), workspace save gate |
+| `src/state/` | `AppStore` (React context + reducer), browser storage (dock, panels, charts, dismissed suggestions), workspace save gate |
 | `src/screens/sources/`, `src/screens/align/` | Sources and train / test alignment screens |
 | `src/bench/` | Workbench: `pipeline`, `grid`, `inspector`, `editor`, `contextmenu`, `left` (Suggestions), `dock` (analysis windows + Chart), `toolrail`, `export` |
 | `src/theme/` | Design tokens |
 | `tests/` | Vitest unit tests and their JSON fixtures |
 | `e2e/` | Playwright specs, `helpers.ts`, data fixtures |
 | `docker/`, `Dockerfile`, `compose.yml` | nginx image and the engine + Studio stack |
+
+Suggestions can be dismissed (datatoolkit-issues#15): browser-local, per
+workspace (`localStorage["dtk.dismissedSuggestions.<workspace>"]`). The id
+hashes the key, the suggested step (op / target / params) and the finding
+(column, title, detail), so a finding stays hidden after an unrelated step
+and shows again once its content changes; "Show dismissed" lists the hidden
+ones with a Restore action. No key-specific logic.
 
 No router: the three screens (Sources, Alignment, Workbench) are reducer
 state (`SET_SCREEN`); nginx serves `index.html` for any path.
