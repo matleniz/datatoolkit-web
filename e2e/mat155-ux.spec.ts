@@ -33,7 +33,7 @@ test.describe("MAT-155 Studio UX", () => {
     await expect(
       editor.getByText("Subset (identity columns)", { exact: true }),
     ).toBeVisible();
-    const subsetGroup = editor.locator('[data-ed-group="subset"]');
+    const subsetGroup = editor.locator('[data-ed-field="subset"]');
     await expect(
       subsetGroup.getByRole("button", { name: /station_id/ }),
     ).toHaveClass(/on/);
@@ -62,7 +62,7 @@ test.describe("MAT-155 Studio UX", () => {
 
     // Ensure keep first/last without sort_by → Apply disabled with reason.
     await editor.getByRole("button", { name: "last", exact: true }).click();
-    const sortGroup = editor.locator('[data-ed-group="sort_by"]');
+    const sortGroup = editor.locator('[data-ed-field="sort_by"]');
     const sortOn = sortGroup.locator(".small-chip.on");
     while ((await sortOn.count()) > 0) {
       await sortOn.first().click();

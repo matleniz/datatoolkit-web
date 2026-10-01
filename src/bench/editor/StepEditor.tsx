@@ -6,9 +6,10 @@ import { formatLearnedState } from "../format";
 import { isNumericKind } from "../kinds";
 import { targetColumnOf } from "../left/datasetSource";
 import { resolveOp, toEngineParams } from "../presets";
+import { Chips } from "../Chips";
+import { fieldControl } from "../fieldControl";
 import {
   featureOpColumnsNeedingImpute,
-  filterColumnsByDtype,
   imputeConstantNeedsNumber,
   stepParamsValid,
   fieldValuePresent,
@@ -498,351 +499,6 @@ function Field({
     });
   };
 
-  const missing =
-    field.required &&
-    !(field.whenStrategyConstant && params.strategy !== "constant") &&
-    !fieldValuePresent(params[field.key]);
-  const fieldClass = missing ? "ed-field ed-field-missing" : "ed-field";
-
-  const eligible = filterColumnsByDtype(columns, field.dtypeFilter);
-
-  if (field.widget === "columns" || field.widget === "column") {
-    const multi = field.widget === "columns";
-    const current = multi
-      ? ((params[field.key] as string[] | null | undefined) ?? [])
-      : params[field.key]
-        ? [String(params[field.key])]
-        : [];
-    return (
-      <div
-        className={fieldClass}
-        data-ed-field={field.key}
-        data-ed-missing={missing ? "1" : undefined}
-        data-ed-group={
-          op === "drop_duplicates" &&
-          (field.key === "subset" || field.key === "sort_by")
-            ? field.key
-            : undefined
-        }
-      >
-        <span className="ed-label">{field.label}</span>
-        {field.description ? (
-          <span className="ed-help">{field.description}</span>
-        ) : null}
-        <div
-          className="chip-row"
-          role="group"
-          aria-label={field.label}
-        >
-          {eligible.map((n) => {
-            const on = current.includes(n);
-            return (
-              <button
-                key={n}
-                type="button"
-                className={on ? "small-chip on" : "small-chip"}
-                aria-pressed={on}
-                aria-label={`${field.label}: ${n}`}
-                onClick={() => {
-                  if (multi) {
-                    const a = [...current];
-                    const i = a.indexOf(n);
-                    if (i >= 0) a.splice(i, 1);
-                    else a.push(n);
-                    set(field.key, a);
-                  } else {
-                    set(field.key, n);
-                  }
-                }}
-              >
-                {n}
-              </button>
-            );
-          })}
-          {/* Stale names (already dropped) stay selectable so the user can clear them (MAT-177). */}
-          {current
-            .filter((n) => !eligible.includes(n))
-            .map((n) => (
-              <button
-                key={`gone-${n}`}
-                type="button"
-                className="small-chip on"
-                aria-pressed={true}
-                aria-label={`${field.label}: ${n} (already gone)`}
-                title="Already gone from this frame — click to remove"
-                onClick={() => {
-                  if (multi) {
-                    set(
-                      field.key,
-                      current.filter((x) => x !== n),
-                    );
-                  } else {
-                    set(field.key, null);
-                  }
-                }}
-              >
-                {n} ×
-              </button>
-            ))}
-        </div>
-        {!eligible.length ? (
-          <span className="ed-help">No matching column.</span>
-        ) : null}
-      </div>
-    );
-  }
-
-  if (field.widget === "enum") {
-    const values = field.enumValues ?? [];
-    const current = params[field.key];
-    return (
-      <div
-        className={fieldClass}
-        data-ed-field={field.key}
-        data-ed-missing={missing ? "1" : undefined}
-      >
-        <span className="ed-label">{field.label}</span>
-        <div className="chip-row">
-          {values.map((o) => {
-            const isNullOpt = o === "" || o === "__null__";
-            const value = isNullOpt ? null : o;
-            const on =
-              isNullOpt
-                ? current === null || current === undefined
-                : current === value;
-            const label =
-              isNullOpt ? "none" : o === " " ? "space" : o;
-            return (
-              <button
-                key={isNullOpt ? "__null__" : o}
-                type="button"
-                className={on ? "chip on" : "chip"}
-                onClick={() => set(field.key, value)}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-        {op === "drop_duplicates" && field.key === "keep" ? (
-          <span className="ed-help">
-            keep first/last requires sort_by. Prefer an identifier column, or
-            use keep none.
-          </span>
-        ) : null}
-      </div>
-    );
-  }
-
-  if (field.widget === "enum_list") {
-    const current = (params[field.key] as string[] | null | undefined) ?? [];
-    return (
-      <div
-        className={fieldClass}
-        data-ed-field={field.key}
-        data-ed-missing={missing ? "1" : undefined}
-      >
-        <span className="ed-label">{field.label}</span>
-        <div className="chip-row" role="group" aria-label={field.label}>
-          {(field.enumValues ?? []).map((o) => {
-            const on = current.includes(o);
-            return (
-              <button
-                key={o}
-                type="button"
-                className={on ? "chip on" : "chip"}
-                onClick={() => {
-                  const a = [...current];
-                  const i = a.indexOf(o);
-                  if (i >= 0) a.splice(i, 1);
-                  else a.push(o);
-                  set(field.key, a);
-                }}
-              >
-                {o}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
-  if (field.widget === "number_list" || field.widget === "string_list") {
-    const rawVal = params[field.key];
-    const isNum = field.widget === "number_list";
-    const display = Array.isArray(rawVal)
-      ? rawVal.join(", ")
-      : rawVal === null || rawVal === undefined
-        ? ""
-        : String(rawVal);
-    return (
-      <div className="ed-field">
-        <span className="ed-label">{field.label}</span>
-        <input
-          aria-label={field.label}
-          className="ed-input"
-          value={display}
-          placeholder={isNum ? "e.g. 0, 10, 20, 50" : "e.g. a, b, c"}
-          onChange={(e) => {
-            const raw = e.target.value;
-            if (raw.trim() === "") {
-              set(field.key, null);
-              return;
-            }
-            if (isNum) {
-              const nums = raw.split(",").map((s) => Number(s.trim()));
-              if (nums.some((n) => Number.isNaN(n))) {
-                set(field.key, raw);
-              } else {
-                set(field.key, nums);
-              }
-            } else {
-              set(field.key, raw.split(",").map((s) => s.trim()).filter(Boolean));
-            }
-          }}
-          onBlur={() => {
-            if (isNum && typeof params[field.key] === "string") {
-              const nums = String(params[field.key])
-                .split(",")
-                .map((s) => Number(s.trim()))
-                .filter((n) => !Number.isNaN(n));
-              set(field.key, nums.length ? nums : null);
-            }
-          }}
-        />
-      </div>
-    );
-  }
-
-  if (field.widget === "bool") {
-    return (
-      <div className="ed-field">
-        <span className="ed-label">{field.label}</span>
-        <div className="chip-row">
-          {[true, false].map((b) => (
-            <button
-              key={String(b)}
-              type="button"
-              className={params[field.key] === b ? "chip on" : "chip"}
-              onClick={() => set(field.key, b)}
-            >
-              {b ? "yes" : "no"}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (field.widget === "number" || field.widget === "text") {
-    const rawVal = params[field.key];
-    const display =
-      rawVal === null || rawVal === undefined ? "" : String(rawVal);
-    // Engine fill_value is string | number; numeric columns must get a number
-    // (string "0" raises). Coerce while typing when selected cols are numeric.
-    const asNumber =
-      field.widget === "number" ||
-      (field.key === "fill_value" &&
-        imputeConstantNeedsNumber(params, columns));
-    return (
-      <div
-        className="ed-field"
-        data-ed-field={field.key}
-        data-ed-fill-numeric={
-          field.key === "fill_value" ? (asNumber ? "1" : "0") : undefined
-        }
-      >
-        <span className="ed-label">{field.label}</span>
-        <input
-          aria-label={field.label}
-          className="ed-input"
-          inputMode={asNumber ? "decimal" : undefined}
-          value={display}
-          placeholder={
-            asNumber
-              ? field.key === "fill_value"
-                ? "e.g. 0"
-                : "optional"
-              : field.key === "fill_value"
-                ? "e.g. MISSING"
-                : undefined
-          }
-          onChange={(e) => {
-            const raw = e.target.value;
-            if (asNumber) {
-              if (raw.trim() === "") {
-                set(field.key, null);
-                return;
-              }
-              const v = Number(raw);
-              // Keep raw string while incomplete (e.g. "-" / "1.") so the user
-              // can finish typing; coerce on blur via pending-step path.
-              set(field.key, Number.isNaN(v) ? raw : v);
-            } else if (field.key === "name") {
-              set(field.key, raw.replace(/[^A-Za-z0-9_]/g, "_"));
-            } else {
-              set(field.key, raw);
-            }
-          }}
-          onBlur={() => {
-            if (!asNumber || field.key !== "fill_value") return;
-            const cur = params[field.key];
-            if (typeof cur !== "string") return;
-            const trimmed = cur.trim();
-            if (trimmed === "") {
-              set(field.key, null);
-              return;
-            }
-            const v = Number(trimmed);
-            if (!Number.isNaN(v)) set(field.key, v);
-          }}
-        />
-      </div>
-    );
-  }
-
-  if (field.widget === "auto_number") {
-    const rawVal = params[field.key];
-    const isAuto =
-      rawVal === "auto" || rawVal === undefined || rawVal === null;
-    const numDisplay = isAuto ? "" : String(rawVal);
-    return (
-      <div className="ed-field" data-ed-field={field.key}>
-        <span className="ed-label">{field.label}</span>
-        <div className="chip-row" style={{ alignItems: "center" }}>
-          <button
-            type="button"
-            className={isAuto ? "chip on" : "chip"}
-            aria-pressed={isAuto}
-            onClick={() => set(field.key, "auto")}
-          >
-            auto
-          </button>
-          <input
-            aria-label={field.label}
-            className="ed-input"
-            type="number"
-            min={2}
-            max={200}
-            placeholder="count"
-            value={numDisplay}
-            style={{ width: 88 }}
-            onChange={(e) => {
-              const raw = e.target.value.trim();
-              if (raw === "") {
-                set(field.key, "auto");
-                return;
-              }
-              const v = Number(raw);
-              if (!Number.isNaN(v)) set(field.key, v);
-            }}
-          />
-        </div>
-      </div>
-    );
-  }
-
   if (field.widget === "sentinels") {
     return (
       <SentinelsField
@@ -870,18 +526,12 @@ function Field({
     return (
       <div className="ed-field">
         <span className="ed-label">Column → new name</span>
-        <div className="chip-row">
-          {columns.map((c) => (
-            <button
-              key={c.name}
-              type="button"
-              className={from === c.name ? "small-chip on" : "small-chip"}
-              onClick={() => set("mapping", { [c.name]: to || c.name })}
-            >
-              {c.name}
-            </button>
-          ))}
-        </div>
+        <Chips
+          small
+          options={columns.map((c) => c.name)}
+          isOn={(n) => from === n}
+          onPick={(n) => set("mapping", { [n]: to || n })}
+        />
         <input
           aria-label="New name"
           className="ed-input"
@@ -903,33 +553,20 @@ function Field({
     return (
       <div className="ed-field">
         <span className="ed-label">Column</span>
-        <div className="chip-row">
-          {columns.map((c) => (
-            <button
-              key={c.name}
-              type="button"
-              className={col === c.name ? "small-chip on" : "small-chip"}
-              onClick={() => set("dtypes", { [c.name]: dtype })}
-            >
-              {c.name}
-            </button>
-          ))}
-        </div>
+        <Chips
+          small
+          options={columns.map((c) => c.name)}
+          isOn={(n) => col === n}
+          onPick={(n) => set("dtypes", { [n]: dtype })}
+        />
         <span className="ed-label">Type</span>
-        <div className="chip-row">
-          {["float", "int", "str", "bool"].map((t) => (
-            <button
-              key={t}
-              type="button"
-              className={dtype === t ? "chip on" : "chip"}
-              onClick={() => {
-                if (col) set("dtypes", { [col]: t });
-              }}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
+        <Chips
+          options={["float", "int", "str", "bool"]}
+          isOn={(t) => dtype === t}
+          onPick={(t) => {
+            if (col) set("dtypes", { [col]: t });
+          }}
+        />
       </div>
     );
   }
@@ -973,7 +610,40 @@ function Field({
     );
   }
 
-  return null;
+  // Engine fill_value is string | number; numeric columns must get a number
+  // (string "0" raises), so it is typed as a number field for those.
+  const fill = field.key === "fill_value";
+  const fillNumeric = fill && imputeConstantNeedsNumber(params, columns);
+  const control = fieldControl(
+    fill ? { ...field, widget: fillNumeric ? "number" : "text" } : field,
+    params[field.key],
+    (v) => set(field.key, v),
+    columns,
+    { placeholder: fill ? (fillNumeric ? "e.g. 0" : "e.g. MISSING") : undefined },
+  );
+  if (!control) return null;
+  const missing = field.required && !fieldValuePresent(params[field.key]);
+  return (
+    <div
+      className={missing ? "ed-field ed-field-missing" : "ed-field"}
+      data-ed-field={field.key}
+      data-ed-missing={missing ? "1" : undefined}
+      data-ed-fill-numeric={fill ? (fillNumeric ? "1" : "0") : undefined}
+    >
+      <span className="ed-label">{field.label}</span>
+      {field.description &&
+      (field.widget === "column" || field.widget === "columns") ? (
+        <span className="ed-help">{field.description}</span>
+      ) : null}
+      {control}
+      {op === "drop_duplicates" && field.key === "keep" ? (
+        <span className="ed-help">
+          keep first/last requires sort_by. Prefer an identifier column, or
+          use keep none.
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 function SentinelsField({
@@ -991,18 +661,12 @@ function SentinelsField({
   return (
     <div className="ed-field">
       <span className="ed-label">Column</span>
-      <div className="chip-row">
-        {columns.map((c) => (
-          <button
-            key={c.name}
-            type="button"
-            className={col === c.name ? "small-chip on" : "small-chip"}
-            onClick={() => onChange({ [c.name]: values.length ? values : [-999] })}
-          >
-            {c.name}
-          </button>
-        ))}
-      </div>
+      <Chips
+        small
+        options={columns.map((c) => c.name)}
+        isOn={(n) => col === n}
+        onPick={(n) => onChange({ [n]: values.length ? values : [-999] })}
+      />
       <span className="ed-label">Sentinel values (comma separated)</span>
       <input
         aria-label="Sentinel values"
@@ -1079,18 +743,12 @@ function CategoriesField({
   return (
     <div className="ed-field">
       <span className="ed-label">Column</span>
-      <div className="chip-row">
-        {textCols.map((c) => (
-          <button
-            key={c.name}
-            type="button"
-            className={col === c.name ? "small-chip on" : "small-chip"}
-            onClick={() => pickCol(c.name)}
-          >
-            {c.name}
-          </button>
-        ))}
-      </div>
+      <Chips
+        small
+        options={textCols.map((c) => c.name)}
+        isOn={(n) => col === n}
+        onPick={pickCol}
+      />
       <span className="ed-label">Order, low → high</span>
       <div className="order-list">
         {order.map((o, i) => (

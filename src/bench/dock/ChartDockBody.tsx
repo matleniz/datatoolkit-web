@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "../../api/client";
-import type { Result } from "../../api/types";
-import { EngineError } from "../../api/types";
+import { useKeyedAsync } from "../../hooks";
 import {
   ensureWorkspaceSaved,
   useAppDispatch,
@@ -88,12 +87,7 @@ export function ChartDockBody() {
   const { workspace, selection, chartDraft } = useAppState();
   const dispatch = useAppDispatch();
   const bench = useWorkbenchData();
-  const [result, setResult] = useState<Result | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
   const [saveName, setSaveName] = useState("");
-  const [runParams, setRunParams] = useState<string | null>(null);
-  const [shownIdentity, setShownIdentity] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
 
   const identity = bench.identity;
@@ -140,55 +134,30 @@ export function ChartDockBody() {
     dispatch,
   ]);
 
-  useEffect(() => {
-    if (!workspace?.datasets.train.x.path) {
-      setError(null);
-      setResult(null);
-      setReady(true);
-      return;
-    }
-    if (!chartDraft) {
-      setReady(false);
-      return;
-    }
-    let cancelled = false;
-    const idKey = identity.key;
-    (async () => {
-      setReady(false);
-      setError(null);
-      setResult(null);
-      setRunParams(null);
-      setShownIdentity(null);
-      try {
-        await ensureWorkspaceSaved(workspace);
-        if (cancelled) return;
-        const source = identitySource(identity);
-        const available: Record<string, unknown> = {
-          source,
-          ...chartDraftToParams(chartDraft),
-        };
-        const schema = await apiClient.keySchema("chart");
-        if (cancelled) return;
-        const params = keyParamsFromSchema(schema, available);
-        const r = await apiClient.runKey("chart", params);
-        if (cancelled) return;
-        setRunParams(JSON.stringify(params));
-        setResult(r);
-      } catch (e) {
-        if (cancelled) return;
-        setError(e instanceof EngineError ? e.message : String(e));
-      } finally {
-        if (!cancelled) {
-          setReady(true);
-          setShownIdentity(idKey);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // identity.key covers role, version and the steps hash (MAT-175).
-  }, [workspace, identity.key, chartDraft]); // eslint-disable-line react-hooks/exhaustive-deps
+  // identity.key covers role, version and the steps hash (MAT-175); the draft
+  // counts by content, so unrelated workspace edits never re-run the chart.
+  const run = useKeyedAsync(
+    workspace?.datasets.train.x.path
+      ? `${identity.key}\0${JSON.stringify(chartDraft)}`
+      : null,
+    async (alive) => {
+      await ensureWorkspaceSaved(workspace);
+      const schema = await apiClient.keySchema("chart");
+      if (!alive() || !chartDraft) return undefined;
+      const params = keyParamsFromSchema(schema, {
+        source: identitySource(identity),
+        ...chartDraftToParams(chartDraft),
+      });
+      const result = await apiClient.runKey("chart", params);
+      return { result, runParams: JSON.stringify(params) };
+    },
+    !!chartDraft,
+  );
+  const { ready, error } = run;
+  const shown = ready ? run.value : undefined;
+  const result = shown?.result ?? null;
+  const runParams = shown?.runParams ?? null;
+  const shownIdentity = ready ? identity.key : null;
 
   const saved = workspace?.charts ?? [];
   const patch = (p: Partial<ChartDraft>) =>
