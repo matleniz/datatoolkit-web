@@ -6,14 +6,17 @@ import { fileURLToPath } from "node:url";
 import type { Workspace } from "../src/api/types";
 
 const here = dirname(fileURLToPath(import.meta.url));
-export const e2eScreenshotsDir = join(here, "screenshots");
-export const docsScreenshotsDir = join(here, "../docs/screenshots/t1-e2e");
+const e2eScreenshotsDir = join(here, "screenshots");
+const docsScreenshotsDir = join(here, "../docs/screenshots/t1-e2e");
 export const fixturesDir = join(here, "fixtures");
+
+/** Set DTK_E2E_SCREENSHOTS=1 to also refresh the committed PNGs under docs/screenshots. */
+const writeDocsScreenshots = process.env.DTK_E2E_SCREENSHOTS === "1";
 
 /**
  * Delete prior e2e screenshots for a flow so a failed run never leaves stale PNGs.
  * Call at the start of each flow before the first capture.
- * (docs/screenshots are overwritten in place and left for the PR.)
+ * (docs/screenshots are only overwritten in place with DTK_E2E_SCREENSHOTS=1.)
  */
 export function clearFlowScreenshots(flow: string): void {
   rmSync(join(e2eScreenshotsDir, flow), { recursive: true, force: true });
@@ -28,10 +31,11 @@ export async function captureFlowScreenshot(
   await expect(page.locator(".dock-window:has-text('Loading…')")).toHaveCount(0);
   await expect(page.getByText("Loading workspace…")).toBeHidden();
   const e2ePath = join(e2eScreenshotsDir, flow, fileName);
-  const docsPath = join(docsScreenshotsDir, flow, fileName);
   mkdirSync(dirname(e2ePath), { recursive: true });
-  mkdirSync(dirname(docsPath), { recursive: true });
   await page.screenshot({ path: e2ePath, fullPage: true });
+  if (!writeDocsScreenshots) return;
+  const docsPath = join(docsScreenshotsDir, flow, fileName);
+  mkdirSync(dirname(docsPath), { recursive: true });
   await page.screenshot({ path: docsPath, fullPage: true });
 }
 
