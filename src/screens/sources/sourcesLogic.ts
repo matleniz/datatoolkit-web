@@ -1,6 +1,7 @@
 import type {
   CsvSource,
   Datasets,
+  EngineError,
   ExcelSource,
   FileSourceSpec,
   JsonSource,
@@ -60,6 +61,18 @@ export interface WorkspaceSourcesState {
   targetCol: string | null;
   mergeKey: string | null;
   mergeInTest: boolean;
+}
+
+/** Engine errors are `{type, message}`; anything else is stringified. */
+export function engineMessage(err: unknown): string {
+  if (err && typeof err === "object") {
+    const e = err as Partial<EngineError>;
+    const msg = typeof e.message === "string" ? e.message : "";
+    const typ = typeof e.type === "string" ? e.type : "";
+    if (typ && msg) return `${typ}: ${msg}`;
+    if (msg) return msg;
+  }
+  return String(err);
 }
 
 export const ROLE_LABELS: Record<FileRole, string> = {
@@ -124,7 +137,7 @@ export function getCommonColumns(colsA: string[], colsB: string[]): string[] {
   return colsA.filter((c) => setB.has(c));
 }
 
-export function isIndexColumnName(name: string): boolean {
+function isIndexColumnName(name: string): boolean {
   return INDEX_NAMES.has(name.trim().toLowerCase());
 }
 
@@ -532,53 +545,6 @@ export function formatDetectedFromSpec(
     parts.push(`${shape[0]} × ${shape[1]}`);
   }
 
-  return parts.join(" · ");
-}
-
-/**
- * Format detected specs from file_inspect key output.
- * Prefer load_spec when present; otherwise csv-shaped metrics (legacy).
- */
-export function formatDetected(
-  metrics: Record<string, unknown>,
-  shape?: [number, number] | null,
-  headerOverride?: number | null,
-): string {
-  if (typeof metrics.load_spec === "string" && metrics.load_spec) {
-    try {
-      const parsed = JSON.parse(metrics.load_spec) as FileSourceSpec;
-      if (parsed && typeof parsed === "object" && "kind" in parsed) {
-        const withHeader =
-          headerOverride !== undefined &&
-          headerOverride !== null &&
-          (parsed.kind === "csv" || parsed.kind === "excel")
-            ? { ...parsed, header: headerOverride }
-            : parsed;
-        return formatDetectedFromSpec(withHeader, shape, metrics);
-      }
-    } catch {
-      /* fall through */
-    }
-  }
-
-  const parts: string[] = ["csv"];
-  const delimRaw = String(metrics.delimiter ?? ",");
-  const delim = delimRaw.replace(/^'|'$/g, "").replace(/'/g, '"') || ",";
-  parts.push(`sep ${delim.startsWith('"') ? delim : JSON.stringify(delim)}`);
-  parts.push(String(metrics.encoding_guess ?? "utf-8"));
-  parts.push(
-    `header ${
-      headerOverride !== undefined && headerOverride !== null
-        ? headerOverride
-        : 0
-    }`,
-  );
-  if (shape && shape[0] !== undefined && shape[1] !== undefined) {
-    parts.push(`${shape[0]} × ${shape[1]}`);
-  }
-  if (metrics.decimal_guess === ",") {
-    parts.push('decimal "," seen');
-  }
   return parts.join(" · ");
 }
 

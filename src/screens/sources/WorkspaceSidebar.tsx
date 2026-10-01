@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from "react";
 
 import { apiClient } from "../../api/client";
-import type { EngineError, Workspace, WorkspaceSummary } from "../../api/types";
+import type { Workspace, WorkspaceSummary } from "../../api/types";
 import { abandonPendingWorkspaceSave } from "../../state/AppStore";
+import { engineMessage } from "./sourcesLogic";
 import {
   deleteConfirmMessage,
   filterWorkspaceSummaries,
@@ -15,17 +16,6 @@ import {
   type WorkspaceSortDir,
   type WorkspaceSortKey,
 } from "./workspaceManagerLogic";
-
-function engineMessage(err: unknown): string {
-  if (err && typeof err === "object") {
-    const e = err as Partial<EngineError>;
-    const msg = typeof e.message === "string" ? e.message : "";
-    const typ = typeof e.type === "string" ? e.type : "";
-    if (typ && msg) return `${typ}: ${msg}`;
-    if (msg) return msg;
-  }
-  return String(err);
-}
 
 export interface WorkspaceSidebarProps {
   summaries: WorkspaceSummary[];
