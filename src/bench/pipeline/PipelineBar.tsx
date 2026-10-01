@@ -11,6 +11,7 @@ import {
   stepSummary,
 } from "../stages";
 import { useWorkbenchData, type PipelineShape } from "../WorkbenchData";
+import { PipelineHistory } from "./PipelineHistory";
 import { rawNodeSubLabel } from "./rawNodeSubLabel";
 
 function Arrow({ dashed = false, accent = false }: { dashed?: boolean; accent?: boolean }) {
@@ -266,6 +267,8 @@ export function PipelineBar() {
           + Step
         </button>
       </div>
+
+      <PipelineHistory />
 
       <div className="pipeline-legend">
         {STAGES.map((st) => (

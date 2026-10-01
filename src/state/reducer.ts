@@ -15,6 +15,14 @@ import {
 import { applyGridLayout, emptyDockLayouts, syncDockLayouts } from "./dockLayout";
 import type { DockPos, DockRect, DockSize, DockState, ToolId } from "./dockTypes";
 import { loadStoredDock } from "./dockStorage";
+import {
+  EMPTY_STEP_HISTORY,
+  recordSteps,
+  redoSteps,
+  sameSteps,
+  undoSteps,
+  type StepHistory,
+} from "./stepHistory";
 import type { ToolViewState } from "./toolViews";
 import type { WorkspaceSourcesState } from "./sourcesState";
 
@@ -104,6 +112,11 @@ export interface AppState {
    * Switching workspaces must not leak another workspace's files.
    */
   filesByWorkspace: Record<string, WorkspaceSourcesState>;
+  /**
+   * Undo / redo snapshots of the open workspace's steps (datatoolkit-issues#16),
+   * in memory; reset when another workspace (or other steps) is loaded.
+   */
+  stepHistory: StepHistory;
 }
 
 export const MAX_DOCK_TOOLS = 4;
@@ -150,6 +163,7 @@ export const initialState: AppState = {
   chartDraft: null,
   benchError: null,
   filesByWorkspace: {},
+  stepHistory: EMPTY_STEP_HISTORY,
 };
 
 /** Keep `align: true` steps first (prototype / FRONT-WEB alignment rule). */
@@ -236,7 +250,10 @@ export type AppAction =
   | { type: "SET_CHARTS"; charts: ChartSpec[] }
   | { type: "SET_BENCH_ERROR"; message: string | null }
   | { type: "ADD_STEP"; step: Step }
-  | { type: "REMOVE_STEP"; index: number };
+  | { type: "REMOVE_STEP"; index: number }
+  /** Pipeline history only (datatoolkit-issues#16); no-op while editing a step. */
+  | { type: "UNDO_STEPS" }
+  | { type: "REDO_STEPS" };
 
 function openTool(tools: ToolId[], id: ToolId): ToolId[] {
   const next = [...tools];
@@ -717,14 +734,66 @@ function reduceWorkspace(
   }
 }
 
+/** Undo / redo: restore a steps snapshot and replay at the latest version. */
+function reduceStepHistory(
+  state: AppState,
+  action: AppAction,
+): AppState | undefined {
+  if (action.type !== "UNDO_STEPS" && action.type !== "REDO_STEPS") {
+    return undefined;
+  }
+  if (!state.workspace || state.editor) return state;
+  const move = action.type === "UNDO_STEPS" ? undoSteps : redoSteps;
+  const moved = move(state.stepHistory, state.workspace.steps);
+  if (!moved) return state;
+  return withWorkspace(
+    state,
+    { steps: moved.steps },
+    {
+      stepHistory: moved.history,
+      viewVersion: null,
+      selection: { ...state.selection, cell: null },
+      benchError: null,
+    },
+  );
+}
+
+/**
+ * Record a steps change as undoable. Loading a workspace keeps the history
+ * only when it is the same workspace with the same steps (e.g. a Sources
+ * edit); otherwise it starts empty.
+ */
+function trackStepHistory(
+  prev: AppState,
+  next: AppState,
+  action: AppAction,
+): AppState {
+  if (action.type === "UNDO_STEPS" || action.type === "REDO_STEPS") return next;
+  const before = prev.workspace;
+  const after = next.workspace;
+  if (action.type === "SET_WORKSPACE") {
+    const kept =
+      before !== null &&
+      after !== null &&
+      before.name === after.name &&
+      JSON.stringify(before.steps) === JSON.stringify(after.steps);
+    return kept || next.stepHistory === EMPTY_STEP_HISTORY
+      ? next
+      : { ...next, stepHistory: EMPTY_STEP_HISTORY };
+  }
+  if (!before || !after || sameSteps(before.steps, after.steps)) return next;
+  return { ...next, stepHistory: recordSteps(next.stepHistory, before.steps) };
+}
+
 export function appReducer(state: AppState, action: AppAction): AppState {
-  return (
+  const next =
+    reduceStepHistory(state, action) ??
     reduceShell(state, action) ??
     reduceSelection(state, action) ??
     reduceEditor(state, action) ??
     reduceDock(state, action) ??
     reduceToolState(state, action) ??
     reduceWorkspace(state, action) ??
-    state
-  );
+    state;
+  return trackStepHistory(state, next, action);
 }
