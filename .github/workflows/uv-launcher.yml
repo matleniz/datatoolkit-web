@@ -10,6 +10,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      engine_ref:
+        description: "Engine git ref to run against instead of main (e.g. a PR branch of matleniz/datatoolkit)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -42,6 +47,13 @@ jobs:
           url=$("$PY" -c 'import pathlib, sys; print(pathlib.Path(sys.argv[1]).resolve().as_uri())' "$RUNNER_TEMP/studio-release")
           echo "DTK_STUDIO_URL=$url" >> "$GITHUB_ENV"
           echo "DTK_LAUNCHER_SRC=$GITHUB_WORKSPACE/launcher" >> "$GITHUB_ENV"
+          if [ -n "$ENGINE_REF" ]; then
+            # Every uv run below (scripts included) resolves the engine at that ref.
+            printf 'dtk-engine[api] @ git+https://github.com/matleniz/datatoolkit@%s\n' "$ENGINE_REF" > "$RUNNER_TEMP/overrides.txt"
+            echo "UV_OVERRIDE=$RUNNER_TEMP/overrides.txt" >> "$GITHUB_ENV"
+          fi
+        env:
+          ENGINE_REF: ${{ inputs.engine_ref }}
 
       # The one-liners first, before setup-uv puts uv on PATH.
       - name: sh one-liner, no Docker daemon -> uv mode, installs uv
@@ -81,11 +93,13 @@ jobs:
           UV_PYTHON_PREFERENCE: only-managed
           DTK_HOME: ${{ runner.temp }}/dtk-uvx
         run: |
-          # Hold 8080 so the launcher has to move to 8081.
-          "$PY" -c 'import socket, time; s = socket.socket(); s.bind(("127.0.0.1", 8080)); s.listen(); time.sleep(600)' &
+          # Hold 8090 (not 8080: the previous step leaves it in TIME_WAIT) so
+          # the launcher has to move to 8091.
+          "$PY" -c 'import socket, time; s = socket.socket(); s.bind(("127.0.0.1", 8090)); s.listen(); time.sleep(900)' &
           holder=$!
+          trap 'kill "$holder" 2>/dev/null || true' EXIT
           sleep 2
-          DTK_STUDIO_URL=file:///nonexistent "$PY" scripts/smoke-uv-launcher.py --port 8081 \
-            --expect 'using the cached one' --expect 'Port 8080 is busy, using 8081' -- \
-            uvx --from ./launcher dtk-studio --no-open --refresh
-          kill "$holder" || true
+          kill -0 "$holder"
+          DTK_STUDIO_URL=file:///nonexistent "$PY" scripts/smoke-uv-launcher.py --port 8091 \
+            --expect 'using the cached one' --expect 'Port 8090 is busy, using 8091' -- \
+            uvx --from ./launcher dtk-studio --no-open --refresh --port 8090

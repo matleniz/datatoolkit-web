@@ -29,6 +29,18 @@ def get(url):
         return exc.code, ""
 
 
+def read(path):
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        return fh.read()
+
+
+def answered(base):
+    try:
+        return get(f"{base}/api/keys")[0] == 200
+    except OSError:
+        return False
+
+
 def kill_tree(proc):
     if proc.poll() is not None:
         return
@@ -53,8 +65,9 @@ def main():
     cmd = args.cmd[1:] if args.cmd[:1] == ["--"] else args.cmd
     base = f"http://127.0.0.1:{args.port}"
 
-    # Lives until the process exits; read back after the kill.
-    log = tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace")  # noqa: SIM115
+    # The child writes it through its own handle; we read it by path.
+    log_path = os.path.join(tempfile.mkdtemp(), "launcher.log")
+    log = open(log_path, "wb")  # noqa: SIM115 (closed after the kill)
     extra = (
         {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
         if os.name == "nt"
@@ -68,13 +81,13 @@ def main():
     try:
         deadline = time.monotonic() + TIMEOUT
         while True:
-            try:
-                if get(f"{base}/api/keys")[0] == 200:
-                    break
-            except OSError:
-                pass
+            if answered(base):
+                break
             if proc.poll() is not None:
                 failures.append(f"exited with {proc.returncode} before answering")
+                break
+            if "Studio is running: http://localhost:" in read(log_path) and not answered(base):
+                failures.append(f"running, but not on port {args.port}")
                 break
             if time.monotonic() > deadline:
                 failures.append(f"no answer on {base}/api/keys within {TIMEOUT}s")
@@ -96,8 +109,8 @@ def main():
                     failures.append(f"GET {path}: {got}, expected {status} with {text!r}")
     finally:
         kill_tree(proc)
-        log.seek(0)
-        output = log.read()
+        log.close()
+        output = read(log_path)
         print("----- launcher output -----")
         print(output)
         print("---------------------------", flush=True)
