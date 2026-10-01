@@ -303,30 +303,30 @@ function withWorkspace(
   return { ...state, ...extra, workspace: { ...state.workspace, ...patch } };
 }
 
-export function appReducer(state: AppState, action: AppAction): AppState {
+/** Target column mirrored for a newly set workspace (null when closed). */
+function targetColumnFor(
+  ws: Workspace | null,
+  current: string | null,
+): string | null {
+  if (ws?.datasets.train.target_column) return ws.datasets.train.target_column;
+  if (ws?.name === "churn") return "churn";
+  // y-file join: prefer a conventional label name for the glyph / keys.
+  if (ws?.datasets.train.y) return "target";
+  return ws ? current : null;
+}
+
+/*
+ * Sub-reducers, one per state domain. Each owns a disjoint set of action
+ * types and returns undefined for the others, so `appReducer` tries them in
+ * turn.
+ */
+
+/** Screen, panels, header badges and Sources file lists. */
+function reduceShell(
+  state: AppState,
+  action: AppAction,
+): AppState | undefined {
   switch (action.type) {
-    case "SET_WORKSPACE": {
-      const raw = action.workspace;
-      const ws = raw ? hydrateWorkspaceCharts(raw) : null;
-      let targetColumn = state.targetColumn;
-      if (ws?.datasets.train.target_column) {
-        targetColumn = ws.datasets.train.target_column;
-      } else if (ws?.name === "churn") {
-        targetColumn = "churn";
-      } else if (ws?.datasets.train.y) {
-        // y-file join: prefer a conventional label name for the glyph / keys.
-        targetColumn = "target";
-      } else if (!ws) {
-        targetColumn = null;
-      }
-      return {
-        ...state,
-        workspace: ws,
-        sugCount: 0,
-        targetColumn,
-        dock: dockForWorkspace(state, ws),
-      };
-    }
     case "SET_SCREEN":
       return { ...state, screen: action.screen, ctx: null };
     case "SET_ROLE":
@@ -344,8 +344,44 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         panels: { ...state.panels, [action.side]: action.collapsed },
       };
     }
-    case "SET_STEPS":
-      return withWorkspace(state, { steps: orderSteps(action.steps) });
+    case "SET_SHOW_EXPORT":
+      return { ...state, showExport: action.show };
+    case "SET_SUG_STAGE":
+      return { ...state, sugStage: action.stage };
+    case "SET_SUG_COUNT":
+      return { ...state, sugCount: action.count };
+    case "SET_ALIGN_TO_DECIDE_COUNT":
+      return { ...state, alignToDecideCount: action.count };
+    case "SET_WORKSPACE_FILES":
+      return {
+        ...state,
+        filesByWorkspace: {
+          ...state.filesByWorkspace,
+          [action.name]: action.sources,
+        },
+      };
+    case "CLEAR_WORKSPACE_FILES": {
+      const next = { ...state.filesByWorkspace };
+      delete next[action.name];
+      return { ...state, filesByWorkspace: next };
+    }
+    case "SET_TARGET_COLUMN":
+      return { ...state, targetColumn: action.name };
+    case "SET_DIST_BY":
+      return { ...state, distBy: action.by };
+    case "SET_BENCH_ERROR":
+      return { ...state, benchError: action.message };
+    default:
+      return undefined;
+  }
+}
+
+/** Grid selection and the column context menu. */
+function reduceSelection(
+  state: AppState,
+  action: AppAction,
+): AppState | undefined {
+  switch (action.type) {
     case "TOGGLE_MULTI":
       return {
         ...state,
@@ -412,6 +448,17 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
     case "CLOSE_CTX":
       return { ...state, ctx: null };
+    default:
+      return undefined;
+  }
+}
+
+/** Step editor (right slot), including formula token insertion. */
+function reduceEditor(
+  state: AppState,
+  action: AppAction,
+): AppState | undefined {
+  switch (action.type) {
     case "OPEN_EDITOR":
       return {
         ...state,
@@ -436,6 +483,41 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     case "CLOSE_EDITOR":
       return { ...state, editor: null };
+    case "INSERT_FORMULA_TOKEN": {
+      const token = action.token;
+      if (state.editor?.op === "formula") {
+        const prev = String(state.editor.params.expr ?? "").replace(/\s+$/, "");
+        const expr = prev ? `${prev} ${token}` : token;
+        return {
+          ...state,
+          editor: {
+            ...state.editor,
+            params: { ...state.editor.params, expr },
+          },
+          ctx: null,
+        };
+      }
+      return {
+        ...state,
+        editor: {
+          op: "formula",
+          params: { expr: token },
+          target: "both",
+        },
+        ctx: null,
+      };
+    }
+    default:
+      return undefined;
+  }
+}
+
+/** Dock windows: open / close, position, size, grid layout. */
+function reduceDock(
+  state: AppState,
+  action: AppAction,
+): AppState | undefined {
+  switch (action.type) {
     case "OPEN_TOOL":
       return {
         ...withDock(state, { tools: openTool(state.dock.tools, action.id) }),
@@ -469,109 +551,17 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       });
     case "SET_MAXIMIZED":
       return { ...state, dock: { ...state.dock, maximized: action.id } };
+    default:
+      return undefined;
+  }
+}
 
-    /* ---- W3: variables / suggestions / export ---- */
-    case "SET_SHOW_EXPORT":
-      return { ...state, showExport: action.show };
-    case "SET_SUG_STAGE":
-      return { ...state, sugStage: action.stage };
-    case "SET_SUG_COUNT":
-      return { ...state, sugCount: action.count };
-    case "ADD_VARIABLE": {
-      const vars = state.workspace?.variables ?? [];
-      if (vars.some((v) => v.name === action.variable.name)) return state;
-      return withWorkspace(state, { variables: [...vars, action.variable] });
-    }
-    case "REMOVE_VARIABLE":
-      return withWorkspace(state, {
-        variables: (state.workspace?.variables ?? []).filter(
-          (v) => v.name !== action.name,
-        ),
-      });
-    case "SET_VARIABLES":
-      return withWorkspace(state, { variables: action.variables });
-    case "INSERT_FORMULA_TOKEN": {
-      const token = action.token;
-      if (state.editor?.op === "formula") {
-        const prev = String(state.editor.params.expr ?? "").replace(/\s+$/, "");
-        const expr = prev ? `${prev} ${token}` : token;
-        return {
-          ...state,
-          editor: {
-            ...state.editor,
-            params: { ...state.editor.params, expr },
-          },
-          ctx: null,
-        };
-      }
-      return {
-        ...state,
-        editor: {
-          op: "formula",
-          params: { expr: token },
-          target: "both",
-        },
-        ctx: null,
-      };
-    }
-
-    /* ---------- Stream W1 actions (Sources & Alignment) ---------- */
-    case "SET_ALIGN_TO_DECIDE_COUNT":
-      return { ...state, alignToDecideCount: action.count };
-
-    case "ADD_ALIGN_STEP": {
-      if (!state.workspace) return state;
-      const s = { ...action.step, align: true };
-      const current = state.workspace.steps;
-      const alignCount = current.filter((x) => x.align).length;
-      const steps = [...current];
-      steps.splice(alignCount, 0, s);
-      return withWorkspace(state, { steps });
-    }
-
-    case "REMOVE_STEP_BY_INDEX":
-      return withWorkspace(state, {
-        steps: (state.workspace?.steps ?? []).filter(
-          (_, i) => i !== action.index,
-        ),
-      });
-
-    case "SET_TEST_DECIMAL": {
-      if (!state.workspace || !state.workspace.datasets.test) return state;
-      const testX = state.workspace.datasets.test.x;
-      if (testX.kind !== "csv") return state;
-      const updatedX: CsvSource = {
-        ...testX,
-        decimal: action.decimal ?? undefined,
-      };
-      return withWorkspace(state, {
-        datasets: {
-          ...state.workspace.datasets,
-          test: { ...state.workspace.datasets.test, x: updatedX },
-        },
-      });
-    }
-
-    case "SET_WORKSPACE_FILES":
-      return {
-        ...state,
-        filesByWorkspace: {
-          ...state.filesByWorkspace,
-          [action.name]: action.sources,
-        },
-      };
-
-    case "CLEAR_WORKSPACE_FILES": {
-      const next = { ...state.filesByWorkspace };
-      delete next[action.name];
-      return { ...state, filesByWorkspace: next };
-    }
-
-    /* ---------- W2 workbench-core ---------- */
-    case "SET_TARGET_COLUMN":
-      return { ...state, targetColumn: action.name };
-    case "SET_DIST_BY":
-      return { ...state, distBy: action.by };
+/** Per-window analysis params and views, and the Chart tool draft. */
+function reduceToolState(
+  state: AppState,
+  action: AppAction,
+): AppState | undefined {
+  switch (action.type) {
     case "SET_TOOL_PARAMS":
       return {
         ...state,
@@ -612,25 +602,30 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           ...action.patch,
         },
       };
-    case "ADD_CHART":
-      return withWorkspace(state, {
-        charts: [
-          ...(state.workspace?.charts ?? []).filter(
-            (c) => c.name !== action.chart.name,
-          ),
-          action.chart,
-        ],
-      });
-    case "REMOVE_CHART":
-      return withWorkspace(state, {
-        charts: (state.workspace?.charts ?? []).filter(
-          (c) => c.name !== action.name,
-        ),
-      });
-    case "SET_CHARTS":
-      return withWorkspace(state, { charts: action.charts });
-    case "SET_BENCH_ERROR":
-      return { ...state, benchError: action.message };
+    default:
+      return undefined;
+  }
+}
+
+/** The open workspace: steps, variables, charts, test options. */
+function reduceWorkspace(
+  state: AppState,
+  action: AppAction,
+): AppState | undefined {
+  switch (action.type) {
+    case "SET_WORKSPACE": {
+      const raw = action.workspace;
+      const ws = raw ? hydrateWorkspaceCharts(raw) : null;
+      return {
+        ...state,
+        workspace: ws,
+        sugCount: 0,
+        targetColumn: targetColumnFor(ws, state.targetColumn),
+        dock: dockForWorkspace(state, ws),
+      };
+    }
+    case "SET_STEPS":
+      return withWorkspace(state, { steps: orderSteps(action.steps) });
     case "ADD_STEP":
       return withWorkspace(
         state,
@@ -657,7 +652,79 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         },
       );
     }
+    case "ADD_ALIGN_STEP": {
+      if (!state.workspace) return state;
+      const s = { ...action.step, align: true };
+      const current = state.workspace.steps;
+      const alignCount = current.filter((x) => x.align).length;
+      const steps = [...current];
+      steps.splice(alignCount, 0, s);
+      return withWorkspace(state, { steps });
+    }
+    case "REMOVE_STEP_BY_INDEX":
+      return withWorkspace(state, {
+        steps: (state.workspace?.steps ?? []).filter(
+          (_, i) => i !== action.index,
+        ),
+      });
+    case "SET_TEST_DECIMAL": {
+      if (!state.workspace || !state.workspace.datasets.test) return state;
+      const testX = state.workspace.datasets.test.x;
+      if (testX.kind !== "csv") return state;
+      const updatedX: CsvSource = {
+        ...testX,
+        decimal: action.decimal ?? undefined,
+      };
+      return withWorkspace(state, {
+        datasets: {
+          ...state.workspace.datasets,
+          test: { ...state.workspace.datasets.test, x: updatedX },
+        },
+      });
+    }
+    case "ADD_VARIABLE": {
+      const vars = state.workspace?.variables ?? [];
+      if (vars.some((v) => v.name === action.variable.name)) return state;
+      return withWorkspace(state, { variables: [...vars, action.variable] });
+    }
+    case "REMOVE_VARIABLE":
+      return withWorkspace(state, {
+        variables: (state.workspace?.variables ?? []).filter(
+          (v) => v.name !== action.name,
+        ),
+      });
+    case "SET_VARIABLES":
+      return withWorkspace(state, { variables: action.variables });
+    case "ADD_CHART":
+      return withWorkspace(state, {
+        charts: [
+          ...(state.workspace?.charts ?? []).filter(
+            (c) => c.name !== action.chart.name,
+          ),
+          action.chart,
+        ],
+      });
+    case "REMOVE_CHART":
+      return withWorkspace(state, {
+        charts: (state.workspace?.charts ?? []).filter(
+          (c) => c.name !== action.name,
+        ),
+      });
+    case "SET_CHARTS":
+      return withWorkspace(state, { charts: action.charts });
     default:
-      return state;
+      return undefined;
   }
+}
+
+export function appReducer(state: AppState, action: AppAction): AppState {
+  return (
+    reduceShell(state, action) ??
+    reduceSelection(state, action) ??
+    reduceEditor(state, action) ??
+    reduceDock(state, action) ??
+    reduceToolState(state, action) ??
+    reduceWorkspace(state, action) ??
+    state
+  );
 }
