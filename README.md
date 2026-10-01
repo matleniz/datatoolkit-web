@@ -58,6 +58,10 @@ From a checkout, `docker compose up -d --build` builds both images locally.
 
 `fleet gate` = `npm run lint && npm run typecheck && npm test && npm run e2e`.
 
+e2e screenshots always go to `e2e/screenshots/` (gitignored). The committed
+copies under `docs/screenshots/t1-e2e/` are only rewritten with
+`DTK_E2E_SCREENSHOTS=1 npm run e2e`, so a plain run leaves the tree clean.
+
 ## Styling
 
 Design tokens: `src/theme/tokens.css` (prototype palette + IBM Plex /
