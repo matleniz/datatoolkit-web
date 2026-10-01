@@ -8,7 +8,7 @@ import { apiClient } from "../api/client";
 import type { WorkspaceRowsColumn } from "../api/types";
 import { useKeyedAsync } from "../hooks";
 import type { AppAction, EditorState } from "../state/reducer";
-import { resolveOp, seedEditorParams } from "./presets";
+import { editStepParams, resolveOp, seedEditorParams } from "./presets";
 import {
   schemaFieldsGap,
   schemaToFields,
@@ -62,9 +62,13 @@ export function useEditorSchema(
     const json = await apiClient.transformSchema(op);
     const fields = schemaToFields(json, op);
     if (alive()) {
+      const { params, editIndex } = editor!;
       dispatch({
         type: "SET_EDITOR_PARAMS",
-        params: seedEditorParams(json, op, editor!.params, columns),
+        params:
+          editIndex === undefined
+            ? seedEditorParams(json, op, params, columns)
+            : editStepParams(json, params),
       });
     }
     return { fields, gap: schemaFieldsGap(json, fields) };

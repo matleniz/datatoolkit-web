@@ -460,13 +460,24 @@ test("MAT-175: refresh matrix — every consumer follows the exact version", asy
   });
   await checkAll(page, "train", 5, "apply Filter rows");
 
-  // Edit a step's params in place (same step count — MAT-175 root cause #2).
-  const steps = (await appState(page)).workspace.steps;
-  const imputeIdx = steps.findIndex((s) => s.op === "impute");
-  const edited = steps.map((s, i) =>
-    i === imputeIdx ? { ...s, params: { ...s.params, strategy: "mean" } } : s,
-  );
-  await dispatch(page, { type: "SET_STEPS", steps: edited });
+  // Edit a step's params in place (same step count — MAT-175 root cause #2),
+  // through the pipeline node's Edit step (datatoolkit-issues#10).
+  await page
+    .locator(".pipeline-node-rel", {
+      has: page.locator(".pipeline-title", { hasText: /^Impute/ }),
+    })
+    .getByRole("button", { name: "Edit this step" })
+    .click();
+  const editor = page.getByLabel("Step editor");
+  await editor.getByRole("button", { name: "mean", exact: true }).click();
+  const applyEdit = editor.getByRole("button", { name: "Apply step" });
+  await expect(applyEdit).toBeEnabled({ timeout: 30_000 });
+  await applyEdit.click();
+  await expect(editor).toHaveCount(0);
+  await expect
+    .poll(async () => (await appState(page)).workspace.steps.map((s) => s.op))
+    .toEqual(["impute", "scale", "onehot", "drop_columns", "filter_rows"]);
+  expect((await appState(page)).workspace.steps[0]!.params.strategy).toBe("mean");
   await checkAll(page, "train", 5, "edit Impute params");
 
   // Remove a step (Scale) through the pipeline bar.

@@ -1,3 +1,5 @@
+import { useCallback, useState } from "react";
+
 import type { Role, Step } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { openStepPicker } from "../toolrail/tools";
@@ -13,6 +15,7 @@ import {
 import { useWorkbenchData, type PipelineShape } from "../WorkbenchData";
 import { PipelineHistory } from "./PipelineHistory";
 import { rawNodeSubLabel } from "./rawNodeSubLabel";
+import { StepMenu, type StepMenuState } from "./StepMenu";
 
 function Arrow({ dashed = false, accent = false }: { dashed?: boolean; accent?: boolean }) {
   return (
@@ -151,6 +154,10 @@ export function PipelineBar() {
   const vi =
     viewVersion === null || viewVersion > last ? last : viewVersion;
   const canDelete = isLatest && !editor;
+  // Any applied step can be reopened in the editor while none is open (#10).
+  const canEdit = !editor;
+  const [menu, setMenu] = useState<StepMenuState | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
 
   const rawShape = shapes[0];
   const nodes: PipelineNodeData[] = [
@@ -197,6 +204,11 @@ export function PipelineBar() {
                     version: n.version === last ? null : n.version,
                   })
                 }
+                onContextMenu={(e) => {
+                  if (!canEdit || n.stepIndex === null) return;
+                  e.preventDefault();
+                  setMenu({ index: n.stepIndex, x: e.clientX, y: e.clientY });
+                }}
               >
                 <span
                   className="pipeline-stage-bar"
@@ -221,6 +233,27 @@ export function PipelineBar() {
                   <span className="pipeline-badge">{n.badge}</span>
                 </span>
               </button>
+              {canEdit && n.stepIndex !== null ? (
+                <button
+                  type="button"
+                  className="pipeline-edit"
+                  aria-label="Edit this step"
+                  title="Edit step (Apply replaces it and the pipeline replays)"
+                  onClick={() =>
+                    dispatch({ type: "EDIT_STEP", index: n.stepIndex! })
+                  }
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                    <path
+                      d="M1.5 8.5l.6-2.4L6.6 1.6l1.8 1.8-4.5 4.5z"
+                      fill="none"
+                      stroke="#5b5850"
+                      strokeWidth="1.2"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              ) : null}
               {n.canDelete && n.stepIndex !== null ? (
                 <button
                   type="button"
@@ -267,6 +300,15 @@ export function PipelineBar() {
           + Step
         </button>
       </div>
+
+      {menu && canEdit ? (
+        <StepMenu
+          menu={menu}
+          title={`v${menu.index + 1} · ${opTitle(steps[menu.index]?.op ?? "")}`}
+          canDelete={canDelete}
+          onClose={closeMenu}
+        />
+      ) : null}
 
       <PipelineHistory />
 

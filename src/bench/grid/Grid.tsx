@@ -206,7 +206,7 @@ function rowNumClass(selected: boolean, removed: boolean): string {
 
 /** W2 — data grid with horizontally windowed columns (MAT-152). */
 export function Grid() {
-  const { selection, targetColumn, benchError } = useAppState();
+  const { selection, targetColumn, benchError, editor } = useAppState();
   const dispatch = useAppDispatch();
   const {
     display,
@@ -235,6 +235,10 @@ export function Grid() {
     if (!step) return `v${version}`;
     return `v${version} · ${step.op}`;
   })();
+
+  const editIndex = editor?.editIndex;
+  const editLabel =
+    editIndex === undefined ? "" : `v${editIndex + 1} · ${steps[editIndex]?.op ?? ""}`;
 
   const totalW =
     44 + display.cols.reduce((w, c) => w + colWidth(c.kind), 0);
@@ -347,7 +351,17 @@ export function Grid() {
         </div>
       ) : null}
 
-      {!isLatest ? (
+      {editIndex !== undefined ? (
+        <div className="banner travel-banner" role="status" data-edit-banner="">
+          <span className="banner-kicker travel">Editing step</span>
+          <span>
+            <strong>{editLabel}</strong> · the grid shows the step&apos;s input
+            frame. Apply replaces the step and replays the later ones.
+          </span>
+        </div>
+      ) : null}
+
+      {!isLatest && editIndex === undefined ? (
         <div className="banner travel-banner" role="status">
           <span className="banner-kicker travel">Time travel</span>
           <span>

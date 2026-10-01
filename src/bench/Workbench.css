@@ -169,6 +169,21 @@
   justify-content: center;
 }
 
+.pipeline-edit {
+  position: absolute;
+  top: -7px;
+  right: 17px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid #d6d3ca;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .pipeline-pending {
   flex-shrink: 0;
   width: 164px;
@@ -1441,6 +1456,12 @@
   border: 1px solid #d6d3ca;
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(28, 27, 24, 0.14);
+}
+
+/* pipeline step menu: opened at the pointer, above the pipeline bar */
+.step-menu {
+  position: fixed;
+  width: 180px;
 }
 
 .ctx-title {
