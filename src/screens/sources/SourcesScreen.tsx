@@ -9,7 +9,7 @@ import {
 } from "react";
 import { rememberWorkspaceName, forgetWorkspaceName } from "../../bootstrap";
 import { apiClient } from "../../api/client";
-import type { EngineError, FileSourceSpec, Workspace, WorkspaceSummary } from "../../api/types";
+import type { FileSourceSpec, Workspace, WorkspaceSummary } from "../../api/types";
 import {
   useAppDispatch,
   useAppState,
@@ -22,6 +22,7 @@ import {
   buildWorkspaceJson,
   defaultChurnSources,
   emptyWorkspaceSources,
+  engineMessage,
   extractFilesFromWorkspace,
   formatDetectedFromSpec,
   getCommonColumns,
@@ -65,16 +66,34 @@ function trainParseErrorDisplay(detail: string): string {
   return storedSourceFailedMessage(detail);
 }
 
-function engineMessage(err: unknown): string {
-  if (err && typeof err === "object") {
-    const e = err as Partial<EngineError>;
-    const msg = typeof e.message === "string" ? e.message : "";
-    const typ = typeof e.type === "string" ? e.type : "";
-    if (typ && msg) return `${typ}: ${msg}`;
-    if (msg) return msg;
-  }
-  return String(err);
+/** Minimal workspace: one train X source, order-joined label. */
+function bareWorkspace(name: string, x: FileSourceSpec): Workspace {
+  return {
+    name,
+    datasets: { train: { x } },
+    label: { mode: "order" },
+    merges: [],
+    variables: [],
+    steps: [],
+  };
 }
+
+const emptyWorkspace = (name: string) =>
+  bareWorkspace(name, { kind: "csv", path: "" });
+
+interface PreviewState {
+  trainShape: [number, number] | null;
+  testShape: [number, number] | null;
+  columns: string[] | null;
+  target: string | null;
+}
+
+const EMPTY_PREVIEW: PreviewState = {
+  trainShape: null,
+  testShape: null,
+  columns: null,
+  target: null,
+};
 
 /**
  * Refresh columns / shape for a stored file. Surfaces engine read errors and
@@ -121,15 +140,11 @@ async function enrichFileItem(item: SourceFileItem): Promise<SourceFileItem> {
   }
 
   try {
-    const mini: Workspace = {
-      name: "inspect",
-      datasets: { train: { x: spec } },
-      label: { mode: "order" },
-      merges: [],
-      variables: [],
-      steps: [],
-    };
-    const preview = await apiClient.previewWorkspace(mini, "train", 1);
+    const preview = await apiClient.previewWorkspace(
+      bareWorkspace("inspect", spec),
+      "train",
+      1,
+    );
     rowCount = preview.shape[0];
     detected = formatDetectedFromSpec(spec, preview.shape);
   } catch (err: unknown) {
@@ -183,35 +198,15 @@ export function SourcesScreen() {
     return emptyWorkspaceSources();
   }, [activeWsName, filesByWorkspace]);
 
-  const [files, setFiles] = useState<SourceFileItem[]>(initialSources.files);
-  const [roles, setRoles] = useState<Record<string, FileRole>>(
-    initialSources.roles,
-  );
-  const [guessedMap, setGuessedMap] = useState<Record<string, boolean>>(
-    initialSources.guessedMap,
-  );
-  const [labelMode, setLabelMode] = useState<"yfile" | "column">(
-    initialSources.labelMode,
-  );
-  const [yJoin, setYJoin] = useState<"order" | "key">(initialSources.yJoin);
-  const [targetCol, setTargetCol] = useState<string | null>(
-    initialSources.targetCol,
-  );
-  const [mergeKey, setMergeKey] = useState<string | null>(
-    initialSources.mergeKey,
-  );
-  const [mergeInTest, setMergeInTest] = useState<boolean>(
-    initialSources.mergeInTest,
+  const [src, setSrc] = useState<WorkspaceSourcesState>(initialSources);
+  const { files, roles, guessedMap, labelMode, yJoin, targetCol, mergeKey, mergeInTest } = src;
+  const patch = useCallback(
+    (p: (s: WorkspaceSourcesState) => Partial<WorkspaceSourcesState>) =>
+      setSrc((s) => ({ ...s, ...p(s) })),
+    [],
   );
 
-  const [trainPreviewShape, setTrainPreviewShape] = useState<
-    [number, number] | null
-  >(null);
-  const [testPreviewShape, setTestPreviewShape] = useState<
-    [number, number] | null
-  >(null);
-  const [previewColumns, setPreviewColumns] = useState<string[] | null>(null);
-  const [engineTarget, setEngineTarget] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PreviewState>(EMPTY_PREVIEW);
   const [engineErrors, setEngineErrors] = useState<string[]>([]);
   /** True while a workspace switch is still loading sources (MAT-149). */
   const [sourcesLoading, setSourcesLoading] = useState(false);
@@ -228,41 +223,23 @@ export function SourcesScreen() {
   /** Bumps on each workspace select so stale loadWorkspaceSources results are ignored. */
   const selectGenRef = useRef(0);
 
-  const currentSources = useCallback((): WorkspaceSourcesState => {
-    return {
-      files,
-      roles,
-      guessedMap,
-      labelMode,
-      yJoin,
-      targetCol,
-      mergeKey,
-      mergeInTest,
-    };
-  }, [
-    files,
-    roles,
-    guessedMap,
-    labelMode,
-    yJoin,
-    targetCol,
-    mergeKey,
-    mergeInTest,
-  ]);
+  const pushError = (msg: string) => setEngineErrors((prev) => [...prev, msg]);
+  const addError = (msg: string) =>
+    setEngineErrors((prev) => (prev.includes(msg) ? prev : [...prev, msg]));
+  const dropErrors = (drop: (e: string) => boolean) =>
+    setEngineErrors((prev) => prev.filter((e) => !drop(e)));
+  /** Shared handler shape: run, surface any thrown engine error. */
+  const guarded = async (fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (err: unknown) {
+      pushError(engineMessage(err));
+    }
+  };
 
-  const applySources = useCallback((src: WorkspaceSourcesState) => {
-    setFiles(src.files);
-    setRoles(src.roles);
-    setGuessedMap(src.guessedMap);
-    setLabelMode(src.labelMode);
-    setYJoin(src.yJoin);
-    setTargetCol(src.targetCol);
-    setMergeKey(src.mergeKey);
-    setMergeInTest(src.mergeInTest);
-    setTrainPreviewShape(null);
-    setTestPreviewShape(null);
-    setPreviewColumns(null);
-    setEngineTarget(null);
+  const applySources = useCallback((next: WorkspaceSourcesState) => {
+    setSrc(next);
+    setPreview(EMPTY_PREVIEW);
     setEngineErrors([]);
   }, []);
 
@@ -277,28 +254,9 @@ export function SourcesScreen() {
     dispatch({
       type: "SET_WORKSPACE_FILES",
       name: activeNameRef.current,
-      sources: {
-        files,
-        roles,
-        guessedMap,
-        labelMode,
-        yJoin,
-        targetCol,
-        mergeKey,
-        mergeInTest,
-      },
+      sources: src,
     });
-  }, [
-    files,
-    roles,
-    guessedMap,
-    labelMode,
-    yJoin,
-    targetCol,
-    mergeKey,
-    mergeInTest,
-    dispatch,
-  ]);
+  }, [src, dispatch]);
 
   // Load workspace summaries on mount
   useEffect(() => {
@@ -383,7 +341,7 @@ export function SourcesScreen() {
 
   const handleSelectWorkspace = async (name: string) => {
     const previous = activeWsName;
-    const previousSources = currentSources();
+    const previousSources = src;
     if (previous !== name) {
       dispatch({
         type: "SET_WORKSPACE_FILES",
@@ -413,17 +371,7 @@ export function SourcesScreen() {
         (await apiClient.listWorkspaceSummaries()).some((w) => w.name === name);
       if (gen !== selectGenRef.current) return;
       if (!onDisk) {
-        const empty: Workspace = {
-          name,
-          datasets: {
-            train: { x: { kind: "csv", path: "" } },
-          },
-          label: { mode: "order" },
-          merges: [],
-          variables: [],
-          steps: [],
-        };
-        dispatch({ type: "SET_WORKSPACE", workspace: empty });
+        dispatch({ type: "SET_WORKSPACE", workspace: emptyWorkspace(name) });
         rememberWorkspaceName(name);
         await loadWorkspaceSources(name, null, cacheAfterSave, gen);
         return;
@@ -435,17 +383,7 @@ export function SourcesScreen() {
       await loadWorkspaceSources(name, ws, cacheAfterSave, gen);
     } catch (err: unknown) {
       if (gen !== selectGenRef.current) return;
-      const empty: Workspace = {
-        name,
-        datasets: {
-          train: { x: { kind: "csv", path: "" } },
-        },
-        label: { mode: "order" },
-        merges: [],
-        variables: [],
-        steps: [],
-      };
-      dispatch({ type: "SET_WORKSPACE", workspace: empty });
+      dispatch({ type: "SET_WORKSPACE", workspace: emptyWorkspace(name) });
       const msg = engineMessage(err);
       if (!/unknown workspace|not found/i.test(msg)) {
         setEngineErrors([msg]);
@@ -462,20 +400,10 @@ export function SourcesScreen() {
     dispatch({
       type: "SET_WORKSPACE_FILES",
       name: activeWsName,
-      sources: currentSources(),
+      sources: src,
     });
-    const ws: Workspace = {
-      name,
-      datasets: {
-        train: { x: { kind: "csv", path: "" } },
-      },
-      label: { mode: "order" },
-      merges: [],
-      variables: [],
-      steps: [],
-    };
     allowWorkspaceSave(name);
-    dispatch({ type: "SET_WORKSPACE", workspace: ws });
+    dispatch({ type: "SET_WORKSPACE", workspace: emptyWorkspace(name) });
     const empty = emptyWorkspaceSources();
     dispatch({ type: "SET_WORKSPACE_FILES", name, sources: empty });
     persistSkip.current = true;
@@ -491,7 +419,7 @@ export function SourcesScreen() {
     selectGenRef.current += 1;
     abandonPendingWorkspaceSave([oldName]);
     const cached = filesByWorkspace[oldName] ??
-      (oldName === activeWsName ? currentSources() : null);
+      (oldName === activeWsName ? src : null);
     dispatch({ type: "CLEAR_WORKSPACE_FILES", name: oldName });
     if (cached) {
       dispatch({
@@ -542,7 +470,7 @@ export function SourcesScreen() {
   };
 
   const handleExportWorkspace = async (name: string) => {
-    try {
+    await guarded(async () => {
       if (name !== activeWsName) {
         await handleSelectWorkspace(name);
       }
@@ -553,9 +481,7 @@ export function SourcesScreen() {
       rememberWorkspaceName(name);
       dispatch({ type: "SET_SCREEN", screen: "bench" });
       dispatch({ type: "SET_SHOW_EXPORT", show: true });
-    } catch (err: unknown) {
-      setEngineErrors((prev) => [...prev, engineMessage(err)]);
-    }
+    });
   };
 
   // Build the workspace JSON candidate
@@ -587,11 +513,12 @@ export function SourcesScreen() {
   useEffect(() => {
     let active = true;
     const ws = buildResult.workspace;
+    const patchPreview = (p: Partial<PreviewState>) =>
+      setPreview((prev) => ({ ...prev, ...p }));
 
     if (buildResult.errors.length > 0) {
       setEngineErrors(buildResult.errors);
-      setPreviewColumns(null);
-      setEngineTarget(null);
+      patchPreview({ columns: null, target: null });
       return;
     }
 
@@ -601,8 +528,6 @@ export function SourcesScreen() {
       .previewWorkspace(ws, "train", 5)
       .then((res) => {
         if (!active) return;
-        setTrainPreviewShape(res.shape);
-        setPreviewColumns(res.columns);
         const trainX = files.find((f) => roles[f.id] === "trainX");
         const fromPreview = targetFromPreviewColumns(
           res.columns,
@@ -615,31 +540,28 @@ export function SourcesScreen() {
               )
             : targetCol;
         const resolved = fromPreview ?? fallback ?? buildResult.targetLabel;
-        setEngineTarget(resolved);
+        patchPreview({ trainShape: res.shape, columns: res.columns, target: resolved });
         if (resolved) {
           dispatch({ type: "SET_TARGET_COLUMN", name: resolved });
         }
       })
       .catch((err: unknown) => {
         if (!active) return;
-        setPreviewColumns(null);
-        setEngineTarget(buildResult.targetLabel);
-        setEngineErrors((prev) => [...prev, engineMessage(err)]);
+        patchPreview({ columns: null, target: buildResult.targetLabel });
+        pushError(engineMessage(err));
       });
 
     if (ws.datasets.test?.x) {
       apiClient
         .previewWorkspace(ws, "test", 5)
         .then((res) => {
-          if (!active) return;
-          setTestPreviewShape(res.shape);
+          if (active) patchPreview({ testShape: res.shape });
         })
         .catch((err: unknown) => {
-          if (!active) return;
-          setEngineErrors((prev) => [...prev, engineMessage(err)]);
+          if (active) pushError(engineMessage(err));
         });
     } else {
-      setTestPreviewShape(null);
+      patchPreview({ testShape: null });
     }
 
     return () => {
@@ -648,8 +570,10 @@ export function SourcesScreen() {
   }, [buildResult, dispatch, files, labelMode, roles, targetCol]);
 
   const handlePickRole = (fileId: string, role: FileRole) => {
-    setRoles((prev) => ({ ...prev, [fileId]: role }));
-    setGuessedMap((prev) => ({ ...prev, [fileId]: false }));
+    patch((s) => ({
+      roles: { ...s.roles, [fileId]: role },
+      guessedMap: { ...s.guessedMap, [fileId]: false },
+    }));
   };
 
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -658,7 +582,7 @@ export function SourcesScreen() {
     const file = fileList[0];
     if (!file) return;
 
-    try {
+    await guarded(async () => {
       const uploadRes = await apiClient.upload(file.name, file);
       const inspectRes = await apiClient.runKey("file_inspect", {
         path: uploadRes.path,
@@ -666,11 +590,9 @@ export function SourcesScreen() {
 
       const mapped = mapFileInspect(inspectRes);
       if (mapped.error || !mapped.spec) {
-        setEngineErrors((prev) => [
-          ...prev,
-          mapped.error ??
-            `Could not determine source kind for ${file.name}.`,
-        ]);
+        pushError(
+          mapped.error ?? `Could not determine source kind for ${file.name}.`,
+        );
         return;
       }
 
@@ -690,15 +612,11 @@ export function SourcesScreen() {
       let shape: [number, number] | null =
         cols.length > 0 ? [0, cols.length] : null;
       try {
-        const mini: Workspace = {
-          name: "inspect",
-          datasets: { train: { x: spec } },
-          label: { mode: "order" },
-          merges: [],
-          variables: [],
-          steps: [],
-        };
-        const preview = await apiClient.previewWorkspace(mini, "train", 1);
+        const preview = await apiClient.previewWorkspace(
+          bareWorkspace("inspect", spec),
+          "train",
+          1,
+        );
         shape = preview.shape;
       } catch (err: unknown) {
         if (!parseError) parseError = engineMessage(err);
@@ -706,11 +624,9 @@ export function SourcesScreen() {
 
       const remapped = mapFileInspect(inspectRes, shape);
       if (remapped.error || !remapped.spec) {
-        setEngineErrors((prev) => [
-          ...prev,
-          remapped.error ??
-            `Could not determine source kind for ${file.name}.`,
-        ]);
+        pushError(
+          remapped.error ?? `Could not determine source kind for ${file.name}.`,
+        );
         return;
       }
 
@@ -735,9 +651,11 @@ export function SourcesScreen() {
         parseError: file.size === 0 ? null : parseError,
       };
 
-      setFiles((prev) => [...prev, newItem]);
-      setRoles((prev) => ({ ...prev, [id]: guessedRole }));
-      setGuessedMap((prev) => ({ ...prev, [id]: true }));
+      patch((s) => ({
+        files: [...s.files, newItem],
+        roles: { ...s.roles, [id]: guessedRole },
+        guessedMap: { ...s.guessedMap, [id]: true },
+      }));
       // Open Options for kinds that often need a manual pick / override.
       if (
         finalSpec.kind === "excel" ||
@@ -750,17 +668,10 @@ export function SourcesScreen() {
       // Truly empty (0-byte) or 0-column without a parse error → MAT-154 copy.
       // Unreadable non-empty files reuse the MAT-167 parse-error UI (MAT-169).
       if (file.size === 0 || (!parseError && colCount === 0)) {
-        setEngineErrors((prev) =>
-          prev.includes(EMPTY_TRAIN_MESSAGE)
-            ? prev
-            : [...prev, EMPTY_TRAIN_MESSAGE],
-        );
+        addError(EMPTY_TRAIN_MESSAGE);
       }
-    } catch (err: unknown) {
-      setEngineErrors((prev) => [...prev, engineMessage(err)]);
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleSpecOptionsChange = (
@@ -769,71 +680,42 @@ export function SourcesScreen() {
   ) => {
     const gen = (optionsGenRef.current[fileId] ?? 0) + 1;
     optionsGenRef.current[fileId] = gen;
+    const current = files.find((f) => f.id === fileId);
+    if (!current) return;
+    const isLatest = () => optionsGenRef.current[fileId] === gen;
     setOptionsBusy((prev) => ({ ...prev, [fileId]: true }));
+    const patchFile = (p: Partial<SourceFileItem>) =>
+      patch((s) => ({
+        files: s.files.map((f) => (f.id === fileId ? { ...f, ...p } : f)),
+      }));
+    patchFile({ spec: nextSpec, detected: formatDetectedFromSpec(nextSpec, null) });
 
-    setFiles((prev) => {
-      const current = prev.find((f) => f.id === fileId);
-      if (!current) {
-        setOptionsBusy((b) => ({ ...b, [fileId]: false }));
-        return prev;
-      }
-
-      void (async () => {
-        try {
-          const enriched = await enrichFileItem({ ...current, spec: nextSpec });
-          if (optionsGenRef.current[fileId] !== gen) return;
-          setFiles((latest) =>
-            latest.map((f) =>
-              f.id === fileId
-                ? {
-                    ...f,
-                    spec: enriched.spec,
-                    cols: enriched.cols,
-                    rowCount: enriched.rowCount,
-                    detected: enriched.detected,
-                    parseError: enriched.parseError,
-                  }
-                : f,
-            ),
+    void (async () => {
+      try {
+        const { spec, cols, rowCount, detected, parseError } =
+          await enrichFileItem({ ...current, spec: nextSpec });
+        if (!isLatest()) return;
+        patchFile({ spec, cols, rowCount, detected, parseError });
+        if (!parseError && cols.length > 0) {
+          dropErrors(
+            (e) =>
+              e.startsWith("Stored train source failed to parse:") ||
+              e === EMPTY_TRAIN_MESSAGE ||
+              (!!current.parseError && e === current.parseError),
           );
-          if (!enriched.parseError && enriched.cols.length > 0) {
-            setEngineErrors((prev) =>
-              prev.filter(
-                (e) =>
-                  !e.startsWith("Stored train source failed to parse:") &&
-                  e !== EMPTY_TRAIN_MESSAGE &&
-                  !(current.parseError && e === current.parseError),
-              ),
-            );
-          } else if (enriched.parseError) {
-            setEngineErrors((prev) =>
-              prev.filter(
-                (e) =>
-                  e !== EMPTY_TRAIN_MESSAGE &&
-                  !(current.parseError && e === current.parseError),
-              ),
-            );
-          }
-        } catch (err: unknown) {
-          if (optionsGenRef.current[fileId] !== gen) return;
-          setEngineErrors((errs) => [...errs, engineMessage(err)]);
-        } finally {
-          if (optionsGenRef.current[fileId] === gen) {
-            setOptionsBusy((b) => ({ ...b, [fileId]: false }));
-          }
+        } else if (parseError) {
+          dropErrors(
+            (e) =>
+              e === EMPTY_TRAIN_MESSAGE ||
+              (!!current.parseError && e === current.parseError),
+          );
         }
-      })();
-
-      return prev.map((f) =>
-        f.id === fileId
-          ? {
-              ...f,
-              spec: nextSpec,
-              detected: formatDetectedFromSpec(nextSpec, null),
-            }
-          : f,
-      );
-    });
+      } catch (err: unknown) {
+        if (isLatest()) pushError(engineMessage(err));
+      } finally {
+        if (isLatest()) setOptionsBusy((b) => ({ ...b, [fileId]: false }));
+      }
+    })();
   };
 
   const trainXFile = files.find((f) => roles[f.id] === "trainX");
@@ -852,11 +734,11 @@ export function SourcesScreen() {
   const effectiveMergeKey = mergeKey ?? commonMergeCols[0] ?? null;
 
   const resolvedTarget =
-    engineTarget ?? buildResult.targetLabel ?? null;
+    preview.target ?? buildResult.targetLabel ?? null;
 
   const trainColumnCount =
-    trainPreviewShape != null
-      ? trainPreviewShape[1]
+    preview.trainShape != null
+      ? preview.trainShape[1]
       : (trainXFile?.cols.length ?? 0);
   const trainHasPath = Boolean(trainXFile?.spec.path);
   const trainParseError = trainXFile?.parseError?.trim() || null;
@@ -891,14 +773,11 @@ export function SourcesScreen() {
   const handleReinspectTrain = async () => {
     if (!trainXFile?.spec.path && !trainXFile?.path) return;
     const path = trainXFile.spec.path || trainXFile.path;
-    try {
+    await guarded(async () => {
       const inspectRes = await apiClient.runKey("file_inspect", { path });
       const mapped = mapFileInspect(inspectRes);
       if (mapped.error || !mapped.spec) {
-        setEngineErrors((prev) => [
-          ...prev,
-          mapped.error ?? `file_inspect failed for ${trainXFile.name}.`,
-        ]);
+        pushError(mapped.error ?? `file_inspect failed for ${trainXFile.name}.`);
         return;
       }
       const nextSpec: FileSourceSpec = mapped.spec.path
@@ -914,41 +793,30 @@ export function SourcesScreen() {
         parseError: null,
         cols: [],
       });
-      setFiles((prev) =>
-        prev.map((f) => (f.id === trainXFile.id ? enriched : f)),
-      );
+      patch((s) => ({
+        files: s.files.map((f) => (f.id === trainXFile.id ? enriched : f)),
+      }));
       if (enriched.parseError) {
-        setEngineErrors((prev) => [
-          ...prev,
-          storedSourceFailedMessage(enriched.parseError!),
-        ]);
+        pushError(storedSourceFailedMessage(enriched.parseError));
       } else {
-        setEngineErrors((prev) =>
-          prev.filter(
-            (e) =>
-              !e.startsWith("Stored train source failed to parse:") &&
-              e !== EMPTY_TRAIN_MESSAGE,
-          ),
+        dropErrors(
+          (e) =>
+            e.startsWith("Stored train source failed to parse:") ||
+            e === EMPTY_TRAIN_MESSAGE,
         );
       }
-    } catch (err: unknown) {
-      setEngineErrors((prev) => [...prev, engineMessage(err)]);
-    }
+    });
   };
 
   const handleReplaceTrainFile = () => {
     if (trainXFile) {
-      setFiles((prev) => prev.filter((f) => f.id !== trainXFile.id));
-      setRoles((prev) => {
-        const next = { ...prev };
-        delete next[trainXFile.id];
-        return next;
-      });
-      setGuessedMap((prev) => {
-        const next = { ...prev };
-        delete next[trainXFile.id];
-        return next;
-      });
+      const { [trainXFile.id]: _role, ...restRoles } = roles;
+      const { [trainXFile.id]: _guess, ...restGuessed } = guessedMap;
+      patch((s) => ({
+        files: s.files.filter((f) => f.id !== trainXFile.id),
+        roles: restRoles,
+        guessedMap: restGuessed,
+      }));
     }
     fileInputRef.current?.click();
   };
@@ -961,16 +829,16 @@ export function SourcesScreen() {
       const msg = trainParseError
         ? trainParseErrorDisplay(trainParseError)
         : EMPTY_TRAIN_MESSAGE;
-      setEngineErrors((prev) => (prev.includes(msg) ? prev : [...prev, msg]));
+      addError(msg);
       return;
     }
     const ws = buildResult.workspace;
     dispatch({
       type: "SET_WORKSPACE_FILES",
       name: activeWsName,
-      sources: currentSources(),
+      sources: src,
     });
-    try {
+    await guarded(async () => {
       await apiClient.saveWorkspace(ws);
       markWorkspaceSaved(ws);
       try {
@@ -978,17 +846,15 @@ export function SourcesScreen() {
       } catch {
         /* list refresh is best-effort after save */
       }
-    } catch (err: unknown) {
-      setEngineErrors((prev) => [...prev, engineMessage(err)]);
-    }
+    });
     dispatch({ type: "SET_WORKSPACE", workspace: ws });
     if (resolvedTarget) {
       dispatch({ type: "SET_TARGET_COLUMN", name: resolvedTarget });
     }
     dispatch({ type: "SET_SCREEN", screen });
   };
-  const trainShapeText = trainPreviewShape
-    ? `${trainPreviewShape[0]} × ${trainPreviewShape[1]}`
+  const trainShapeText = preview.trainShape
+    ? `${preview.trainShape[0]} × ${preview.trainShape[1]}`
     : trainXFile
       ? `${trainXFile.rowCount ?? "—"} × ${
           trainXFile.cols.length +
@@ -1004,8 +870,8 @@ export function SourcesScreen() {
       : "—";
 
   const testFile = files.find((f) => roles[f.id] === "testX");
-  const testShapeText = testPreviewShape
-    ? `${testPreviewShape[0]} × ${testPreviewShape[1]}`
+  const testShapeText = preview.testShape
+    ? `${preview.testShape[0]} × ${preview.testShape[1]}`
     : testFile
       ? `${testFile.rowCount ?? "—"} × ${
           testFile.cols.length +
@@ -1019,7 +885,7 @@ export function SourcesScreen() {
   // only the real label column appears as target. Always union merge extras
   // once a merge key is chosen (MAT-155 item 5).
   const displayedCols = resultSchemaColumns({
-    previewColumns,
+    previewColumns: preview.columns,
     trainXCols: trainXFile?.cols ?? [],
     yCols: trainYFile?.cols ?? [],
     labelMode,
@@ -1063,11 +929,7 @@ export function SourcesScreen() {
         onRenamed={handleWorkspaceRenamed}
         onDuplicated={handleWorkspaceDuplicated}
         onExport={(name) => void handleExportWorkspace(name)}
-        onError={(message) =>
-          setEngineErrors((prev) =>
-            prev.includes(message) ? prev : [...prev, message],
-          )
-        }
+        onError={addError}
       />
 
       <main className="sources-main">
@@ -1198,7 +1060,7 @@ export function SourcesScreen() {
                 type="button"
                 className={`chip-select ${labelMode === "yfile" ? "on" : ""}`}
                 aria-pressed={labelMode === "yfile"}
-                onClick={() => setLabelMode("yfile")}
+                onClick={() => patch(() => ({ labelMode: "yfile" }))}
               >
                 Separate y file
               </button>
@@ -1206,7 +1068,7 @@ export function SourcesScreen() {
                 type="button"
                 className={`chip-select ${labelMode === "column" ? "on" : ""}`}
                 aria-pressed={labelMode === "column"}
-                onClick={() => setLabelMode("column")}
+                onClick={() => patch(() => ({ labelMode: "column" }))}
               >
                 Column in train X
               </button>
@@ -1222,7 +1084,7 @@ export function SourcesScreen() {
                     type="button"
                     className={`chip-select ${yJoin === "order" ? "on" : ""}`}
                     aria-pressed={yJoin === "order"}
-                    onClick={() => setYJoin("order")}
+                    onClick={() => patch(() => ({ yJoin: "order" }))}
                     title="y has one value column and the same row count"
                   >
                     By row order
@@ -1232,7 +1094,7 @@ export function SourcesScreen() {
                     className={`chip-select ${yJoin === "key" ? "on" : ""}`}
                     aria-pressed={yJoin === "key"}
                     disabled={commonYCols.length === 0}
-                    onClick={() => setYJoin("key")}
+                    onClick={() => patch(() => ({ yJoin: "key" }))}
                     title={
                       commonYCols.length === 0
                         ? `${trainYFile?.name || "y file"} has no column in common with train X`
@@ -1268,7 +1130,7 @@ export function SourcesScreen() {
                         type="button"
                         className={`chip-mono ${isSelected ? "on" : ""}`}
                         aria-pressed={isSelected}
-                        onClick={() => setTargetCol(col)}
+                        onClick={() => patch(() => ({ targetCol: col }))}
                       >
                         {col}
                       </button>
@@ -1310,7 +1172,7 @@ export function SourcesScreen() {
                         type="button"
                         className={`chip-mono ${isSelected ? "on" : ""}`}
                         aria-pressed={isSelected}
-                        onClick={() => setMergeKey(col)}
+                        onClick={() => patch(() => ({ mergeKey: col }))}
                       >
                         {col}
                       </button>
@@ -1322,7 +1184,7 @@ export function SourcesScreen() {
                     type="button"
                     className={`chip-select ${mergeInTest ? "on" : ""}`}
                     aria-pressed={mergeInTest}
-                    onClick={() => setMergeInTest(!mergeInTest)}
+                    onClick={() => patch(() => ({ mergeInTest: !mergeInTest }))}
                   >
                     Also merge into test: {mergeInTest ? "yes" : "no"}
                   </button>
