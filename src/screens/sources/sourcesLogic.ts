@@ -1,4 +1,5 @@
 import type {
+  ChartSpec,
   CsvSource,
   Datasets,
   EngineError,
@@ -153,6 +154,8 @@ export interface WorkspaceBuildInput {
   mergeInTest?: boolean;
   testDecimal?: string | null;
   steps?: Step[];
+  /** Saved charts carried over, like steps (MAT-185). */
+  charts?: ChartSpec[];
 }
 
 export interface WorkspaceBuildResult {
@@ -409,6 +412,7 @@ export function buildWorkspaceJson(
     merges: merge.merges,
     variables: [],
     steps: input.steps ?? [],
+    charts: input.charts ?? [],
   };
 
   return { workspace, errors, info, targetLabel, originMap };

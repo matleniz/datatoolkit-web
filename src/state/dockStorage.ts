@@ -38,7 +38,7 @@ function parseStoredDock(raw: unknown, maxTools: number): StoredDock | null {
   return { tools, pos, size, layouts };
 }
 
-/** Per-workspace dock layout in browser storage (MAT-234), like saved charts. */
+/** Per-workspace dock layout in browser storage (MAT-234). */
 export function loadStoredDock(
   workspaceName: string,
   maxTools: number,

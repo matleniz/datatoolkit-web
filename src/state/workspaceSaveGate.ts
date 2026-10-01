@@ -1,5 +1,6 @@
 import { apiClient, serializeWorkspace } from "../api/client";
 import type { Workspace } from "../api/types";
+import { dropLegacyCharts } from "./chartStorage";
 
 /**
  * Coordinates AppStore autosave vs delete/rename (MAT-149 / MAT-171 / MAT-217).
@@ -26,6 +27,7 @@ export function getLastSavedWorkspaceJson(): string | null {
 export function markWorkspaceSaved(ws: Workspace): void {
   lastSavedWorkspaceJson = serializeWorkspace(ws);
   suppressedNames.delete(ws.name);
+  dropLegacyCharts(ws.name);
 }
 
 /** Clear a tombstone when the user intentionally selects/creates that name. */
@@ -82,6 +84,8 @@ export async function commitWorkspaceSave(opts: {
   isCurrent: (epochAtStart: number) => boolean;
   save: (ws: Workspace, signal: AbortSignal) => Promise<unknown>;
   remove: (name: string) => Promise<unknown>;
+  /** Reject with the save error instead of reporting "skipped". */
+  rethrow?: boolean;
 }): Promise<WorkspaceSaveOutcome> {
   const { ws, serialized, epochAtStart, isCurrent, save, remove } = opts;
 
@@ -118,8 +122,9 @@ export async function commitWorkspaceSave(opts: {
     }
 
     lastSavedWorkspaceJson = serialized;
+    dropLegacyCharts(ws.name);
     return "saved";
-  } catch {
+  } catch (e) {
     // Abort (or engine error) after the request may still have hit the
     // server — if this name is tombstoned, delete again so delete wins.
     if (isWorkspaceSaveSuppressed(ws.name)) {
@@ -130,6 +135,7 @@ export async function commitWorkspaceSave(opts: {
       }
       return "undone";
     }
+    if (opts.rethrow) throw e;
     return "skipped";
   } finally {
     finishWorkspaceSave(ac);
@@ -160,6 +166,33 @@ export function setCommittedWorkspace(ws: Workspace | null): void {
 
 export function saveable(ws: Workspace | null): ws is Workspace {
   return !!ws?.name && !!ws.datasets.train.x.path;
+}
+
+/**
+ * PUT `ws` now, in order with the autosave chain, and reject with the engine
+ * error (e.g. 422 `duplicate chart name`) instead of swallowing it. Used by
+ * explicit user saves (chart builder) that must show why a save failed;
+ * dispatch the change only once this resolves, so the autosave finds it
+ * already stored. Same tombstone / epoch rules as the autosave.
+ */
+export function saveWorkspaceNow(ws: Workspace): Promise<WorkspaceSaveOutcome> {
+  const epochAtStart = saveEpoch;
+  const run = saveChain.then(() =>
+    commitWorkspaceSave({
+      ws,
+      serialized: serializeWorkspace(ws),
+      epochAtStart,
+      isCurrent: (e) => e === saveEpoch,
+      save: (body, signal) => apiClient.saveWorkspace(body, signal),
+      remove: (name) => apiClient.deleteWorkspace(name),
+      rethrow: true,
+    }),
+  );
+  saveChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 }
 
 /**

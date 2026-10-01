@@ -125,3 +125,15 @@ describe("buildWorkspaceJson error and info branches", () => {
     expect(ok.workspace.datasets.test?.x).toMatchObject({ decimal: "," });
   });
 });
+
+describe("buildWorkspaceJson carries the workspace's saved charts (#11)", () => {
+  it("keeps charts like steps, so a Sources save never wipes them", () => {
+    const charts = [{ name: "c", params: { chart: "box" } }];
+    const r = build([file("a", ["k"])], { a: "trainX" }, {
+      labelMode: "column",
+      charts,
+    });
+    expect(r.workspace.charts).toEqual(charts);
+    expect(build([file("a", ["k"])], { a: "trainX" }).workspace.charts).toEqual([]);
+  });
+});

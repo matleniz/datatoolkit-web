@@ -104,13 +104,25 @@ modules — see `src/theme/README.md`. No CSS framework.
 | Path | Contents |
 |---|---|
 | `src/api/` | `client.ts` (the only module calling `dtk-api`), request dedupe, contract types |
-| `src/state/` | `AppStore` (React context + reducer), browser storage (dock, panels, charts, dismissed suggestions), workspace save gate |
+| `src/state/` | `AppStore` (React context + reducer), browser storage (dock, panels, dismissed suggestions), workspace save gate |
 | `src/screens/sources/`, `src/screens/align/` | Sources and train / test alignment screens |
 | `src/bench/` | Workbench: `pipeline`, `grid`, `inspector`, `editor`, `contextmenu`, `left` (Suggestions), `dock` (analysis windows + Chart), `toolrail`, `export` |
 | `src/theme/` | Design tokens |
 | `tests/` | Vitest unit tests and their JSON fixtures |
 | `e2e/` | Playwright specs, `helpers.ts`, data fixtures |
 | `docker/`, `Dockerfile`, `compose.yml` | nginx image and the engine + Studio stack |
+
+Saved charts (datatoolkit-issues#11) live on the engine workspace
+(`Workspace.charts`, `{name, params}`): **Save chart** PUTs the workspace with
+the new chart through the save gate's ordered chain (`saveWorkspaceNow`) and
+only then updates the store, so the engine's error is shown in the chart bar;
+a name already saved gets the engine's 422 `duplicate chart name '<name>'`
+with a **Replace** action. Charts come back with the workspace on load /
+reload, ride along on any later PUT (the Sources rebuild carries them like
+steps), and are left out of frame / analysis request bodies and of the data
+identity, so a chart save never refetches data. Charts saved by older builds
+in `localStorage["dtk.charts.<workspace>"]` are adopted once when the engine
+workspace has none, and the key is removed after the next successful save.
 
 Suggestions can be dismissed (datatoolkit-issues#15): browser-local, per
 workspace (`localStorage["dtk.dismissedSuggestions.<workspace>"]`). The id

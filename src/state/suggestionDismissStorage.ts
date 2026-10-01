@@ -5,7 +5,7 @@ const MAX_DISMISSED = 500;
 
 /**
  * Dismissed suggestion ids per workspace, in browser storage
- * (datatoolkit-issues#15), like the dock layout and saved charts.
+ * (datatoolkit-issues#15), like the dock layout.
  */
 export function loadDismissedSuggestions(workspaceName: string): string[] {
   try {

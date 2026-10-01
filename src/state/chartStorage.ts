@@ -1,5 +1,10 @@
 import type { ChartSpec } from "../api/types";
 
+/**
+ * Legacy browser copy of saved charts (`localStorage["dtk.charts.<name>"]`),
+ * written before the engine stored `Workspace.charts` (MAT-185). Read once to
+ * migrate into the workspace, dropped after the next successful save.
+ */
 const keyFor = (workspaceName: string) => `dtk.charts.${workspaceName}`;
 
 function isChartSpec(value: unknown): value is ChartSpec {
@@ -14,8 +19,7 @@ function isChartSpec(value: unknown): value is ChartSpec {
   );
 }
 
-/** Front-side chart persistence until engine Workspace.charts (MAT-185). */
-function loadStoredCharts(workspaceName: string): ChartSpec[] {
+function loadLegacyCharts(workspaceName: string): ChartSpec[] {
   try {
     const raw = localStorage.getItem(keyFor(workspaceName));
     if (!raw) return [];
@@ -27,24 +31,23 @@ function loadStoredCharts(workspaceName: string): ChartSpec[] {
   }
 }
 
-export function saveStoredCharts(
-  workspaceName: string,
-  charts: ChartSpec[],
-): void {
+/** Forget the legacy copy once the engine holds this workspace's charts. */
+export function dropLegacyCharts(workspaceName: string): void {
   try {
-    localStorage.setItem(keyFor(workspaceName), JSON.stringify(charts));
+    localStorage.removeItem(keyFor(workspaceName));
   } catch {
-    /* private mode / quota */
+    /* private mode */
   }
 }
 
-/** Merge engine workspace with locally stored charts when engine has none. */
+/**
+ * Charts of a loaded workspace: the engine's when it has any, else the legacy
+ * browser copy (one-time migration; the next PUT stores them on the engine).
+ */
 export function hydrateWorkspaceCharts<
   T extends { name: string; charts?: ChartSpec[] },
 >(ws: T): T {
   const existing = ws.charts ?? [];
   if (existing.length > 0) return ws;
-  const stored = loadStoredCharts(ws.name);
-  if (stored.length === 0) return { ...ws, charts: [] };
-  return { ...ws, charts: stored };
+  return { ...ws, charts: loadLegacyCharts(ws.name) };
 }
