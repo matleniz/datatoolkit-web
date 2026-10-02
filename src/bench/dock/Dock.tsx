@@ -57,7 +57,7 @@ function useElementSize<T extends HTMLElement>(): [
 }
 
 function DockWindow({ id }: { id: ToolId }) {
-  const { dock } = useAppState();
+  const { dock, agentTouch } = useAppState();
   const dispatch = useAppDispatch();
   const def = toolDef(id);
   const maximized = dock.maximized === id;
@@ -73,6 +73,7 @@ function DockWindow({ id }: { id: ToolId }) {
       data-compact-h={isCompactHeight ? "1" : "0"}
       aria-label={def.label}
       data-tool={id}
+      data-agent-touched={agentTouch?.tools.includes(id) ? "1" : undefined}
     >
       <div className="dock-titlebar" data-drag="1" title="Drag to move">
         <GripIcon />

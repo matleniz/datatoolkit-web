@@ -53,12 +53,14 @@ function ColumnHeader({
   c,
   sel,
   isTarget,
+  touched,
   profile: pr,
   dispatch,
 }: {
   c: DisplayCol;
   sel: boolean;
   isTarget: boolean;
+  touched: boolean;
   profile: ColumnProfile | undefined;
   dispatch: Dispatch;
 }) {
@@ -80,6 +82,7 @@ function ColumnHeader({
         .join(" ")}
       style={{ width: colWidth(c.kind) }}
       aria-label={`${c.name}, ${KIND_LABEL[c.kind] ?? c.kind}`}
+      data-agent-touched={touched ? "1" : undefined}
       title={`${c.name} · ${KIND_LABEL[c.kind]} · ${pr?.distinct ?? "?"} distinct · ${pr?.missing ?? "?"} missing · right-click for actions`}
       onClick={(e) =>
         dispatch({
@@ -206,7 +209,7 @@ function rowNumClass(selected: boolean, removed: boolean): string {
 
 /** W2 — data grid with horizontally windowed columns (MAT-152). */
 export function Grid() {
-  const { selection, targetColumn, benchError, editor } = useAppState();
+  const { selection, targetColumn, benchError, editor, agentTouch } = useAppState();
   const dispatch = useAppDispatch();
   const {
     display,
@@ -419,6 +422,7 @@ export function Grid() {
                 c={c}
                 sel={selection.columns.includes(c.name)}
                 isTarget={c.name === targetColumn}
+                touched={!!agentTouch?.columns.includes(c.name)}
                 profile={profiles.get(c.name)}
                 dispatch={dispatch}
               />

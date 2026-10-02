@@ -1,4 +1,5 @@
 import type { Role, Step } from "../api/types";
+import { toolDef } from "../bench/toolrail/tools";
 import { TOOL_IDS, type ToolId } from "./dockTypes";
 import { appReducer, type AppAction, type AppState } from "./reducer";
 import { applyStepOps, type StepOp } from "./stepOps";
@@ -44,8 +45,31 @@ export interface BridgeDeps {
   settle(): Promise<void>;
   /** Show the proposal; resolve true on Apply, false on Dismiss. */
   review(proposal: Proposal): Promise<boolean>;
-  /** Applied-at-once notice with an Undo button. */
-  announce(summary: string): void;
+  /**
+   * Applied-at-once notice. `undo` = the reducer actions that revert THIS
+   * command (the Undo button dispatches them); omitted = a notice without Undo.
+   */
+  announce(summary: string, undo?: AppAction[]): void;
+  /** Highlight what the command touched for a moment (`data-agent-touched`). */
+  touch(touched: Touched): void;
+}
+
+/** What a command touched; every field optional, later commands declare only theirs. */
+export interface Touched {
+  columns?: string[];
+  tools?: ToolId[];
+  /** Indices in the step list after the command. */
+  steps?: number[];
+}
+
+/**
+ * How a non-destructive command ended: the toast line, the actions that revert
+ * it and what it touched. Shared by every command so a new one only builds this.
+ */
+export interface Outcome {
+  summary: string;
+  undo?: AppAction[];
+  touched: Touched;
 }
 
 const DESTRUCTIVE_OPS = new Set([
@@ -202,10 +226,21 @@ function summarizeOps(ops: StepOp[], steps: Step[]): string {
   return lines.length === 1 ? lines[0]! : `${lines.length} step changes`;
 }
 
+/** Actions that put the selection back as it is in `state`. */
+function restoreSelection(state: AppState): AppAction[] {
+  return [
+    { type: "CLEAR_SELECTION" },
+    ...state.selection.columns.map((name): AppAction => ({ type: "PICK_COL", name, add: true })),
+  ];
+}
+
+const sameList = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((x, i) => x === b[i]);
+
+type ViewCommand = Exclude<AgentCommand, { type: "propose_steps" }>;
+
 /** Actions of a non-step command (open_window / select_columns / set_view). */
-function viewActions(
-  cmd: Exclude<AgentCommand, { type: "propose_steps" }>,
-): AppAction[] {
+function viewActions(cmd: ViewCommand): AppAction[] {
   if (cmd.type === "select_columns") {
     return [
       { type: "CLEAR_SELECTION" },
@@ -236,6 +271,41 @@ function viewActions(
   return actions;
 }
 
+/** Toast line, undo actions and touched set of a view command, from the state before it. */
+function viewOutcome(cmd: ViewCommand, before: AppState): Outcome {
+  if (cmd.type === "select_columns") {
+    const same = sameList(before.selection.columns, cmd.columns);
+    return {
+      summary: cmd.columns.length ? `selected ${cmd.columns.join(", ")}` : "cleared the selection",
+      undo: same ? undefined : restoreSelection(before),
+      touched: { columns: cmd.columns },
+    };
+  }
+  if (cmd.type === "set_view") {
+    const role = cmd.role ?? before.role;
+    const version = cmd.version === undefined ? before.viewVersion : cmd.version;
+    return {
+      summary: `showing ${role} ${version === null ? "latest" : `v${version}`}`,
+      undo: [
+        { type: "SET_ROLE", role: before.role },
+        { type: "SET_VIEW_VERSION", version: before.viewVersion },
+      ],
+      touched: {},
+    };
+  }
+  const col = typeof cmd.params.column === "string" && cmd.params.column ? cmd.params.column : null;
+  const wasOpen = before.dock.tools.includes(cmd.tool);
+  const undo: AppAction[] = [];
+  if (!wasOpen) undo.push({ type: "TOGGLE_TOOL", id: cmd.tool });
+  if (col) undo.push(...restoreSelection(before));
+  const label = toolDef(cmd.tool).label;
+  return {
+    summary: `opened ${label}${col ? ` (${col})` : ""}`,
+    undo: undo.length ? undo : undefined,
+    touched: { tools: [cmd.tool], ...(col ? { columns: [col] } : {}) },
+  };
+}
+
 function reduceAll(state: AppState, actions: AppAction[]): AppState {
   return actions.reduce(appReducer, state);
 }
@@ -251,6 +321,19 @@ function staleReason(
     currentIdentityKey(state) === cmd.base_identity
     ? null
     : "stale";
+}
+
+/** Step cards that are new or changed after a batch, plus the columns they act on. */
+function stepsTouched(before: Step[], after: Step[]): Touched {
+  const steps: number[] = [];
+  const columns = new Set<string>();
+  after.forEach((step, i) => {
+    if (before.includes(step)) return;
+    steps.push(i);
+    const cols = step.params.columns;
+    if (Array.isArray(cols)) cols.forEach((c) => typeof c === "string" && columns.add(c));
+  });
+  return { steps, columns: [...columns] };
 }
 
 async function proposeSteps(
@@ -282,13 +365,15 @@ async function proposeSteps(
     if (late) return late;
   }
 
+  const before = deps.getState().workspace?.steps ?? [];
   deps.dispatch({ type: "APPLY_STEP_BATCH", ops: cmd.ops });
   try {
     await deps.settle();
   } catch (e) {
     return fail(id, `save_failed: ${e instanceof Error ? e.message : String(e)}`);
   }
-  deps.announce(summary);
+  deps.touch(stepsTouched(before, deps.getState().workspace?.steps ?? []));
+  deps.announce(summary, [{ type: "UNDO_STEPS" }]);
   return { id, ok: true, identity: currentIdentityKey(deps.getState()) };
 }
 
@@ -305,9 +390,13 @@ export async function handleCommand(
   const cmd = parseCommand(raw);
   if ("error" in cmd) return fail(id, `bad_command: ${cmd.error}`);
   if (cmd.type === "propose_steps") return proposeSteps(id, cmd, deps);
+  const before = deps.getState();
   const actions = viewActions(cmd);
   // Identity of the frame after these actions (pure replay, no render wait).
-  const identity = currentIdentityKey(reduceAll(deps.getState(), actions));
+  const identity = currentIdentityKey(reduceAll(before, actions));
+  const { summary, undo, touched } = viewOutcome(cmd, before);
   for (const a of actions) deps.dispatch(a);
+  deps.touch(touched);
+  deps.announce(summary, undo);
   return { id, ok: true, identity };
 }
