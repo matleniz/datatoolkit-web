@@ -176,7 +176,9 @@ test("MAT-235: figure-first analysis windows", async ({ page }) => {
     .locator('[role="tab"][data-view-tab^="figure:"][aria-selected="false"]')
     .first();
   const otherId = await otherTab.getAttribute("data-view-tab");
-  await otherTab.click();
+  // #73: the tabs fold into the select when they overflow the bar.
+  if (await otherTab.isVisible()) await otherTab.click();
+  else await missing.locator("[data-view-select]").selectOption(otherId!);
   await expect(shell).toHaveAttribute("data-view", otherId!);
   await expect(missing.locator(".result-figure .main-svg").first()).toBeVisible();
   await captureFlowScreenshot(page, FLOW, "02-missing-after-view-change.png");

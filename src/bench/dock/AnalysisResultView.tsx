@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { Result } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
@@ -12,6 +12,7 @@ import {
 } from "./figureDisplay";
 import { PlotlyFigure } from "./PlotlyFigure";
 import { ResultTableView } from "./ResultTableView";
+import { shouldFoldTabs } from "./viewbarFold";
 import {
   displayOf,
   resolveView,
@@ -342,6 +343,29 @@ export function AnalysisResultView({
   const hasDetails =
     view.kind !== "metrics" && (detailBits.length > 0 || !!result.text);
 
+  const barRef = useRef<HTMLDivElement>(null);
+  const [foldTabs, setFoldTabs] = useState(false);
+  useLayoutEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const measure = () => {
+      const tabs = bar.querySelector<HTMLElement>(".result-tabs");
+      if (!tabs) return setFoldTabs(false);
+      const others = Array.from(bar.children)
+        .filter(
+          (c) =>
+            c !== tabs &&
+            !c.matches(".result-view-select, .result-viewbar-spacer"),
+        )
+        .map((c) => (c as HTMLElement).offsetWidth);
+      setFoldTabs(shouldFoldTabs(bar.clientWidth, tabs.scrollWidth, others));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, [result.figures.length, nTables, !!caps, !!onOpenChart]);
+
   return (
     <div className="result-view result-shell" data-view={viewId}>
       {headline ? (
@@ -375,7 +399,11 @@ export function AnalysisResultView({
       </div>
 
       {result.figures.length > 0 || onOpenChart ? (
-        <div className="result-viewbar">
+        <div
+          className="result-viewbar"
+          ref={barRef}
+          data-fold={foldTabs ? "1" : undefined}
+        >
           {result.figures.length > 0 ? (
             <ViewSwitcher result={result} viewId={viewId} select={select} />
           ) : null}
