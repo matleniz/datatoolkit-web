@@ -376,3 +376,61 @@ test("issue 90: pick_row, pick_cell, clear_selection, bad_command, Undo", async 
   expect((await send(request, page, { type: "clear_selection" })).ok).toBe(true);
   await published(request, page, (c) => c.selection?.row === null && c.selection?.cell === null);
 });
+
+/** #93: add_variable persists before the ack; a formula step reads it from its own params.variables. */
+test("issue 93: add_variable, formula step using @name, Undo both", async ({ page, request }) => {
+  test.setTimeout(180_000);
+  await openWorkbench(page, true);
+  await published(request, page);
+  const toast = (text: string) => page.getByRole("status").filter({ hasText: text });
+  const variables = () =>
+    page.evaluate(() => window.__DTK_STATE__?.()?.workspace?.variables ?? []);
+  const header = (col: string) => page.getByRole("button", { name: new RegExp(`^${col}, `) });
+
+  for (const [bad, error] of [
+    [{ name: "mu", stat: "mean", column: "ghost" }, /^bad_command: unknown column/],
+    [{ name: "mu", stat: "mode", column: "age" }, /^bad_command: stat must be one of/],
+    [{ name: "1mu", stat: "mean", column: "age" }, /^bad_command: name must be an identifier/],
+  ] as const) {
+    const ack = await send(request, page, { type: "add_variable", ...bad });
+    expect(ack).toMatchObject({ ok: false });
+    expect(ack.error).toMatch(error);
+  }
+  expect(await variables()).toEqual([]);
+
+  const added = await send(request, page, {
+    type: "add_variable", name: "mu", stat: "mean", column: "age",
+  });
+  expect(added.ok).toBe(true);
+  expect(await variables()).toEqual([{ name: "mu", stat: "mean", column: "age" }]);
+  await expect(header("age")).toHaveAttribute("data-agent-touched", "1");
+  const dup = await send(request, page, {
+    type: "add_variable", name: "mu", stat: "max", column: "age",
+  });
+  expect(dup.error).toBe('bad_command: variable "mu" already exists');
+
+  // A formula step carries its variables in its own params (the engine resolves nothing else).
+  const centered = {
+    op: "formula", target: "both",
+    params: {
+      name: "age_c", expr: "age - @mu",
+      variables: [{ name: "mu", stat: "mean", column: "age" }],
+    },
+  };
+  const ctx = await published(request, page);
+  const step = await send(request, page, {
+    type: "propose_steps", workspace: "churn", base_identity: ctx.identity,
+    ops: [{ add: { step: centered } }],
+  });
+  expect(step.ok).toBe(true);
+  expect(await stepOps(page)).toEqual(["formula"]);
+
+  // One toast at a time: Undo the step (the variable stays), then re-add and Undo the variable.
+  await toast("Agent: add formula").getByRole("button", { name: "Undo" }).click();
+  expect(await stepOps(page)).toEqual([]);
+  expect(await variables()).toHaveLength(1);
+  const reMu = { name: "sigma", stat: "std", column: "age" };
+  expect((await send(request, page, { type: "add_variable", ...reMu })).ok).toBe(true);
+  await toast("Agent: variable @sigma = std(age)").getByRole("button", { name: "Undo" }).click();
+  expect((await variables()).map((v) => v.name)).toEqual(["mu"]);
+});

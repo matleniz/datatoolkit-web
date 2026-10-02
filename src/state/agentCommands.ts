@@ -26,6 +26,7 @@ export type AgentCommand =
   | { type: "pick_row"; rid: number }
   | { type: "pick_cell"; rid: number; column: string }
   | { type: "clear_selection" }
+  | { type: "add_variable"; name: string; stat: VariableStat; column: string }
   | { type: "set_target"; column: string | null }
   | { type: "set_dist_by"; by: string | null }
   | {
@@ -34,6 +35,10 @@ export type AgentCommand =
       params: Record<string, unknown>;
       column?: string;
     };
+
+/** Statistics a variable can take (engine `formula` op, `_STATS`). */
+const VARIABLE_STATS = ["mean", "median", "std", "min", "max", "q25", "q75", "count"] as const;
+export type VariableStat = (typeof VARIABLE_STATS)[number];
 
 /** Body of `POST /api/ui/ack`. */
 export interface Ack {
@@ -205,6 +210,20 @@ function parsePickCell(raw: Record<string, unknown>): Parsed<AgentCommand> {
 
 const isColumnName = (v: unknown): v is string => typeof v === "string" && v !== "";
 
+/** Same pattern as the engine's formula `IDENTIFIER` (a variable is read as `@name`). */
+const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function parseAddVariable(raw: Record<string, unknown>): Parsed<AgentCommand> {
+  if (typeof raw.name !== "string" || !VARIABLE_NAME.test(raw.name)) {
+    return { error: "name must be an identifier (letters, digits, _; not starting with a digit)" };
+  }
+  if (!VARIABLE_STATS.includes(raw.stat as VariableStat)) {
+    return { error: `stat must be one of ${VARIABLE_STATS.join(", ")}` };
+  }
+  if (!isColumnName(raw.column)) return { error: "column must be a non-empty string" };
+  return { type: "add_variable", name: raw.name, stat: raw.stat as VariableStat, column: raw.column };
+}
+
 function parseSetTarget(raw: Record<string, unknown>): Parsed<AgentCommand> {
   if (raw.column !== null && !isColumnName(raw.column)) {
     return { error: "column must be a non-empty string or null" };
@@ -259,6 +278,8 @@ export function parseCommand(raw: Record<string, unknown>): Parsed<AgentCommand>
       return parsePickCell(raw);
     case "clear_selection":
       return { type: "clear_selection" };
+    case "add_variable":
+      return parseAddVariable(raw);
     case "set_target":
       return parseSetTarget(raw);
     case "set_dist_by":
@@ -636,6 +657,7 @@ export async function handleCommand(
   if (cmd.type === "pick_row" || cmd.type === "pick_cell" || cmd.type === "clear_selection") {
     return pick(id, cmd, deps);
   }
+  if (cmd.type === "add_variable") return addVariable(id, cmd, deps);
   const before = deps.getState();
   const actions = viewActions(cmd);
   return finish(id, deps, before, actions, viewOutcome(cmd, before));
@@ -706,4 +728,41 @@ async function pick(
   const before = deps.getState();
   const { actions, outcome } = pickOutcome(cmd, before);
   return finish(id, deps, before, actions, outcome);
+}
+
+/**
+ * add_variable: a workspace variable (`@name` in a formula). Name unique,
+ * column on the frame shown; persisted through the save gate before the ack.
+ * The variable is only declared here: a formula step reads it from its own
+ * `params.variables` (Studio's editor copies the workspace variables into the
+ * step, a `propose_steps` step must carry them itself).
+ */
+async function addVariable(
+  id: string,
+  cmd: Extract<AgentCommand, { type: "add_variable" }>,
+  deps: BridgeDeps,
+): Promise<Ack> {
+  try {
+    if (!(await deps.frameColumns()).includes(cmd.column)) {
+      return fail(id, `bad_command: unknown column ${JSON.stringify(cmd.column)}`);
+    }
+  } catch (e) {
+    return fail(id, `frame_unavailable: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  if (deps.getState().workspace?.variables.some((v) => v.name === cmd.name)) {
+    return fail(id, `bad_command: variable ${JSON.stringify(cmd.name)} already exists`);
+  }
+  const variable = { name: cmd.name, stat: cmd.stat, column: cmd.column };
+  deps.dispatch({ type: "ADD_VARIABLE", variable });
+  try {
+    await deps.settle();
+  } catch (e) {
+    deps.dispatch({ type: "REMOVE_VARIABLE", name: cmd.name });
+    return fail(id, `save_failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  deps.touch({ columns: [cmd.column] });
+  deps.announce(`variable @${cmd.name} = ${cmd.stat}(${cmd.column})`, [
+    { type: "REMOVE_VARIABLE", name: cmd.name },
+  ]);
+  return { id, ok: true, identity: currentIdentityKey(deps.getState()) };
 }

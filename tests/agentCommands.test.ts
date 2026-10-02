@@ -584,6 +584,46 @@ describe("pick_row / pick_cell / clear_selection (#90)", () => {
   });
 });
 
+describe("add_variable", () => {
+  const cmd = { type: "add_variable", name: "mu", stat: "mean", column: "age" };
+  const send = (h: ReturnType<typeof harness>, c: Record<string, unknown>) =>
+    handleCommand({ id: "c1", ...c }, h.deps);
+
+  it("adds the variable, saves before the ack, highlights the column; Undo removes it", async () => {
+    const h = harness(start());
+    const ack = await send(h, cmd);
+    expect(ack).toMatchObject({ ok: true });
+    expect(h.state.workspace?.variables).toEqual([{ name: "mu", stat: "mean", column: "age" }]);
+    expect(h.settled).toBe(1);
+    expect(h.toasts).toEqual(["variable @mu = mean(age)"]);
+    expect(h.touches).toEqual([{ columns: ["age"] }]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.workspace?.variables).toEqual([]);
+  });
+
+  it("refuses a bad name, stat, column, a duplicate", async () => {
+    const h = harness(start());
+    const bad = (c: Record<string, unknown>) => send(h, { ...cmd, ...c });
+    expect((await bad({ name: "1x" }))?.error).toMatch(/^bad_command: name must be an identifier/);
+    expect((await bad({ stat: "mode" }))?.error).toMatch(/^bad_command: stat must be one of mean,/);
+    expect((await bad({ column: "" }))?.error).toBe("bad_command: column must be a non-empty string");
+    expect((await bad({ column: "ghost" }))?.error).toBe('bad_command: unknown column "ghost"');
+    await send(h, cmd);
+    expect((await bad({ stat: "max" }))?.error).toBe('bad_command: variable "mu" already exists');
+    expect(h.state.workspace?.variables).toHaveLength(1);
+  });
+
+  it("rolls back and acks save_failed when the save gate rejects", async () => {
+    const h = harness(start());
+    h.deps.settle = async () => {
+      throw new Error("disk full");
+    };
+    expect(await send(h, cmd)).toMatchObject({ ok: false, error: "save_failed: disk full" });
+    expect(h.state.workspace?.variables).toEqual([]);
+    expect(h.toasts).toEqual([]);
+  });
+});
+
 describe("agentTouch slice", () => {
   const touch = { columns: ["age"], tools: [], steps: [], rows: [], cells: [], at: 5 };
   it("is set by AGENT_TOUCH and cleared only by the matching timestamp", () => {
