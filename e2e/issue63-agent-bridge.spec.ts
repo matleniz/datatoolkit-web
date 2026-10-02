@@ -345,3 +345,34 @@ test("issue 89: set_target / set_dist_by / set_tool_params, bad_command, Undo", 
     timeout: 30_000,
   });
 });
+
+/** #90: pick_row / pick_cell / clear_selection publish `selection`, highlight, Undo restores. */
+test("issue 90: pick_row, pick_cell, clear_selection, bad_command, Undo", async ({
+  page, request,
+}) => {
+  test.setTimeout(180_000);
+  await openWorkbench(page, true);
+  await published(request, page);
+  const toast = (text: string) => page.getByRole("status").filter({ hasText: text });
+  const rid = await page.locator("[data-rid]").first().getAttribute("data-rid");
+  const rowId = Number(rid);
+
+  const ghost = await send(request, page, { type: "pick_cell", rid: rowId, column: "ghost" });
+  expect(ghost).toMatchObject({ ok: false });
+  expect(ghost.error).toMatch(/^bad_command: unknown column/);
+
+  expect((await send(request, page, { type: "pick_row", rid: rowId })).ok).toBe(true);
+  expect((await published(request, page, (c) => c.selection?.row === rowId)).selection.row).toBe(rowId);
+  await expect(page.locator(`[data-rid="${rowId}"]`)).toHaveAttribute("data-agent-touched", "1");
+
+  const cell = await send(request, page, { type: "pick_cell", rid: rowId, column: "age" });
+  expect(cell.ok).toBe(true);
+  const ctx = await published(request, page, (c) => c.selection?.cell?.col === "age");
+  expect(ctx.selection.cell).toEqual({ rid: rowId, col: "age" });
+
+  await toast("Agent: selected cell age").getByRole("button", { name: "Undo" }).click();
+  await published(request, page, (c) => c.selection?.row === rowId && c.selection?.cell === null);
+
+  expect((await send(request, page, { type: "clear_selection" })).ok).toBe(true);
+  await published(request, page, (c) => c.selection?.row === null && c.selection?.cell === null);
+});

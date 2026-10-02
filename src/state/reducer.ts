@@ -128,12 +128,16 @@ export interface AppState {
   agentTouch: AgentTouch | null;
 }
 
-/** Columns / dock windows / step cards an agent command touched (#88). */
+/** Columns / dock windows / step cards / rows / cells an agent command touched (#88). */
 export interface AgentTouch {
   columns: string[];
   tools: ToolId[];
   /** Indices in the step list after the command. */
   steps: number[];
+  /** Row ids (`rid`) a pick_row highlighted. */
+  rows: number[];
+  /** Cells a pick_cell highlighted. */
+  cells: { rid: number; column: string }[];
   /** Identifies this touch; `AGENT_TOUCH_CLEAR` only clears the same one. */
   at: number;
 }
