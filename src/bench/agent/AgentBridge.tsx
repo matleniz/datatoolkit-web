@@ -109,10 +109,10 @@ function ActiveBridge({ token }: { token: string }) {
       },
       keySchema: (keyId) => apiClient.keySchema(keyId),
       touch: (touched) => {
-        const { columns = [], tools = [], steps = [] } = touched;
-        if (columns.length + tools.length + steps.length === 0) return;
+        const { columns = [], tools = [], steps = [], rows = [], cells = [] } = touched;
+        if (columns.length + tools.length + steps.length + rows.length + cells.length === 0) return;
         const at = Date.now();
-        dispatch({ type: "AGENT_TOUCH", touch: { columns, tools, steps, at } });
+        dispatch({ type: "AGENT_TOUCH", touch: { columns, tools, steps, rows, cells, at } });
         window.clearTimeout(touchTimer.current);
         touchTimer.current = window.setTimeout(
           () => dispatch({ type: "AGENT_TOUCH_CLEAR", at }),

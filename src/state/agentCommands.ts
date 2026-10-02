@@ -33,6 +33,10 @@ export type AgentCommand =
   | { type: "open_window"; tool: ToolId; params: Record<string, unknown> }
   | { type: "select_columns"; columns: string[] }
   | { type: "set_view"; role?: Role; version?: number | null }
+  | { type: "pick_row"; rid: number }
+  | { type: "pick_cell"; rid: number; column: string }
+  | { type: "clear_selection" }
+  | { type: "add_variable"; name: string; stat: VariableStat; column: string }
   | { type: "set_target"; column: string | null }
   | { type: "set_dist_by"; by: string | null }
   | { type: "set_grid_view"; filter?: GridFilter | null; sort?: GridSortKey[] | null }
@@ -42,6 +46,10 @@ export type AgentCommand =
       params: Record<string, unknown>;
       column?: string;
     };
+
+/** Statistics a variable can take (engine `formula` op, `_STATS`). */
+const VARIABLE_STATS = ["mean", "median", "std", "min", "max", "q25", "q75", "count"] as const;
+export type VariableStat = (typeof VARIABLE_STATS)[number];
 
 /** Body of `POST /api/ui/ack`. */
 export interface Ack {
@@ -84,6 +92,9 @@ export interface Touched {
   tools?: ToolId[];
   /** Indices in the step list after the command. */
   steps?: number[];
+  /** Row ids (`rid`) of the grid. */
+  rows?: number[];
+  cells?: { rid: number; column: string }[];
 }
 
 /**
@@ -195,7 +206,34 @@ function parseSetView(raw: Record<string, unknown>): Parsed<AgentCommand> {
   };
 }
 
+const isRid = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
+
+function parsePickRow(raw: Record<string, unknown>): Parsed<AgentCommand> {
+  if (!isRid(raw.rid)) return { error: "rid must be a non-negative integer" };
+  return { type: "pick_row", rid: raw.rid };
+}
+
+function parsePickCell(raw: Record<string, unknown>): Parsed<AgentCommand> {
+  if (!isRid(raw.rid)) return { error: "rid must be a non-negative integer" };
+  if (!isColumnName(raw.column)) return { error: "column must be a non-empty string" };
+  return { type: "pick_cell", rid: raw.rid, column: raw.column };
+}
+
 const isColumnName = (v: unknown): v is string => typeof v === "string" && v !== "";
+
+/** Same pattern as the engine's formula `IDENTIFIER` (a variable is read as `@name`). */
+const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function parseAddVariable(raw: Record<string, unknown>): Parsed<AgentCommand> {
+  if (typeof raw.name !== "string" || !VARIABLE_NAME.test(raw.name)) {
+    return { error: "name must be an identifier (letters, digits, _; not starting with a digit)" };
+  }
+  if (!VARIABLE_STATS.includes(raw.stat as VariableStat)) {
+    return { error: `stat must be one of ${VARIABLE_STATS.join(", ")}` };
+  }
+  if (!isColumnName(raw.column)) return { error: "column must be a non-empty string" };
+  return { type: "add_variable", name: raw.name, stat: raw.stat as VariableStat, column: raw.column };
+}
 
 function parseSetTarget(raw: Record<string, unknown>): Parsed<AgentCommand> {
   if (raw.column !== null && !isColumnName(raw.column)) {
@@ -314,6 +352,14 @@ export function parseCommand(raw: Record<string, unknown>): Parsed<AgentCommand>
     }
     case "set_view":
       return parseSetView(raw);
+    case "pick_row":
+      return parsePickRow(raw);
+    case "pick_cell":
+      return parsePickCell(raw);
+    case "clear_selection":
+      return { type: "clear_selection" };
+    case "add_variable":
+      return parseAddVariable(raw);
     case "set_target":
       return parseSetTarget(raw);
     case "set_dist_by":
@@ -367,6 +413,14 @@ function restoreSelection(state: AppState): AppAction[] {
     { type: "CLEAR_SELECTION" },
     ...state.selection.columns.map((name): AppAction => ({ type: "PICK_COL", name, add: true })),
   ];
+}
+
+/** Actions that put the row / cell / column selection back as it is in `state`. */
+function restoreFullSelection(state: AppState): AppAction[] {
+  const { row, cell } = state.selection;
+  if (cell) return [{ type: "CLEAR_SELECTION" }, { type: "PICK_CELL", rid: cell.rid, col: cell.col }];
+  if (row !== null) return [{ type: "CLEAR_SELECTION" }, { type: "PICK_ROW", rid: row }];
+  return restoreSelection(state);
 }
 
 const sameList = (a: string[], b: string[]) =>
@@ -558,6 +612,39 @@ function settingOutcome(
   };
 }
 
+/** Actions + outcome of pick_row / pick_cell / clear_selection, from the state before them. */
+function pickOutcome(
+  cmd: Extract<AgentCommand, { type: "pick_row" | "pick_cell" | "clear_selection" }>,
+  before: AppState,
+): { actions: AppAction[]; outcome: Outcome } {
+  const { row, cell, columns } = before.selection;
+  const undo = restoreFullSelection(before);
+  if (cmd.type === "pick_row") {
+    // PICK_ROW toggles: picking the row already picked must not clear it.
+    const same = row === cmd.rid;
+    return {
+      actions: same ? [] : [{ type: "PICK_ROW", rid: cmd.rid }],
+      outcome: { summary: `selected row ${cmd.rid}`, undo: same ? undefined : undo, touched: { rows: [cmd.rid] } },
+    };
+  }
+  if (cmd.type === "pick_cell") {
+    const same = cell?.rid === cmd.rid && cell.col === cmd.column;
+    return {
+      actions: same ? [] : [{ type: "PICK_CELL", rid: cmd.rid, col: cmd.column }],
+      outcome: {
+        summary: `selected cell ${cmd.column} of row ${cmd.rid}`,
+        undo: same ? undefined : undo,
+        touched: { cells: [{ rid: cmd.rid, column: cmd.column }], columns: [cmd.column] },
+      },
+    };
+  }
+  const empty = columns.length === 0 && row === null && cell === null;
+  return {
+    actions: [{ type: "CLEAR_SELECTION" }],
+    outcome: { summary: "cleared the selection", undo: empty ? undefined : undo, touched: {} },
+  };
+}
+
 function reduceAll(state: AppState, actions: AppAction[]): AppState {
   return actions.reduce(appReducer, state);
 }
@@ -650,6 +737,10 @@ export async function handleCommand(
     return setSetting(id, cmd, deps);
   }
   if (cmd.type === "set_grid_view") return setGridView(id, cmd, deps);
+  if (cmd.type === "pick_row" || cmd.type === "pick_cell" || cmd.type === "clear_selection") {
+    return pick(id, cmd, deps);
+  }
+  if (cmd.type === "add_variable") return addVariable(id, cmd, deps);
   const before = deps.getState();
   const actions = viewActions(cmd);
   return finish(id, deps, before, actions, viewOutcome(cmd, before));
@@ -748,4 +839,66 @@ async function setGridView(
     undo: same ? undefined : [{ type: "SET_GRID_VIEW", view: before.gridView }],
     touched: { columns: [...new Set(named)] },
   });
+}
+
+/**
+ * pick_row / pick_cell / clear_selection. `column` is validated against the
+ * frame shown. `rid` is not: rows load by pages, so Studio cannot tell cheaply
+ * whether a rid is in the frame (dropped by a step, or on a page not loaded);
+ * the selection is applied and the inspector shows its empty state.
+ */
+async function pick(
+  id: string,
+  cmd: Extract<AgentCommand, { type: "pick_row" | "pick_cell" | "clear_selection" }>,
+  deps: BridgeDeps,
+): Promise<Ack> {
+  if (cmd.type === "pick_cell") {
+    try {
+      if (!(await deps.frameColumns()).includes(cmd.column)) {
+        return fail(id, `bad_command: unknown column ${JSON.stringify(cmd.column)}`);
+      }
+    } catch (e) {
+      return fail(id, `frame_unavailable: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  const before = deps.getState();
+  const { actions, outcome } = pickOutcome(cmd, before);
+  return finish(id, deps, before, actions, outcome);
+}
+
+/**
+ * add_variable: a workspace variable (`@name` in a formula). Name unique,
+ * column on the frame shown; persisted through the save gate before the ack.
+ * The variable is only declared here: a formula step reads it from its own
+ * `params.variables` (Studio's editor copies the workspace variables into the
+ * step, a `propose_steps` step must carry them itself).
+ */
+async function addVariable(
+  id: string,
+  cmd: Extract<AgentCommand, { type: "add_variable" }>,
+  deps: BridgeDeps,
+): Promise<Ack> {
+  try {
+    if (!(await deps.frameColumns()).includes(cmd.column)) {
+      return fail(id, `bad_command: unknown column ${JSON.stringify(cmd.column)}`);
+    }
+  } catch (e) {
+    return fail(id, `frame_unavailable: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  if (deps.getState().workspace?.variables.some((v) => v.name === cmd.name)) {
+    return fail(id, `bad_command: variable ${JSON.stringify(cmd.name)} already exists`);
+  }
+  const variable = { name: cmd.name, stat: cmd.stat, column: cmd.column };
+  deps.dispatch({ type: "ADD_VARIABLE", variable });
+  try {
+    await deps.settle();
+  } catch (e) {
+    deps.dispatch({ type: "REMOVE_VARIABLE", name: cmd.name });
+    return fail(id, `save_failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  deps.touch({ columns: [cmd.column] });
+  deps.announce(`variable @${cmd.name} = ${cmd.stat}(${cmd.column})`, [
+    { type: "REMOVE_VARIABLE", name: cmd.name },
+  ]);
+  return { id, ok: true, identity: currentIdentityKey(deps.getState()) };
 }

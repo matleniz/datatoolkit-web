@@ -181,12 +181,14 @@ function DataCell({
   c,
   profile,
   selection,
+  touched,
   dispatch,
 }: {
   row: DisplayRow;
   c: DisplayCol;
   profile: ColumnProfile | undefined;
   selection: Selection;
+  touched: boolean;
   dispatch: Dispatch;
 }) {
   const v = row.vals[c.name];
@@ -216,6 +218,7 @@ function DataCell({
         .join(" ")}
       style={{ width: colWidth(c.kind) }}
       title={cellTip(row, c, v, outlier)}
+      data-agent-touched={touched ? "1" : undefined}
       onClick={() => dispatch({ type: "PICK_CELL", rid: row.rid, col: c.name })}
     >
       {cellDisplay(v as never)}
@@ -273,6 +276,8 @@ export function Grid() {
   display.rows.forEach((r, i) => rowNum.set(r.rid, i + 1));
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stateTouchRef = useRef(agentTouch);
+  stateTouchRef.current = agentTouch;
   const [scrollLeft, setScrollLeft] = useState(0);
   const [viewportW, setViewportW] = useState(0);
 
@@ -327,6 +332,32 @@ export function Grid() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [hasSelection, ctxOpen, dispatch]);
+
+  // Bring what the agent picked into view (a rid on a page not loaded stays out).
+  const touchAt = agentTouch?.at;
+  useEffect(() => {
+    const el = scrollRef.current;
+    const touch = stateTouchRef.current;
+    if (!el || !touch) return;
+    const rid = touch.cells[0]?.rid ?? touch.rows[0];
+    if (rid === undefined) return;
+    el.querySelector(`[data-rid="${rid}"]`)?.scrollIntoView?.({ block: "nearest" });
+    const col = touch.cells[0]?.column;
+    if (col === undefined) return;
+    let left = 0;
+    for (const c of display.cols) {
+      if (c.name === col) {
+        const w = colWidth(c.kind);
+        if (left < el.scrollLeft || left + w > el.scrollLeft + el.clientWidth - 44) {
+          el.scrollLeft = Math.max(0, left - 44);
+        }
+        break;
+      }
+      left += colWidth(c.kind);
+    }
+    // Only a new touch scrolls, not later data changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [touchAt]);
 
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -494,7 +525,12 @@ export function Grid() {
           {display.rows.map((row) => {
             const num = rowNum.get(row.rid) ?? 0;
             return (
-              <div key={row.rid} className="grid-row">
+              <div
+                key={row.rid}
+                className="grid-row"
+                data-rid={row.rid}
+                data-agent-touched={agentTouch?.rows.includes(row.rid) ? "1" : undefined}
+              >
                 <button
                   type="button"
                   className={rowNumClass(
@@ -514,6 +550,7 @@ export function Grid() {
                     c={c}
                     profile={profiles.get(c.name)}
                     selection={selection}
+                    touched={!!agentTouch?.cells.some((t) => t.rid === row.rid && t.column === c.name)}
                     dispatch={dispatch}
                   />
                 ))}

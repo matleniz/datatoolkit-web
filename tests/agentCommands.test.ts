@@ -516,8 +516,116 @@ describe("set_tool_params", () => {
   });
 });
 
+describe("pick_row / pick_cell / clear_selection (#90)", () => {
+  const send = (h: ReturnType<typeof harness>, cmd: Record<string, unknown>) =>
+    handleCommand({ id: "p", ...cmd }, h.deps);
+
+  it("validates the payload", () => {
+    const bad = (c: Record<string, unknown>) => (parseCommand(c) as { error: string }).error;
+    expect(bad({ type: "pick_row" })).toMatch(/rid must be/);
+    expect(bad({ type: "pick_row", rid: -1 })).toMatch(/rid must be/);
+    expect(bad({ type: "pick_row", rid: 1.5 })).toMatch(/rid must be/);
+    expect(bad({ type: "pick_cell", rid: 1 })).toMatch(/column must be/);
+    expect(bad({ type: "pick_cell", rid: "1", column: "age" })).toMatch(/rid must be/);
+    expect(parseCommand({ type: "clear_selection" })).toEqual({ type: "clear_selection" });
+  });
+
+  it("pick_row selects the row, highlights it, Undo restores the column selection", async () => {
+    const h = harness(start());
+    h.deps.dispatch({ type: "PICK_COL", name: "age", add: false });
+    expect(await send(h, { type: "pick_row", rid: 7 })).toMatchObject({ ok: true });
+    expect(h.state.selection).toMatchObject({ row: 7, cell: null, columns: [] });
+    expect(h.touches).toEqual([{ rows: [7] }]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.selection).toMatchObject({ row: null, cell: null, columns: ["age"] });
+  });
+
+  it("picking what is already picked keeps it (no toggle) and offers no Undo", async () => {
+    const h = harness(start());
+    await send(h, { type: "pick_row", rid: 7 });
+    await send(h, { type: "pick_row", rid: 7 });
+    expect(h.state.selection.row).toBe(7);
+    expect(h.undos[1]).toBeUndefined();
+    await send(h, { type: "pick_cell", rid: 3, column: "age" });
+    await send(h, { type: "pick_cell", rid: 3, column: "age" });
+    expect(h.state.selection.cell).toEqual({ rid: 3, col: "age" });
+    expect(h.undos[3]).toBeUndefined();
+  });
+
+  it("pick_cell selects the cell and its column; Undo restores the previous row", async () => {
+    const h = harness(start());
+    await send(h, { type: "pick_row", rid: 2 });
+    expect(await send(h, { type: "pick_cell", rid: 3, column: "income" })).toMatchObject({ ok: true });
+    expect(h.state.selection).toMatchObject({ cell: { rid: 3, col: "income" }, row: null, columns: ["income"] });
+    expect(h.touches[1]).toEqual({ cells: [{ rid: 3, column: "income" }], columns: ["income"] });
+    h.undos[1]!.forEach(h.deps.dispatch);
+    expect(h.state.selection).toMatchObject({ row: 2, cell: null, columns: [] });
+  });
+
+  it("pick_cell refuses a column not in the frame; an unknown rid is applied", async () => {
+    const h = harness(start());
+    const ack = await send(h, { type: "pick_cell", rid: 3, column: "ghost" });
+    expect(ack).toMatchObject({ ok: false, error: 'bad_command: unknown column "ghost"' });
+    expect(h.state.selection.cell).toBeNull();
+    expect(await send(h, { type: "pick_row", rid: 999999 })).toMatchObject({ ok: true });
+    expect(h.state.selection.row).toBe(999999);
+  });
+
+  it("clear_selection clears; Undo brings back the cell", async () => {
+    const h = harness(start());
+    await send(h, { type: "pick_cell", rid: 3, column: "age" });
+    expect(await send(h, { type: "clear_selection" })).toMatchObject({ ok: true });
+    expect(h.state.selection).toMatchObject({ row: null, cell: null, columns: [] });
+    h.undos[1]!.forEach(h.deps.dispatch);
+    expect(h.state.selection).toMatchObject({ cell: { rid: 3, col: "age" }, columns: ["age"] });
+    const empty = harness(start());
+    await send(empty, { type: "clear_selection" });
+    expect(empty.undos[0]).toBeUndefined();
+  });
+});
+
+describe("add_variable", () => {
+  const cmd = { type: "add_variable", name: "mu", stat: "mean", column: "age" };
+  const send = (h: ReturnType<typeof harness>, c: Record<string, unknown>) =>
+    handleCommand({ id: "c1", ...c }, h.deps);
+
+  it("adds the variable, saves before the ack, highlights the column; Undo removes it", async () => {
+    const h = harness(start());
+    const ack = await send(h, cmd);
+    expect(ack).toMatchObject({ ok: true });
+    expect(h.state.workspace?.variables).toEqual([{ name: "mu", stat: "mean", column: "age" }]);
+    expect(h.settled).toBe(1);
+    expect(h.toasts).toEqual(["variable @mu = mean(age)"]);
+    expect(h.touches).toEqual([{ columns: ["age"] }]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.workspace?.variables).toEqual([]);
+  });
+
+  it("refuses a bad name, stat, column, a duplicate", async () => {
+    const h = harness(start());
+    const bad = (c: Record<string, unknown>) => send(h, { ...cmd, ...c });
+    expect((await bad({ name: "1x" }))?.error).toMatch(/^bad_command: name must be an identifier/);
+    expect((await bad({ stat: "mode" }))?.error).toMatch(/^bad_command: stat must be one of mean,/);
+    expect((await bad({ column: "" }))?.error).toBe("bad_command: column must be a non-empty string");
+    expect((await bad({ column: "ghost" }))?.error).toBe('bad_command: unknown column "ghost"');
+    await send(h, cmd);
+    expect((await bad({ stat: "max" }))?.error).toBe('bad_command: variable "mu" already exists');
+    expect(h.state.workspace?.variables).toHaveLength(1);
+  });
+
+  it("rolls back and acks save_failed when the save gate rejects", async () => {
+    const h = harness(start());
+    h.deps.settle = async () => {
+      throw new Error("disk full");
+    };
+    expect(await send(h, cmd)).toMatchObject({ ok: false, error: "save_failed: disk full" });
+    expect(h.state.workspace?.variables).toEqual([]);
+    expect(h.toasts).toEqual([]);
+  });
+});
+
 describe("agentTouch slice", () => {
-  const touch = { columns: ["age"], tools: [], steps: [], at: 5 };
+  const touch = { columns: ["age"], tools: [], steps: [], rows: [], cells: [], at: 5 };
   it("is set by AGENT_TOUCH and cleared only by the matching timestamp", () => {
     let s = appReducer(initialState, { type: "AGENT_TOUCH", touch });
     expect(s.agentTouch).toEqual(touch);
