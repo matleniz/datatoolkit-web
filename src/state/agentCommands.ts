@@ -1,5 +1,15 @@
 import type { JsonSchema, Role, Step } from "../api/types";
 import { toolDef } from "../bench/toolrail/tools";
+import {
+  FILTER_OPS,
+  gridViewKey,
+  opIsList,
+  opNeedsValue,
+  type GridCondition,
+  type GridFilter,
+  type GridSortKey,
+  type GridView,
+} from "./gridView";
 import { TOOL_IDS, type ToolId } from "./dockTypes";
 import { appReducer, type AppAction, type AppState } from "./reducer";
 import { applyStepOps, type StepOp } from "./stepOps";
@@ -25,6 +35,7 @@ export type AgentCommand =
   | { type: "set_view"; role?: Role; version?: number | null }
   | { type: "set_target"; column: string | null }
   | { type: "set_dist_by"; by: string | null }
+  | { type: "set_grid_view"; filter?: GridFilter | null; sort?: GridSortKey[] | null }
   | {
       type: "set_tool_params";
       tool: ToolId;
@@ -193,6 +204,75 @@ function parseSetTarget(raw: Record<string, unknown>): Parsed<AgentCommand> {
   return { type: "set_target", column: raw.column };
 }
 
+const isScalar = (v: unknown) =>
+  typeof v === "string" || typeof v === "boolean" || (typeof v === "number" && Number.isFinite(v));
+
+function parseCondition(raw: unknown, n: number): GridCondition | string {
+  const bad = (why: string) => `filter.conditions[${n}]: ${why}`;
+  if (!isRecord(raw)) return bad("must be an object");
+  const { column, op, value } = raw;
+  if (!isColumnName(column)) return bad("column must be a non-empty string");
+  const known = FILTER_OPS.find((o) => o.op === op);
+  if (!known) return bad(`op must be one of ${FILTER_OPS.map((o) => o.op).join(", ")}`);
+  if (!opNeedsValue(known.op)) {
+    return value === undefined ? { column, op: known.op } : bad(`${known.op} takes no value`);
+  }
+  if (opIsList(known.op)) {
+    if (!Array.isArray(value) || value.length === 0 || !value.every(isScalar)) {
+      return bad(`${known.op} needs value as a non-empty list of strings / numbers`);
+    }
+  } else if (!isScalar(value)) {
+    return bad(`${known.op} needs value as a string, number or boolean`);
+  }
+  return { column, op: known.op, value };
+}
+
+function parseGridFilter(raw: unknown): GridFilter | string {
+  if (!isRecord(raw)) return "filter must be an object or null";
+  if (!Array.isArray(raw.conditions) || raw.conditions.length === 0) {
+    return "filter.conditions must be a non-empty list";
+  }
+  if (raw.combine !== "and" && raw.combine !== "or") return "filter.combine must be and or or";
+  const conditions: GridCondition[] = [];
+  for (const [n, c] of raw.conditions.entries()) {
+    const cond = parseCondition(c, n);
+    if (typeof cond === "string") return cond;
+    conditions.push(cond);
+  }
+  return { conditions, combine: raw.combine };
+}
+
+function parseGridSort(raw: unknown): GridSortKey[] | string {
+  if (!Array.isArray(raw) || raw.length === 0) return "sort must be a non-empty list or null";
+  const keys: GridSortKey[] = [];
+  for (const [n, k] of raw.entries()) {
+    if (!isRecord(k) || !isColumnName(k.column) || typeof k.desc !== "boolean") {
+      return `sort[${n}] must be {column: string, desc: boolean}`;
+    }
+    keys.push({ column: k.column, desc: k.desc });
+  }
+  return keys;
+}
+
+function parseSetGridView(raw: Record<string, unknown>): Parsed<AgentCommand> {
+  const { filter, sort } = raw;
+  if (filter === undefined && sort === undefined) {
+    return { error: "set_grid_view needs filter and / or sort" };
+  }
+  const cmd: Extract<AgentCommand, { type: "set_grid_view" }> = { type: "set_grid_view" };
+  if (filter !== undefined) {
+    const f = filter === null ? null : parseGridFilter(filter);
+    if (typeof f === "string") return { error: f };
+    cmd.filter = f;
+  }
+  if (sort !== undefined) {
+    const k = sort === null ? null : parseGridSort(sort);
+    if (typeof k === "string") return { error: k };
+    cmd.sort = k;
+  }
+  return cmd;
+}
+
 function parseSetDistBy(raw: Record<string, unknown>): Parsed<AgentCommand> {
   if (raw.by !== null && !isColumnName(raw.by)) {
     return { error: "by must be a non-empty string or null" };
@@ -240,6 +320,8 @@ export function parseCommand(raw: Record<string, unknown>): Parsed<AgentCommand>
       return parseSetDistBy(raw);
     case "set_tool_params":
       return parseSetToolParams(raw);
+    case "set_grid_view":
+      return parseSetGridView(raw);
     default:
       return { error: `unknown type ${JSON.stringify(raw.type)}` };
   }
@@ -567,6 +649,7 @@ export async function handleCommand(
   ) {
     return setSetting(id, cmd, deps);
   }
+  if (cmd.type === "set_grid_view") return setGridView(id, cmd, deps);
   const before = deps.getState();
   const actions = viewActions(cmd);
   return finish(id, deps, before, actions, viewOutcome(cmd, before));
@@ -612,4 +695,57 @@ async function setSetting(
   const before = deps.getState();
   const { actions, outcome } = settingOutcome(cmd, before);
   return finish(id, deps, before, actions, outcome);
+}
+
+/** The grid view after `cmd`: a given field replaces, null clears, an omitted one is kept. */
+function nextGridView(
+  cmd: Extract<AgentCommand, { type: "set_grid_view" }>,
+  before: GridView,
+): GridView {
+  return {
+    filter: cmd.filter === undefined ? before.filter : cmd.filter,
+    sort: cmd.sort === undefined ? before.sort : (cmd.sort ?? []),
+  };
+}
+
+function gridViewSummary(view: GridView): string {
+  const parts = [
+    view.filter ? `filter (${view.filter.conditions.length})` : null,
+    view.sort.length > 0 ? `sort by ${view.sort.map((k) => k.column).join(", ")}` : null,
+  ].filter((p) => p !== null);
+  return parts.length > 0 ? `Grid view: ${parts.join(", ")}` : "Grid view cleared";
+}
+
+/**
+ * set_grid_view: the grid's view-only filter / sort (#81). No step, identity
+ * unchanged; every column it names is checked against the frame shown.
+ */
+async function setGridView(
+  id: string,
+  cmd: Extract<AgentCommand, { type: "set_grid_view" }>,
+  deps: BridgeDeps,
+): Promise<Ack> {
+  const named = [
+    ...(cmd.filter?.conditions.map((c) => c.column) ?? []),
+    ...(cmd.sort?.map((k) => k.column) ?? []),
+  ];
+  if (named.length > 0) {
+    try {
+      const columns = await deps.frameColumns();
+      const unknown = named.find((c) => !columns.includes(c));
+      if (unknown !== undefined) {
+        return fail(id, `bad_command: unknown column ${JSON.stringify(unknown)}`);
+      }
+    } catch (e) {
+      return fail(id, `frame_unavailable: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  const before = deps.getState();
+  const view = nextGridView(cmd, before.gridView);
+  const same = gridViewKey(view) === gridViewKey(before.gridView);
+  return finish(id, deps, before, [{ type: "SET_GRID_VIEW", view }], {
+    summary: gridViewSummary(view),
+    undo: same ? undefined : [{ type: "SET_GRID_VIEW", view: before.gridView }],
+    touched: { columns: [...new Set(named)] },
+  });
 }

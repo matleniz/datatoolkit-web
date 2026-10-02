@@ -123,6 +123,8 @@ export interface AppState {
   chartDraft: ChartDraft | null;
   /** Last engine error message while replaying / previewing (verbatim). */
   benchError: string | null;
+  /** Rows of the grid shown (after the view filter); published in the UI context. */
+  gridTotal: number | null;
   /**
    * Sources screen file lists keyed by workspace name (FX-A / MAT-139).
    * Switching workspaces must not leak another workspace's files.
@@ -192,6 +194,7 @@ export const initialState: AppState = {
   toolViews: {},
   chartDraft: null,
   benchError: null,
+  gridTotal: null,
   filesByWorkspace: {},
   stepHistory: EMPTY_STEP_HISTORY,
   agentTouch: null,
@@ -281,6 +284,7 @@ export type AppAction =
   | { type: "REMOVE_CHART"; name: string }
   | { type: "SET_CHARTS"; charts: ChartSpec[] }
   | { type: "SET_BENCH_ERROR"; message: string | null }
+  | { type: "SET_GRID_TOTAL"; total: number | null }
   /** Agent-touch highlight (set / cleared by the agent bridge only, #88). */
   | { type: "AGENT_TOUCH"; touch: AgentTouch }
   | { type: "AGENT_TOUCH_CLEAR"; at: number }
@@ -440,6 +444,8 @@ function reduceShell(
       return { ...state, distBy: action.by };
     case "SET_BENCH_ERROR":
       return { ...state, benchError: action.message };
+    case "SET_GRID_TOTAL":
+      return state.gridTotal === action.total ? state : { ...state, gridTotal: action.total };
     case "AGENT_TOUCH":
       return { ...state, agentTouch: action.touch };
     case "AGENT_TOUCH_CLEAR":

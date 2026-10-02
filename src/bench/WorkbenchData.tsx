@@ -6,6 +6,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   type ReactNode,
 } from "react";
@@ -88,6 +89,12 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
   const dispatch = useAppDispatch();
 
   const frame = useBenchFrame(workspace, role, viewVersion, dispatch, gridView);
+  // The agent reads the row count of the grid shown through the UI context.
+  const rowsShown = frame.rowsIdentity ? frame.total : null;
+  useEffect(() => {
+    dispatch({ type: "SET_GRID_TOTAL", total: rowsShown });
+  }, [dispatch, rowsShown]);
+  useEffect(() => () => dispatch({ type: "SET_GRID_TOTAL", total: null }), [dispatch]);
   const { isLatest, columns, rows } = frame;
   const editIndex = editor?.editIndex;
   const atBase = workspace
