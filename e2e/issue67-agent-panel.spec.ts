@@ -85,3 +85,27 @@ test("issue 67: a permission request waits for Allow / Deny; Deny fails the call
   await expect(panel.getByRole("button", { name: "Send" })).toBeVisible({ timeout: 30_000 });
   expect(await stepOps(page)).toEqual([]);
 });
+
+test("issue 67: with no agent pack the panel says why and offers Check again", async ({ page }) => {
+  await page.route("**/api/ui/agent", (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({
+          json: {
+            available: false,
+            pack: null,
+            reason: "no agent pack configured (DTK_AGENT_PACK)",
+            running: false,
+            usage: { input_tokens: 0, output_tokens: 0 },
+            max_tokens: null,
+          },
+        })
+      : route.continue(),
+  );
+  await openWorkbench(page, true);
+  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Agent" });
+  await expect(panel).toContainText("No agent");
+  await expect(panel).toContainText("no agent pack configured (DTK_AGENT_PACK)");
+  await expect(panel.getByRole("button", { name: "Check again" })).toBeVisible();
+  await expect(panel.getByLabel("Message the agent")).toHaveCount(0);
+});
