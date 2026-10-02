@@ -1,0 +1,209 @@
+/* In-Studio agent panel (datatoolkit-issues#67): side panel left of the tool rail. */
+.agent-panel {
+  width: 340px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--dtk-border);
+  background: var(--dtk-bg-subtle);
+  font-size: 13px;
+  color: var(--dtk-ink);
+}
+
+.agent-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--dtk-border-soft);
+  background: var(--dtk-surface);
+}
+.agent-panel-who {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--dtk-font-mono);
+  font-size: 11px;
+  color: var(--dtk-muted);
+}
+.agent-panel-close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--dtk-muted);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.agent-absent {
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.agent-absent p {
+  margin: 0;
+  color: var(--dtk-muted);
+  line-height: 1.45;
+}
+
+.agent-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.agent-hint {
+  color: var(--dtk-muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.agent-msg {
+  border-radius: 8px;
+  padding: 6px 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.agent-msg p {
+  margin: 4px 0;
+  white-space: pre-wrap;
+}
+.agent-msg.user {
+  align-self: flex-end;
+  max-width: 88%;
+  background: var(--dtk-accent-soft);
+  border: 1px solid var(--dtk-accent-border);
+}
+.agent-msg.assistant {
+  background: var(--dtk-surface);
+  border: 1px solid var(--dtk-border-soft);
+}
+.agent-msg.error {
+  background: var(--dtk-error-bg);
+  color: var(--dtk-error-fg);
+}
+.agent-msg code,
+.agent-code {
+  font-family: var(--dtk-font-mono);
+  font-size: 12px;
+  background: var(--dtk-code-bg);
+  color: var(--dtk-code-fg);
+  border-radius: 4px;
+}
+.agent-msg code {
+  padding: 0 3px;
+}
+.agent-code {
+  margin: 6px 0;
+  padding: 8px;
+  overflow-x: auto;
+}
+.agent-code code {
+  padding: 0;
+  background: none;
+}
+
+.agent-chip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 12px;
+}
+.agent-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--dtk-border);
+  background: var(--dtk-surface);
+  font-family: var(--dtk-font-mono);
+  font-size: 11px;
+  color: var(--dtk-ink);
+}
+.agent-chip-btn:not(:disabled):hover {
+  border-color: var(--dtk-accent);
+}
+.agent-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dtk-muted);
+  flex-shrink: 0;
+}
+.agent-chip.ok .agent-chip-dot {
+  background: var(--dtk-ok-fg);
+}
+.agent-chip.review .agent-chip-dot {
+  background: var(--dtk-warn-fg);
+}
+.agent-chip.error .agent-chip-dot {
+  background: var(--dtk-error-fg);
+}
+.agent-chip-status {
+  color: var(--dtk-muted);
+}
+.agent-chip-detail {
+  flex-basis: 100%;
+  color: var(--dtk-muted);
+  padding-left: 10px;
+}
+
+/* Reuses .agent-review / .agent-actions (App.css), not floating here. */
+.agent-permission {
+  box-shadow: none;
+}
+.agent-permission-done {
+  color: var(--dtk-muted);
+  font-size: 12px;
+}
+
+.agent-typing {
+  color: var(--dtk-muted);
+  letter-spacing: 0.2em;
+}
+
+.agent-panel-foot {
+  border-top: 1px solid var(--dtk-border-soft);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--dtk-surface);
+}
+.agent-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--dtk-border);
+  border-radius: 6px;
+}
+.agent-foot-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.agent-usage {
+  flex: 1;
+  font-family: var(--dtk-font-mono);
+  font-size: 11px;
+  color: var(--dtk-muted);
+}
