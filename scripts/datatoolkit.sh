@@ -297,6 +297,13 @@ cmd_uninstall() {
   check_install_dir
   check_docker
   if [ -f "$DIR/compose.yml" ]; then
+    if [ "$purge" = --purge ] && [ -d "$DATA_ABS" ]; then
+      # The engine writes as uid 1000 (owner-only dirs such as agent/): empty the
+      # data dir from a root container while the image is still here, so a host
+      # user with another uid can delete it. Best effort; rm -rf below reports.
+      compose run --rm --no-deps -T --entrypoint find engine /data -mindepth 1 -delete \
+        >/dev/null 2>&1 || true
+    fi
     compose down --rmi all --remove-orphans || die "Could not remove the containers."
     rm -f "$DIR/compose.yml" "$DIR/.env"
   else
