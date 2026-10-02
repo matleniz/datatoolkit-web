@@ -33,6 +33,9 @@ export type AgentCommand =
   | { type: "open_window"; tool: ToolId; params: Record<string, unknown> }
   | { type: "select_columns"; columns: string[] }
   | { type: "set_view"; role?: Role; version?: number | null }
+  | { type: "pick_row"; rid: number }
+  | { type: "pick_cell"; rid: number; column: string }
+  | { type: "clear_selection" }
   | { type: "set_target"; column: string | null }
   | { type: "set_dist_by"; by: string | null }
   | { type: "set_grid_view"; filter?: GridFilter | null; sort?: GridSortKey[] | null }
@@ -84,6 +87,9 @@ export interface Touched {
   tools?: ToolId[];
   /** Indices in the step list after the command. */
   steps?: number[];
+  /** Row ids (`rid`) of the grid. */
+  rows?: number[];
+  cells?: { rid: number; column: string }[];
 }
 
 /**
@@ -193,6 +199,19 @@ function parseSetView(raw: Record<string, unknown>): Parsed<AgentCommand> {
     ...(role !== undefined ? { role } : {}),
     ...(version !== undefined ? { version: version as number | null } : {}),
   };
+}
+
+const isRid = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
+
+function parsePickRow(raw: Record<string, unknown>): Parsed<AgentCommand> {
+  if (!isRid(raw.rid)) return { error: "rid must be a non-negative integer" };
+  return { type: "pick_row", rid: raw.rid };
+}
+
+function parsePickCell(raw: Record<string, unknown>): Parsed<AgentCommand> {
+  if (!isRid(raw.rid)) return { error: "rid must be a non-negative integer" };
+  if (!isColumnName(raw.column)) return { error: "column must be a non-empty string" };
+  return { type: "pick_cell", rid: raw.rid, column: raw.column };
 }
 
 const isColumnName = (v: unknown): v is string => typeof v === "string" && v !== "";
@@ -314,6 +333,12 @@ export function parseCommand(raw: Record<string, unknown>): Parsed<AgentCommand>
     }
     case "set_view":
       return parseSetView(raw);
+    case "pick_row":
+      return parsePickRow(raw);
+    case "pick_cell":
+      return parsePickCell(raw);
+    case "clear_selection":
+      return { type: "clear_selection" };
     case "set_target":
       return parseSetTarget(raw);
     case "set_dist_by":
@@ -367,6 +392,14 @@ function restoreSelection(state: AppState): AppAction[] {
     { type: "CLEAR_SELECTION" },
     ...state.selection.columns.map((name): AppAction => ({ type: "PICK_COL", name, add: true })),
   ];
+}
+
+/** Actions that put the row / cell / column selection back as it is in `state`. */
+function restoreFullSelection(state: AppState): AppAction[] {
+  const { row, cell } = state.selection;
+  if (cell) return [{ type: "CLEAR_SELECTION" }, { type: "PICK_CELL", rid: cell.rid, col: cell.col }];
+  if (row !== null) return [{ type: "CLEAR_SELECTION" }, { type: "PICK_ROW", rid: row }];
+  return restoreSelection(state);
 }
 
 const sameList = (a: string[], b: string[]) =>
@@ -558,6 +591,39 @@ function settingOutcome(
   };
 }
 
+/** Actions + outcome of pick_row / pick_cell / clear_selection, from the state before them. */
+function pickOutcome(
+  cmd: Extract<AgentCommand, { type: "pick_row" | "pick_cell" | "clear_selection" }>,
+  before: AppState,
+): { actions: AppAction[]; outcome: Outcome } {
+  const { row, cell, columns } = before.selection;
+  const undo = restoreFullSelection(before);
+  if (cmd.type === "pick_row") {
+    // PICK_ROW toggles: picking the row already picked must not clear it.
+    const same = row === cmd.rid;
+    return {
+      actions: same ? [] : [{ type: "PICK_ROW", rid: cmd.rid }],
+      outcome: { summary: `selected row ${cmd.rid}`, undo: same ? undefined : undo, touched: { rows: [cmd.rid] } },
+    };
+  }
+  if (cmd.type === "pick_cell") {
+    const same = cell?.rid === cmd.rid && cell.col === cmd.column;
+    return {
+      actions: same ? [] : [{ type: "PICK_CELL", rid: cmd.rid, col: cmd.column }],
+      outcome: {
+        summary: `selected cell ${cmd.column} of row ${cmd.rid}`,
+        undo: same ? undefined : undo,
+        touched: { cells: [{ rid: cmd.rid, column: cmd.column }], columns: [cmd.column] },
+      },
+    };
+  }
+  const empty = columns.length === 0 && row === null && cell === null;
+  return {
+    actions: [{ type: "CLEAR_SELECTION" }],
+    outcome: { summary: "cleared the selection", undo: empty ? undefined : undo, touched: {} },
+  };
+}
+
 function reduceAll(state: AppState, actions: AppAction[]): AppState {
   return actions.reduce(appReducer, state);
 }
@@ -650,6 +716,9 @@ export async function handleCommand(
     return setSetting(id, cmd, deps);
   }
   if (cmd.type === "set_grid_view") return setGridView(id, cmd, deps);
+  if (cmd.type === "pick_row" || cmd.type === "pick_cell" || cmd.type === "clear_selection") {
+    return pick(id, cmd, deps);
+  }
   const before = deps.getState();
   const actions = viewActions(cmd);
   return finish(id, deps, before, actions, viewOutcome(cmd, before));
@@ -748,4 +817,29 @@ async function setGridView(
     undo: same ? undefined : [{ type: "SET_GRID_VIEW", view: before.gridView }],
     touched: { columns: [...new Set(named)] },
   });
+}
+
+/**
+ * pick_row / pick_cell / clear_selection. `column` is validated against the
+ * frame shown. `rid` is not: rows load by pages, so Studio cannot tell cheaply
+ * whether a rid is in the frame (dropped by a step, or on a page not loaded);
+ * the selection is applied and the inspector shows its empty state.
+ */
+async function pick(
+  id: string,
+  cmd: Extract<AgentCommand, { type: "pick_row" | "pick_cell" | "clear_selection" }>,
+  deps: BridgeDeps,
+): Promise<Ack> {
+  if (cmd.type === "pick_cell") {
+    try {
+      if (!(await deps.frameColumns()).includes(cmd.column)) {
+        return fail(id, `bad_command: unknown column ${JSON.stringify(cmd.column)}`);
+      }
+    } catch (e) {
+      return fail(id, `frame_unavailable: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  const before = deps.getState();
+  const { actions, outcome } = pickOutcome(cmd, before);
+  return finish(id, deps, before, actions, outcome);
 }
