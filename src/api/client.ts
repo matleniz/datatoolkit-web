@@ -110,6 +110,67 @@ function frameBody(ws: Workspace): Record<string, unknown> {
   };
 }
 
+const API_BASE: string = import.meta.env.VITE_API_URL ?? "/api";
+
+/**
+ * Agent bridge (/api/ui, datatoolkit-issues#63). Not on `ApiClient`: these
+ * calls bypass the request dedupe (a context PUT must always go out) and carry
+ * the per-run token the page got in `<meta name="dtk-ui-token">`.
+ */
+export function uiToken(): string | null {
+  const meta = document.querySelector<HTMLMetaElement>(
+    'meta[name="dtk-ui-token"]',
+  );
+  return meta?.content?.trim() || null;
+}
+
+function uiUrl(path: string, base: string = API_BASE): string {
+  return `${base.replace(/\/$/, "")}/ui${path}`;
+}
+
+/** `EventSource` cannot set headers: the token goes in the query string. */
+export function uiEventsUrl(
+  session: string,
+  token: string,
+  base: string = API_BASE,
+): string {
+  const q = new URLSearchParams({ session, token });
+  return `${uiUrl("/events", base)}?${q}`;
+}
+
+export function uiAuthHeaders(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}` };
+}
+
+async function uiSend(
+  method: "PUT" | "POST",
+  path: string,
+  token: string,
+  body: unknown,
+): Promise<Response> {
+  return fetch(uiUrl(path), {
+    method,
+    headers: { "Content-Type": "application/json", ...uiAuthHeaders(token) },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function putUiContext(
+  token: string,
+  context: unknown,
+): Promise<void> {
+  const res = await uiSend("PUT", "/context", token, context);
+  if (!res.ok) throw new Error(`PUT /ui/context: HTTP ${res.status}`);
+}
+
+/** Ack a command. A 404 (the engine already timed the command out) is fine. */
+export async function postUiAck(token: string, ack: unknown): Promise<void> {
+  const res = await uiSend("POST", "/ack", token, ack);
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`POST /ui/ack: HTTP ${res.status}`);
+  }
+}
+
 class HttpApiClient implements ApiClient {
   readonly baseUrl: string;
   private readonly dedupe = new InFlightDedupe();
@@ -118,7 +179,7 @@ class HttpApiClient implements ApiClient {
   private readonly transformSchemaCache = new Map<string, Promise<JsonSchema>>();
   private readonly keySchemaCache = new Map<string, Promise<JsonSchema>>();
 
-  constructor(baseUrl = import.meta.env.VITE_API_URL ?? "/api") {
+  constructor(baseUrl = API_BASE) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
   }
 

@@ -19,6 +19,7 @@ import webbrowser
 from pathlib import Path
 
 from starlette.exceptions import HTTPException
+from starlette.responses import HTMLResponse
 from starlette.staticfiles import StaticFiles
 
 from dtk_studio.dist import DistError, data_home, ensure_dist
@@ -27,8 +28,32 @@ HOST = "127.0.0.1"
 PORT_TRIES = 20
 
 
+def _loopback_host(scope) -> bool:
+    """The request's Host passes the engine's UI-bridge rule (DNS-rebinding guard)."""
+    from dtk_engine.ui_bridge import allowed_hosts, host_name
+
+    host = dict(scope["headers"]).get(b"host", b"").decode("latin-1")
+    return host_name(host) in allowed_hosts()
+
+
+def with_ui_token(html: str, token: str) -> str:
+    """``index.html`` with the bridge token handed to the page as a meta tag."""
+    meta = f'<meta name="dtk-ui-token" content="{token}" />'
+    head = html.find("</head>")
+    return meta + html if head < 0 else html[:head] + meta + html[head:]
+
+
 class SPAStaticFiles(StaticFiles):
-    """Static files; unknown paths outside ``/api`` get ``index.html``."""
+    """Static files; unknown paths outside ``/api`` get ``index.html``.
+
+    With a ``token``, ``index.html`` carries it as ``<meta name="dtk-ui-token">``
+    (the agent bridge's per-run token), but only for a loopback ``Host``, so a
+    DNS-rebinding page cannot read it. Never cached.
+    """
+
+    def __init__(self, *args, token: str | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._token = token
 
     async def get_response(self, path: str, scope):
         try:
@@ -37,12 +62,23 @@ class SPAStaticFiles(StaticFiles):
             if exc.status_code != 404:
                 raise
             response = None
-        if response is not None and response.status_code != 404:
-            return response
-        # Starlette hands over an OS path here ("api\\x" on Windows).
-        if path.replace(os.sep, "/").split("/", 1)[0] == "api":
-            raise HTTPException(status_code=404)
-        return await super().get_response("index.html", scope)
+        if response is None or response.status_code == 404:
+            # Starlette hands over an OS path here ("api\\x" on Windows).
+            if path.replace(os.sep, "/").split("/", 1)[0] == "api":
+                raise HTTPException(status_code=404)
+            path = "index.html"
+            response = await super().get_response(path, scope)
+        if (
+            self._token
+            and path.replace(os.sep, "/") in ("", ".", "index.html")
+            and response.status_code == 200
+            and _loopback_host(scope)
+        ):
+            html = (Path(self.directory) / "index.html").read_text(encoding="utf-8")
+            return HTMLResponse(
+                with_ui_token(html, self._token), headers={"Cache-Control": "no-store"}
+            )
+        return response
 
 
 def build_app(dist: Path):
@@ -50,7 +86,9 @@ def build_app(dist: Path):
     from dtk_engine.http import create_app
 
     app = create_app()
-    app.mount("/", SPAStaticFiles(directory=dist, html=True), name="studio")
+    bridge = getattr(app.state, "ui_bridge", None)  # engines without the UI bridge: no token
+    token = getattr(bridge, "token", None)
+    app.mount("/", SPAStaticFiles(directory=dist, html=True, token=token), name="studio")
     return app
 
 
@@ -138,7 +176,8 @@ def main(argv: list[str] | None = None) -> None:
 
     app = build_app(dist)
     threading.Thread(target=_announce, args=(port, not args.no_open), daemon=True).start()
-    config = uvicorn.Config(app, log_level="warning")
+    # Studio's SSE stream (/api/ui/events) would otherwise hold Ctrl+C open.
+    config = uvicorn.Config(app, log_level="warning", timeout_graceful_shutdown=2)
     uvicorn.Server(config).run(sockets=[sock])
 
 

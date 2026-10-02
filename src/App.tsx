@@ -1,5 +1,6 @@
 import { AlignScreen } from "./screens/align/AlignScreen";
 import { SourcesScreen } from "./screens/sources/SourcesScreen";
+import { AgentBridge } from "./bench/agent/AgentBridge";
 import { Workbench } from "./bench/Workbench";
 import { useAppDispatch, useAppState } from "./state/AppStore";
 import type { ScreenId } from "./state/reducer";
@@ -90,6 +91,7 @@ export function App() {
       {screen === "sources" ? <SourcesScreen /> : null}
       {screen === "align" ? <AlignScreen /> : null}
       {screen === "bench" ? <Workbench /> : null}
+      <AgentBridge />
     </div>
   );
 }

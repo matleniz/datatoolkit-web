@@ -1,7 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
 import { existsSync, mkdtempSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
+
+// Agent-bridge token (#63): one per run, shared by the engine, the Vite page
+// (meta tag) and the specs that post commands to /api/ui.
+const uiToken = process.env.DTK_UI_TOKEN ?? randomBytes(24).toString("hex");
+process.env.DTK_UI_TOKEN = uiToken;
 
 const dtkHome =
   process.env.DTK_E2E_HOME ?? mkdtempSync(join(tmpdir(), "dtk-e2e-"));
@@ -26,6 +32,14 @@ function resolveDtkApiCommand(): string {
 
 const dtkApiCommand = resolveDtkApiCommand();
 
+// The Vite proxy forwards the browser's Origin on PUT / POST, and /api/ui
+// refuses origins that are not CORS origins.
+const corsOrigins = [
+  ...(process.env.DTK_CORS_ORIGINS ?? "").split(",").filter(Boolean),
+  `http://127.0.0.1:${webPort}`,
+  `http://localhost:${webPort}`,
+].join(",");
+
 const webServers = [
   {
     command: dtkApiCommand,
@@ -37,6 +51,8 @@ const webServers = [
     env: {
       ...process.env,
       DTK_HOME: dtkHome,
+      DTK_UI_TOKEN: uiToken,
+      DTK_CORS_ORIGINS: corsOrigins,
     },
   },
   {
@@ -47,6 +63,7 @@ const webServers = [
     env: {
       ...process.env,
       DTK_E2E_API_PORT: String(apiPort),
+      DTK_UI_TOKEN: uiToken,
     },
   },
 ];
