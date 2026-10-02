@@ -243,3 +243,25 @@ test("issue 63: open_window, select_columns and set_view drive the view", async 
   expect(bad).toMatchObject({ ok: false });
   expect(bad.error).toMatch(/^bad_command: /);
 });
+
+test("issue 82: open_window opens the report-only analyses (duplicates, advisor, overview, inconsistencies)", async ({
+  page, request,
+}) => {
+  test.setTimeout(180_000);
+  await openWorkbench(page, true);
+  await published(request, page);
+
+  for (const tool of ["dataset_overview", "duplicates"]) {
+    const ack = await send(request, page, { type: "open_window", tool });
+    expect(ack.ok).toBe(true);
+    const win = page.locator(`[data-tool="${tool}"]`);
+    await expect(win).toBeVisible();
+    await expect(win.locator(`[data-engine-key="${tool}"]`)).toBeVisible({ timeout: 60_000 });
+  }
+
+  // The rail opens the remaining ones; Suggestions links to a full report.
+  await page.getByRole("button", { name: "Preprocessing advisor" }).click();
+  await expect(page.locator('[data-tool="preprocessing_advisor"]')).toBeVisible();
+  await page.getByRole("button", { name: "Inconsistencies" }).click();
+  await expect(page.locator('[data-tool="inconsistencies"]')).toBeVisible();
+});

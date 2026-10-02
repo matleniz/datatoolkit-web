@@ -16,6 +16,10 @@ export const TOOL_IDS = [
   "drift",
   "feature_selection",
   "chart",
+  "dataset_overview",
+  "duplicates",
+  "inconsistencies",
+  "preprocessing_advisor",
 ] as const;
 export type ToolId = (typeof TOOL_IDS)[number];
 

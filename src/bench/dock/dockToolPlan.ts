@@ -191,6 +191,11 @@ const TOOL_PLANS: Partial<Record<ToolId, ToolPlan>> = {
           )
         : `key ${c.key}`,
   },
+  // Whole-frame reports: no column scope, the engine reads the source.
+  dataset_overview: { engine: true, bound: (c) => `key ${c.key}` },
+  duplicates: { engine: true, bound: (c) => `key ${c.key}` },
+  inconsistencies: { engine: true, bound: (c) => `key ${c.key}` },
+  preprocessing_advisor: { engine: true, bound: (c) => `key ${c.key}` },
   drift: {
     engine: true,
     columns: selectionColumns,
