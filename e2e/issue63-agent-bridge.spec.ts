@@ -311,3 +311,59 @@ test("issue 88: touched column / window / step carry data-agent-touched, toast U
   expect(await stepOps(page)).toEqual([]);
   await expect(touched).toHaveCount(0, { timeout: 6_000 });
 });
+
+/** #89: curated "set one thing" commands on an open window; each Undo restores the previous value. */
+test("issue 89: set_target / set_dist_by / set_tool_params, bad_command, Undo", async ({
+  page, request,
+}) => {
+  test.setTimeout(180_000);
+  await openWorkbench(page, true);
+  await published(request, page);
+  const field = (name: "targetColumn" | "distBy") =>
+    page.evaluate((k) => window.__DTK_STATE__?.()?.[k], name);
+  const toast = (text: string) => page.getByRole("status").filter({ hasText: text });
+  const header = (col: string) => page.getByRole("button", { name: new RegExp(`^${col}, `) });
+
+  // set_target: unknown column refused; known one set, column touched, Undo restores.
+  const ghost = await send(request, page, { type: "set_target", column: "ghost" });
+  expect(ghost).toMatchObject({ ok: false });
+  expect(ghost.error).toMatch(/^bad_command: unknown column/);
+  const target0 = await field("targetColumn");
+  const t = await send(request, page, { type: "set_target", column: "sessions" });
+  expect(t.ok).toBe(true);
+  await expect.poll(() => field("targetColumn")).toBe("sessions");
+  await expect(header("sessions")).toHaveAttribute("data-agent-touched", "1");
+  await toast("Agent: target set to sessions").getByRole("button", { name: "Undo" }).click();
+  await expect.poll(() => field("targetColumn")).toBe(target0);
+
+  // set_dist_by on the open Distribution window; null clears; Undo goes back.
+  const opened = await send(request, page, {
+    type: "open_window", tool: "dist", params: { column: "age" },
+  });
+  expect(opened.ok).toBe(true);
+  const by = await send(request, page, { type: "set_dist_by", by: "sessions" });
+  expect(by.ok).toBe(true);
+  await expect.poll(() => field("distBy")).toBe("sessions");
+  await expect(page.locator('[data-tool="dist"]')).toHaveAttribute("data-agent-touched", "1");
+  await toast("Agent: Distribution split by sessions").getByRole("button", { name: "Undo" }).click();
+  expect(await field("distBy")).toBeNull();
+
+  // set_tool_params: unknown key refused; bins applied to the window; Undo clears.
+  const dist = page.locator('[data-tool="dist"]');
+  const unknown = await send(request, page, {
+    type: "set_tool_params", tool: "dist", column: "age", params: { nope: 1 },
+  });
+  expect(unknown).toMatchObject({ ok: false });
+  expect(unknown.error).toMatch(/^bad_command: unknown param "nope"/);
+  const set = await send(request, page, {
+    type: "set_tool_params", tool: "dist", column: "age", params: { bins: 12 },
+  });
+  expect(set.ok).toBe(true);
+  await expect(dist.locator("[data-dist-bins]")).toHaveAttribute("data-dist-bins", "12", {
+    timeout: 30_000,
+  });
+  await toast("Agent: Distribution params: bins=12").getByRole("button", { name: "Undo" }).click();
+  await expect(dist.locator("[data-dist-bins]")).not.toHaveAttribute("data-dist-bins", "12", {
+    timeout: 30_000,
+  });
+});
