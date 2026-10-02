@@ -1063,9 +1063,24 @@
   flex-shrink: 0;
 }
 
+/* #73: fold on actual overflow (data-fold, set by a ResizeObserver) — the
+   tab row stays laid out but invisible so its natural width keeps measuring. */
+.result-viewbar[data-fold="1"] .result-tabs {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  width: max-content;
+}
+.result-viewbar[data-fold="1"] .result-view-select {
+  display: inline-flex;
+}
+
 @container (max-width: 560px) {
   .result-tabs {
-    display: none;
+    position: absolute;
+    visibility: hidden;
+    pointer-events: none;
+    width: max-content;
   }
   .result-view-select,
   .result-display-toggle {
