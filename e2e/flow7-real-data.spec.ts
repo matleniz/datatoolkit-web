@@ -78,7 +78,7 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
     hasText: "X_train_6ZIKlTY.csv",
   });
   await expect(xTrainRow).toContainText("header 0");
-  await expect(xTrainRow).toContainText("55603");
+  await expect(xTrainRow).toContainText("55,603");
 
   await xTrainRow.getByRole("button", { name: /Train X/ }).click();
 
