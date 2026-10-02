@@ -70,3 +70,10 @@ export function toolParamsKey(
 ): string {
   return column ? `${toolId}::${column}` : toolId;
 }
+
+/** Tools whose persisted params are keyed per focused column (`tool::column`). */
+export const PER_COLUMN_PARAM_TOOLS: ReadonlySet<string> = new Set([
+  "dist",
+  "outliers",
+  "target",
+]);

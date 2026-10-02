@@ -23,6 +23,7 @@ import {
   undoSteps,
   type StepHistory,
 } from "./stepHistory";
+import { applyStepOps, orderSteps, type StepOp } from "./stepOps";
 import type { ToolViewState } from "./toolViews";
 import type { WorkspaceSourcesState } from "./sourcesState";
 
@@ -172,12 +173,7 @@ export const initialState: AppState = {
   stepHistory: EMPTY_STEP_HISTORY,
 };
 
-/** Keep `align: true` steps first (prototype / FRONT-WEB alignment rule). */
-export function orderSteps(steps: Step[]): Step[] {
-  const align = steps.filter((s) => s.align);
-  const rest = steps.filter((s) => !s.align);
-  return [...align, ...rest];
-}
+export { orderSteps };
 
 export type AppAction =
   | { type: "SET_WORKSPACE"; workspace: Workspace | null }
@@ -261,6 +257,8 @@ export type AppAction =
   /** Replace the step at `index` (keeps its `align` flag) and replay. */
   | { type: "REPLACE_STEP"; index: number; step: Step }
   | { type: "REMOVE_STEP"; index: number }
+  /** Several step edits as ONE undo entry (agent bridge, #63); no-op if one op is invalid. */
+  | { type: "APPLY_STEP_BATCH"; ops: StepOp[] }
   /** Pipeline history only (datatoolkit-issues#16); no-op while editing a step. */
   | { type: "UNDO_STEPS" }
   | { type: "REDO_STEPS" };
@@ -722,6 +720,20 @@ function reduceWorkspace(
           editor: null,
           viewVersion: null,
           selection: { ...state.selection, cell: null },
+          benchError: null,
+        },
+      );
+    }
+    case "APPLY_STEP_BATCH": {
+      const out = applyStepOps(state.workspace?.steps ?? [], action.ops);
+      if ("error" in out) return state;
+      return withWorkspace(
+        state,
+        { steps: out.steps },
+        {
+          editor: null,
+          viewVersion: null,
+          selection: { ...state.selection, row: null, cell: null },
           benchError: null,
         },
       );

@@ -76,6 +76,26 @@ or `churn` if the engine store has it; on an empty store it uploads the demo
 churn CSVs from `public/fixtures/` and saves a `churn` workspace
 (`src/bootstrap.ts`).
 
+### Agent bridge (dev)
+
+Studio publishes its view (workspace, role, version, identity, selection, open
+windows, editor) to the engine's `/api/ui` and runs the commands it relays
+(`propose_steps`, `open_window`, `select_columns`, `set_view`), all through the
+reducer (undoable). Agent step edits apply at once with an "Undo" notice;
+destructive ones (a removed step, `drop_columns`, `filter_rows`,
+`drop_low_variance`, `drop_correlated`) wait for Apply / Dismiss. The page gets
+the engine's per-run token from `<meta name="dtk-ui-token">` (never stored).
+`dtk-studio` fills it in; with `npm run dev`, pass the same token to both sides:
+
+```bash
+export DTK_UI_TOKEN=$(openssl rand -hex 24)          # any random string
+DTK_CORS_ORIGINS=http://localhost:5173 uv run --extra api dtk-api --port 8765
+npm run dev                                           # same env: Vite injects the meta
+```
+
+Without `DTK_UI_TOKEN` the page has no meta and the bridge stays off, silently.
+`npm run e2e` generates a token per run.
+
 ## Run with Docker
 
 The launchers above wrap this. `scripts/datatoolkit.sh` / `.ps1` check Docker,
@@ -173,6 +193,10 @@ project's fleet config, outside this repo); the e2e suite is run separately.
 - The engine runs with `DTK_HOME` = `DTK_E2E_HOME` or a fresh temp dir,
   deleted after the run unless `DTK_E2E_KEEP=1` (`e2e/global-teardown.ts`).
 - One worker, not fully parallel; retries only on CI.
+- `playwright.config.ts` makes a random `DTK_UI_TOKEN` per run (unless set) for
+  the engine, the page and `e2e/issue63-agent-bridge.spec.ts` (which posts
+  commands to `POST /api/ui/commands`), and adds the web origin to the
+  engine's `DTK_CORS_ORIGINS`.
 - `e2e/vite.e2e.config.ts` pre-bundles all deps (`optimizeDeps.include`), so a
   cold `node_modules/.vite` does not reload the page mid-spec. Add a dep there
   when you import a new one lazily.

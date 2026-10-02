@@ -6,16 +6,18 @@
 
 export type DockPos = "bottom" | "right";
 export type DockSize = "S" | "M" | "L";
-export type ToolId =
-  | "compare"
-  | "corr"
-  | "dist"
-  | "missing"
-  | "outliers"
-  | "target"
-  | "drift"
-  | "feature_selection"
-  | "chart";
+export const TOOL_IDS = [
+  "compare",
+  "corr",
+  "dist",
+  "missing",
+  "outliers",
+  "target",
+  "drift",
+  "feature_selection",
+  "chart",
+] as const;
+export type ToolId = (typeof TOOL_IDS)[number];
 
 export interface DockRect {
   x: number;

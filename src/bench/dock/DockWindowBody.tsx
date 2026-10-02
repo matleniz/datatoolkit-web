@@ -11,7 +11,7 @@ import type { ToolId } from "../../state/reducer";
 import { identitySource, withRole } from "../dataIdentity";
 import { targetColumnOf } from "../left/datasetSource";
 import { keyParamsFromSchema } from "../left/keyParams";
-import { toolParamsKey } from "../left/keyTunable";
+import { PER_COLUMN_PARAM_TOOLS, toolParamsKey } from "../left/keyTunable";
 import { computeStat, fmtStat } from "../left/stats";
 import { stripNullParams } from "../schemaFields";
 import { toolDef } from "../toolrail/tools";
@@ -108,9 +108,6 @@ const ENGINE_TOOLS = new Set<ToolId>([
   "dist",
   "corr",
 ]);
-
-/** Per-column param persistence (smart defaults differ by column). */
-const PER_COLUMN_PARAM_TOOLS = new Set<ToolId>(["dist", "outliers", "target"]);
 
 const COMPARE_STATS = ["mean", "median", "std", "min", "max"] as const;
 const PARAM_DEBOUNCE_MS = 300;
