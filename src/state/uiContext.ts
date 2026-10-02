@@ -46,7 +46,7 @@ export function currentIdentityKey(
   ).key;
 }
 
-/** Open dock windows with their persisted params (`column` / `by` merged in). */
+/** Open dock windows with their persisted params (`column` / `by` / the chart draft merged in). */
 function windowsOf(state: UiContextState): UiContext["windows"] {
   const focus = state.selection.columns[0] ?? state.selection.cell?.col ?? null;
   return state.dock.tools.map((tool) => {
@@ -56,6 +56,7 @@ function windowsOf(state: UiContextState): UiContext["windows"] {
     };
     if (perColumn) params.column = focus;
     if (tool === "dist" && state.distBy) params.by = state.distBy;
+    if (tool === "chart" && state.chartDraft) Object.assign(params, state.chartDraft);
     return { tool, params };
   });
 }
@@ -72,6 +73,7 @@ export type UiContextState = Pick<
   | "dock"
   | "toolParams"
   | "distBy"
+  | "chartDraft"
   | "gridView"
   | "gridTotal"
 >;
