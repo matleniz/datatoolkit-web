@@ -138,7 +138,7 @@ function nodeClass(n: PipelineNodeData): string {
 
 /** W2 — pipeline bar (96px). */
 export function PipelineBar() {
-  const { workspace, role, viewVersion, editor } = useAppState();
+  const { workspace, role, viewVersion, editor, agentTouch } = useAppState();
   const dispatch = useAppDispatch();
   const {
     shapes,
@@ -198,6 +198,9 @@ export function PipelineBar() {
                   opacity: n.version > vi ? 0.5 : 1,
                 }}
                 title={n.tip}
+                data-agent-touched={
+                  n.stepIndex !== null && agentTouch?.steps.includes(n.stepIndex) ? "1" : undefined
+                }
                 onClick={() =>
                   dispatch({
                     type: "SET_VIEW_VERSION",

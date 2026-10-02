@@ -133,6 +133,18 @@ export interface AppState {
    * in memory; reset when another workspace (or other steps) is loaded.
    */
   stepHistory: StepHistory;
+  /** What the agent last touched, shown as a transient highlight (#88). */
+  agentTouch: AgentTouch | null;
+}
+
+/** Columns / dock windows / step cards an agent command touched (#88). */
+export interface AgentTouch {
+  columns: string[];
+  tools: ToolId[];
+  /** Indices in the step list after the command. */
+  steps: number[];
+  /** Identifies this touch; `AGENT_TOUCH_CLEAR` only clears the same one. */
+  at: number;
 }
 
 export const MAX_DOCK_TOOLS = 4;
@@ -182,6 +194,7 @@ export const initialState: AppState = {
   benchError: null,
   filesByWorkspace: {},
   stepHistory: EMPTY_STEP_HISTORY,
+  agentTouch: null,
 };
 
 export { orderSteps };
@@ -268,6 +281,9 @@ export type AppAction =
   | { type: "REMOVE_CHART"; name: string }
   | { type: "SET_CHARTS"; charts: ChartSpec[] }
   | { type: "SET_BENCH_ERROR"; message: string | null }
+  /** Agent-touch highlight (set / cleared by the agent bridge only, #88). */
+  | { type: "AGENT_TOUCH"; touch: AgentTouch }
+  | { type: "AGENT_TOUCH_CLEAR"; at: number }
   | { type: "ADD_STEP"; step: Step }
   /** Replace the step at `index` (keeps its `align` flag) and replay. */
   | { type: "REPLACE_STEP"; index: number; step: Step }
@@ -424,6 +440,12 @@ function reduceShell(
       return { ...state, distBy: action.by };
     case "SET_BENCH_ERROR":
       return { ...state, benchError: action.message };
+    case "AGENT_TOUCH":
+      return { ...state, agentTouch: action.touch };
+    case "AGENT_TOUCH_CLEAR":
+      return state.agentTouch?.at === action.at
+        ? { ...state, agentTouch: null }
+        : state;
     default:
       return undefined;
   }

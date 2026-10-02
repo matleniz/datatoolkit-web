@@ -189,3 +189,20 @@
 .agent-toast span {
   flex: 1;
 }
+
+/* "The agent is acting" (datatoolkit-issues#88): transient outline on what it touched */
+[data-agent-touched] {
+  outline: 2px solid var(--dtk-accent-border);
+  outline-offset: -2px;
+  animation: agent-touched-pulse 1s ease-in-out 2;
+}
+@keyframes agent-touched-pulse {
+  50% {
+    outline-offset: 1px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-agent-touched] {
+    animation: none;
+  }
+}

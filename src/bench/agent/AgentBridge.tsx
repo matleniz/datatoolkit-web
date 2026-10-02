@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { postUiAck, putUiContext, uiEventsUrl, uiToken } from "../../api/client";
+import { apiClient, postUiAck, putUiContext, uiEventsUrl, uiToken } from "../../api/client";
 import {
   handleCommand,
   type BridgeDeps,
   type Proposal,
 } from "../../state/agentCommands";
 import { ensureWorkspaceSaved, useAppDispatch, useAppState } from "../../state/AppStore";
+import type { AppAction } from "../../state/reducer";
 import { buildUiContext } from "../../state/uiContext";
+import { effectiveVersion } from "../version";
 
 const PUBLISH_DEBOUNCE_MS = 300;
 const TOAST_MS = 12_000;
+/** How long the "agent touched" highlight stays. */
+const TOUCH_MS = 2_000;
 /** Longest wait for the render after a dispatch (a no-op never renders). */
 const RENDER_WAIT_MS = 2_000;
 
@@ -38,7 +42,8 @@ function ActiveBridge({ token }: { token: string }) {
   const dispatch = useAppDispatch();
   const session = useMemo(newSessionId, []);
   const [reviews, setReviews] = useState<Proposal[]>([]);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ summary: string; undo?: AppAction[] } | null>(null);
+  const touchTimer = useRef<number | undefined>(undefined);
 
   const stateRef = useRef(state);
   const renderWaiters = useRef<(() => void)[]>([]);
@@ -92,7 +97,25 @@ function ActiveBridge({ token }: { token: string }) {
           answers.current.set(proposal.id, resolve);
           setReviews((list) => [...list, proposal]);
         }),
-      announce: setToast,
+      announce: (summary, undo) => setToast({ summary, undo }),
+      frameColumns: async () => {
+        const { workspace: ws, role: r, viewVersion: v } = stateRef.current;
+        if (!ws) throw new Error("no workspace open");
+        const page = await apiClient.workspaceRows(ws, r, effectiveVersion(ws, v), 0, 1);
+        return page.columns.map((c) => c.name);
+      },
+      keySchema: (keyId) => apiClient.keySchema(keyId),
+      touch: (touched) => {
+        const { columns = [], tools = [], steps = [] } = touched;
+        if (columns.length + tools.length + steps.length === 0) return;
+        const at = Date.now();
+        dispatch({ type: "AGENT_TOUCH", touch: { columns, tools, steps, at } });
+        window.clearTimeout(touchTimer.current);
+        touchTimer.current = window.setTimeout(
+          () => dispatch({ type: "AGENT_TOUCH_CLEAR", at }),
+          TOUCH_MS,
+        );
+      },
     };
     // One command at a time: the next one's stale check sees the previous
     // one's result.
@@ -119,6 +142,7 @@ function ActiveBridge({ token }: { token: string }) {
     const pending = answers.current;
     return () => {
       source.close();
+      window.clearTimeout(touchTimer.current);
       pending.forEach((resolve) => resolve(false));
       pending.clear();
     };
@@ -153,17 +177,19 @@ function ActiveBridge({ token }: { token: string }) {
       ))}
       {toast ? (
         <div className="agent-toast" role="status">
-          <span>Agent: {toast}</span>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => {
-              dispatch({ type: "UNDO_STEPS" });
-              setToast(null);
-            }}
-          >
-            Undo
-          </button>
+          <span>Agent: {toast.summary}</span>
+          {toast.undo ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                toast.undo?.forEach(dispatch);
+                setToast(null);
+              }}
+            >
+              Undo
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -277,6 +277,12 @@ Piped form: & ([scriptblock]::Create((irm <url>/datatoolkit.ps1))) stop
                 Test-InstallDir
                 Test-Docker
                 if (Test-Path -LiteralPath $composeFile) {
+                    if ($opt -and (Test-Path -LiteralPath $dataAbs)) {
+                        # The engine writes as uid 1000 (owner-only dirs such as agent/): empty
+                        # the data dir from a root container while the image is still here, so
+                        # a host user with another uid can delete it. Best effort.
+                        [void](Invoke-Compose run --rm --no-deps -T --entrypoint find engine /data -mindepth 1 -delete)
+                    }
                     if (-not (Invoke-Compose down --rmi all --remove-orphans)) { Fail 'Could not remove the containers.' }
                     Remove-Item -LiteralPath $composeFile, $envFile -Force -ErrorAction SilentlyContinue
                 } else {
