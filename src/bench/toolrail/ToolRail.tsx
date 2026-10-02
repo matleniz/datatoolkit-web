@@ -88,6 +88,35 @@ function ToolIcon({ id }: { id: RailToolId }) {
           <path d="M3 4h14l-5.5 6.5v5l-3 1.5v-6.5L3 4z" />
         </svg>
       );
+    case "dataset_overview":
+      return (
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3.5" width="14" height="13" rx="1.5" />
+          <path d="M3 8h14M8 8v8.5" />
+        </svg>
+      );
+    case "duplicates":
+      return (
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
+          <rect x="3" y="3" width="9" height="9" rx="1.5" />
+          <rect x="8" y="8" width="9" height="9" rx="1.5" />
+        </svg>
+      );
+    case "inconsistencies":
+      return (
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10 3.5l7 12.5H3L10 3.5z" />
+          <path d="M10 8.5v3.5" />
+          <circle cx="10" cy="14" r="0.6" fill="currentColor" />
+        </svg>
+      );
+    case "preprocessing_advisor":
+      return (
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 5h10M5 10h10M5 15h6" />
+          <path d="M14 14l1.5 1.5L18 12.5" />
+        </svg>
+      );
     case "chart":
       return (
         <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

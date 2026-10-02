@@ -3,6 +3,7 @@ import type { Dispatch } from "react";
 import type { AppAction } from "../../state/AppStore";
 import { toEngineParams } from "../presets";
 import { Chips } from "../Chips";
+import { toolForKey } from "../toolrail/tools";
 import {
   STAGE_COLOR,
   STAGE_LABEL,
@@ -89,6 +90,28 @@ function OpenInEditor({
   );
 }
 
+/** Opens the key's dock window: the full result behind the derived cards. */
+function ViewFullReport({
+  card,
+  dispatch,
+}: {
+  card: SuggestionCard;
+  dispatch: Dispatch<AppAction>;
+}) {
+  const id = toolForKey(card.sourceKey);
+  if (!id) return null;
+  return (
+    <button
+      type="button"
+      className="link-btn sug-full-report"
+      data-sug-report={id}
+      onClick={() => dispatch({ type: "OPEN_TOOL", id })}
+    >
+      View full report →
+    </button>
+  );
+}
+
 /** One Suggestions card, with its dismiss / restore action (datatoolkit-issues#15). */
 export function SuggestionCardView({
   item,
@@ -145,6 +168,7 @@ export function SuggestionCardView({
       ) : (
         <OpenInEditor card={card} dispatch={dispatch} />
       )}
+      {dismissed ? null : <ViewFullReport card={card} dispatch={dispatch} />}
     </div>
   );
 }

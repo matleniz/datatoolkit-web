@@ -17,6 +17,10 @@ const KNOWN_TOOLS = Object.keys({
   drift: 1,
   feature_selection: 1,
   chart: 1,
+  dataset_overview: 1,
+  duplicates: 1,
+  inconsistencies: 1,
+  preprocessing_advisor: 1,
 } satisfies Record<ToolId, 1>) as ToolId[];
 
 function parseStoredDock(raw: unknown, maxTools: number): StoredDock | null {

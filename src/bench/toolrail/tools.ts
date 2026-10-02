@@ -86,7 +86,52 @@ export const TOOLS: ToolDef[] = [
     ariaLabel: "Chart",
     title: "Chart · chart",
   },
+  {
+    id: "dataset_overview",
+    label: "Dataset overview",
+    key: "dataset_overview",
+    ariaLabel: "Dataset overview",
+    title: "Dataset overview · dataset_overview",
+  },
+  {
+    id: "duplicates",
+    label: "Duplicates",
+    key: "duplicates",
+    ariaLabel: "Duplicates",
+    title: "Duplicates · duplicates",
+  },
+  {
+    id: "inconsistencies",
+    label: "Inconsistencies",
+    key: "inconsistencies",
+    ariaLabel: "Inconsistencies",
+    title: "Inconsistencies · inconsistencies",
+  },
+  {
+    id: "preprocessing_advisor",
+    label: "Preprocessing advisor",
+    key: "preprocessing_advisor",
+    ariaLabel: "Preprocessing advisor",
+    title: "Preprocessing advisor · preprocessing_advisor",
+  },
 ];
+
+/** Dock window showing the full report of an analysis key (Suggestions link). */
+export function toolForKey(key: string): ToolId | null {
+  switch (key) {
+    case "missing_values":
+      return "missing";
+    case "outliers":
+    case "feature_selection":
+    case "dataset_overview":
+    case "duplicates":
+    case "inconsistencies":
+    case "preprocessing_advisor":
+      return key;
+    default:
+      return null;
+  }
+}
 
 export const DOCK_SIZES = {
   S: { bottom: 220, right: 340 },

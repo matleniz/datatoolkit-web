@@ -76,6 +76,10 @@ const ENGINE_TOOLS = new Set<ToolId>([
   "feature_selection",
   "dist",
   "corr",
+  "dataset_overview",
+  "duplicates",
+  "inconsistencies",
+  "preprocessing_advisor",
 ]);
 
 const COMPARE_STATS = ["mean", "median", "std", "min", "max"] as const;
