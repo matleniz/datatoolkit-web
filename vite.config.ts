@@ -11,6 +11,7 @@ const e2eFixtures = join(root, "e2e/fixtures");
 function uiTokenMeta(): Plugin {
   return {
     name: "dtk-ui-token-meta",
+    apply: "serve", // never bake a token into `vite build` output
     transformIndexHtml() {
       const token = process.env.DTK_UI_TOKEN;
       if (!token) return [];

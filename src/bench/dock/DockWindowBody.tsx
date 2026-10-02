@@ -109,8 +109,6 @@ const ENGINE_TOOLS = new Set<ToolId>([
   "corr",
 ]);
 
-/** Per-column param persistence (smart defaults differ by column). */
-
 const COMPARE_STATS = ["mean", "median", "std", "min", "max"] as const;
 const PARAM_DEBOUNCE_MS = 300;
 

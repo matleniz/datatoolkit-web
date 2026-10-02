@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import socket
 import sys
 import threading
@@ -38,6 +39,7 @@ def _loopback_host(scope) -> bool:
 
 def with_ui_token(html: str, token: str) -> str:
     """``index.html`` with the bridge token handed to the page as a meta tag."""
+    html = re.sub(r"<meta\s+name=[\"']dtk-ui-token[\"'][^>]*>", "", html)  # never keep a stale one
     meta = f'<meta name="dtk-ui-token" content="{token}" />'
     head = html.find("</head>")
     return meta + html if head < 0 else html[:head] + meta + html[head:]

@@ -16,6 +16,7 @@ const apiPort = Number(process.env.DTK_E2E_API_PORT ?? "8766");
 function uiTokenMeta(): Plugin {
   return {
     name: "dtk-ui-token-meta",
+    apply: "serve", // never bake a token into `vite build` output
     transformIndexHtml() {
       const token = process.env.DTK_UI_TOKEN;
       if (!token) return [];
