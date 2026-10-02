@@ -96,6 +96,24 @@ npm run dev                                           # same env: Vite injects t
 Without `DTK_UI_TOKEN` the page has no meta and the bridge stays off, silently.
 `npm run e2e` generates a token per run.
 
+### Agent panel
+
+The rail's last icon (**Agent**) opens a chat panel next to the tool rail
+(datatoolkit-issues#67). It talks to the engine's agent pack over the same
+bridge: `event: agent` on `/api/ui/events` (`user_message`, `assistant_delta`,
+`tool_call`, `tool_result`, `permission_request`, `usage`, `done`, `error`),
+and `GET /api/ui/agent`, `POST /api/ui/agent/send|cancel|permission`. Each tool
+call shows as a chip; a click opens the window or highlights the step it
+touched. Step edits apply at once with the bridge's Undo toast; destructive
+ones wait in the review banner. The footer shows the session's cumulative
+tokens and a Stop button while a turn runs. With no pack the panel says why.
+
+The engine picks the pack from `DTK_AGENT_PACK` (`agent-sdk`, `stub`, unset =
+off): `dtk-studio --agent` (pack `agent-sdk`, needs the engine extra
+`agent-sdk`), or `DTK_AGENT_PACK=agent-sdk uv run --extra api --extra agent-sdk
+dtk-api` next to `npm run dev`. `npm run e2e` runs the engine with the
+scripted `stub` pack.
+
 ## Run with Docker
 
 The launchers above wrap this. `scripts/datatoolkit.sh` / `.ps1` check Docker,
