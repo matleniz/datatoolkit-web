@@ -21,6 +21,7 @@ import {
   type WorkspaceRow,
   type WorkspaceRowsColumn,
 } from "../api/types";
+import { gridViewKey, isGridViewActive, type GridView } from "../state/gridView";
 import type { AppAction } from "../state/reducer";
 import { dataIdentity } from "./dataIdentity";
 import {
@@ -46,6 +47,8 @@ interface Frame {
   columns: WorkspaceRowsColumn[];
   rows: WorkspaceRow[];
   total: number;
+  /** Rows before the view-only filter (= `total` without one). */
+  totalUnfiltered: number;
   profiles: Map<string, ColumnProfile>;
   /** Identity of the frame held in `rows` / `columns` (null = none). */
   rowsIdentity: string | null;
@@ -62,6 +65,7 @@ const EMPTY_FRAME: Frame = {
   columns: [],
   rows: [],
   total: 0,
+  totalUnfiltered: 0,
   profiles: new Map(),
   rowsIdentity: null,
   profilesIdentity: null,
@@ -80,15 +84,17 @@ async function fetchRowsPage(
   ver: number,
   knownCols: number,
   alive: () => boolean,
+  view: GridView,
 ) {
   if (knownCols > 0) {
     const limit = knownCols < WIDE_COL_THRESHOLD ? PAGE_DEFAULT : PAGE_WIDE;
-    return apiClient.workspaceRows(ws, role, ver, 0, limit);
+    return apiClient.workspaceRows(ws, role, ver, 0, limit, undefined, view);
   }
   const peek = await apiClient.workspaceRows(ws, role, ver, 0, 1);
   const page = rowsPageSize(peek.columns.length);
-  if (page <= 1 || !alive()) return peek;
-  return apiClient.workspaceRows(ws, role, ver, 0, page);
+  if (!alive()) return peek;
+  if (page <= 1 && !isGridViewActive(view)) return peek;
+  return apiClient.workspaceRows(ws, role, ver, 0, page, undefined, view);
 }
 
 /**
@@ -201,6 +207,7 @@ export function useBenchFrame(
   role: Role,
   viewVersion: number | null,
   dispatch: Dispatch<AppAction>,
+  gridView: GridView,
 ) {
   const [frame, setFrame] = useState<Frame>(EMPTY_FRAME);
   const [{ shapes, stepErrors }, setShapes] = useState<Shapes>(NO_SHAPES);
@@ -232,6 +239,9 @@ export function useBenchFrame(
   const identityKey = identity.key;
   const structureKey = shapesStructureKey(workspace, role);
   /** Time-travel / role identity — not the effective version number (delete/add keep "latest"). */
+  const gridKey = gridViewKey(gridView);
+  const gridViewRef = useRef(gridView);
+  gridViewRef.current = gridView;
   const viewKey = `${role}|${viewVersion === null ? "latest" : String(viewVersion)}`;
 
   // Base grid + profiles + pipeline shapes.
@@ -269,6 +279,7 @@ export function useBenchFrame(
     const ws = workspace;
     const ver = version;
     const idKey = identityKey;
+    const view = gridViewRef.current;
 
     void (async () => {
       try {
@@ -278,20 +289,23 @@ export function useBenchFrame(
           ver,
           frameRef.current.columns.length,
           alive,
+          view,
         );
         if (!alive()) return;
+        const totalUnfiltered = res.total_unfiltered ?? res.total;
         setFrame((f) => ({
           ...f,
           columns: res.columns,
           rows: res.rows,
           total: res.total,
+          totalUnfiltered,
           rowsIdentity: idKey,
         }));
         fail(null);
         // Unblock the grid as soon as rows arrive — do not wait on profiles.
         setLoading(false);
 
-        if (res.total === 0 && res.columns.length > 0) {
+        if (totalUnfiltered === 0 && res.columns.length > 0) {
           void sourceMismatch(ws).then((msg) => {
             if (msg && alive()) fail(msg);
           });
@@ -325,7 +339,7 @@ export function useBenchFrame(
 
         if (!needShapes) return;
         const { rootError, ...next } = await fetchShapes(ws, role, ver, {
-          rows: res.total,
+          rows: totalUnfiltered,
           cols: res.columns.length,
         });
         if (!alive()) return;
@@ -345,6 +359,7 @@ export function useBenchFrame(
     identityKey,
     viewKey,
     structureKey,
+    gridKey,
     tick,
     dispatch,
   ]);
@@ -364,6 +379,8 @@ export function useBenchFrame(
         version,
         offset,
         rowsPageSize(columns.length),
+        undefined,
+        gridViewRef.current,
       )
       .then((more) => {
         if (gen !== fetchGen.current) return;

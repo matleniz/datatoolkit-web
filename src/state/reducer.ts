@@ -24,6 +24,7 @@ import {
   type StepHistory,
 } from "./stepHistory";
 import { applyStepOps, orderSteps, type StepOp } from "./stepOps";
+import { EMPTY_GRID_VIEW, type GridView } from "./gridView";
 import type { ToolViewState } from "./toolViews";
 import type { WorkspaceSourcesState } from "./sourcesState";
 
@@ -73,6 +74,14 @@ export interface CtxMenuState {
 
 export interface AppState {
   workspace: Workspace | null;
+  /**
+   * View-only grid filter / sort (datatoolkit-issues#81): sent to
+   * `/workspace/rows`, never part of the workspace, the pipeline or the data
+   * identity. Reset when another workspace is opened.
+   */
+  gridView: GridView;
+  /** Column whose "Filter…" dialog is open above the grid (null = closed). */
+  gridFilterColumn: string | null;
   screen: ScreenId;
   role: Role;
   /** null = latest version */
@@ -144,6 +153,8 @@ export function emptyWorkspace(name = "untitled"): Workspace {
 
 export const initialState: AppState = {
   workspace: null,
+  gridView: EMPTY_GRID_VIEW,
+  gridFilterColumn: null,
   screen: "sources",
   role: "train",
   viewVersion: null,
@@ -180,6 +191,10 @@ export type AppAction =
   | { type: "SET_SCREEN"; screen: ScreenId }
   | { type: "SET_ROLE"; role: Role }
   | { type: "SET_VIEW_VERSION"; version: number | null }
+  /** Replace the view-only grid filter / sort (also the agent's `set_grid_view`). */
+  | { type: "SET_GRID_VIEW"; view: GridView }
+  | { type: "OPEN_GRID_FILTER"; column: string }
+  | { type: "CLOSE_GRID_FILTER" }
   | { type: "SET_PANEL_COLLAPSED"; side: PanelSide; collapsed: boolean }
   | { type: "SET_STEPS"; steps: Step[] }
   | { type: "TOGGLE_MULTI" }
@@ -361,6 +376,12 @@ function reduceShell(
       return { ...state, screen: action.screen, ctx: null };
     case "SET_ROLE":
       return { ...state, role: action.role };
+    case "SET_GRID_VIEW":
+      return { ...state, gridView: action.view };
+    case "OPEN_GRID_FILTER":
+      return { ...state, gridFilterColumn: action.column };
+    case "CLOSE_GRID_FILTER":
+      return { ...state, gridFilterColumn: null };
     case "SET_VIEW_VERSION":
       // Editing a step pins the view to that step's input version.
       if (state.editor?.editIndex !== undefined) return state;
@@ -674,6 +695,10 @@ function reduceWorkspace(
       return {
         ...state,
         workspace: ws,
+        // Columns differ per workspace: a view never follows to another one.
+        ...(ws?.name === state.workspace?.name
+          ? {}
+          : { gridView: EMPTY_GRID_VIEW, gridFilterColumn: null }),
         sugCount: 0,
         targetColumn: targetColumnFor(ws, state.targetColumn),
         dock: dockForWorkspace(state, ws),

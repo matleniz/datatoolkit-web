@@ -486,6 +486,35 @@
   color: #1d5b86;
 }
 
+.view-banner {
+  flex-wrap: wrap;
+  background: #eaf3ea;
+  border-bottom: 1px solid #b9d6b9;
+}
+
+.banner-kicker.view {
+  color: #2d6a2d;
+}
+
+.view-note {
+  font-size: 12px;
+  color: #3f6a3f;
+}
+
+.view-chip button {
+  margin-left: 6px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+}
+
+.grid-filter-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .banner-kicker.travel {
   color: #7a5a06;
 }
