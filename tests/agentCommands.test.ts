@@ -44,6 +44,7 @@ function harness(init: AppState, answer: (p: Proposal) => boolean | Promise<bool
     undos: [] as (AppAction[] | undefined)[],
     touches: [] as Touched[],
     settled: 0,
+    pending: false,
     deps: {} as BridgeDeps,
   };
   h.deps = {
@@ -64,6 +65,11 @@ function harness(init: AppState, answer: (p: Proposal) => boolean | Promise<bool
     },
     touch: (t) => {
       h.touches.push(t);
+    },
+    reviewPending: () => h.pending,
+    opSchema: async (op) => {
+      if (op !== "impute" && op !== "scale") throw new Error("404");
+      return { type: "object", properties: { columns: {}, strategy: {}, value: {} } };
     },
     frameColumns: async () => COLS,
     keySchema: async () => distSchema,
@@ -621,6 +627,190 @@ describe("add_variable", () => {
     expect(await send(h, cmd)).toMatchObject({ ok: false, error: "save_failed: disk full" });
     expect(h.state.workspace?.variables).toEqual([]);
     expect(h.toasts).toEqual([]);
+  });
+});
+
+describe("draft_chart / add_chart", () => {
+  const send = (h: ReturnType<typeof harness>, c: Record<string, unknown>) =>
+    handleCommand({ id: "c1", ...c }, h.deps);
+  const hist = { chart: "histogram", x: "age" };
+
+  it("draft_chart opens the window and fills the draft, saving nothing; Undo restores", async () => {
+    const h = harness(start());
+    const ack = await send(h, { type: "draft_chart", params: hist });
+    expect(ack).toMatchObject({ ok: true });
+    expect(h.state.dock.tools).toContain("chart");
+    expect(h.state.chartDraft).toMatchObject(hist);
+    expect(h.state.workspace?.charts).toEqual([]);
+    expect(h.settled).toBe(0);
+    expect(h.toasts).toEqual(["chart draft: chart=histogram, x=age"]);
+    expect(h.touches).toEqual([{ tools: ["chart"], columns: ["age"] }]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.chartDraft).toBeNull();
+    expect(h.state.dock.tools).not.toContain("chart");
+  });
+
+  it("draft_chart merges over the open draft and has no Undo when nothing changes", async () => {
+    const h = harness(start());
+    await send(h, { type: "draft_chart", params: hist });
+    await send(h, { type: "draft_chart", params: { bins: 10 } });
+    expect(h.state.chartDraft).toMatchObject({ x: "age", bins: 10 });
+    await send(h, { type: "draft_chart", params: { bins: 10 } });
+    expect(h.undos[2]).toBeUndefined();
+  });
+
+  it("refuses bad drafts", async () => {
+    const h = harness(start());
+    const bad = async (params: unknown) => (await send(h, { type: "draft_chart", params }))?.error;
+    expect(await bad({})).toBe("bad_command: params must be a non-empty object");
+    expect(await bad({ chart: "pizza" })).toMatch(/^bad_command: params.chart must be one of histogram,/);
+    expect(await bad({ bins: 1 })).toBe("bad_command: params.bins must be an integer from 2 to 200");
+    expect(await bad({ nope: 1 })).toMatch(/^bad_command: unknown param "nope"/);
+    expect(await bad({ x: "ghost" })).toBe('bad_command: unknown column "ghost"');
+    expect(await bad({ columns: ["age", "ghost"] })).toBe('bad_command: unknown column "ghost"');
+    expect(h.state.chartDraft).toBeNull();
+    expect(h.state.dock.tools).not.toContain("chart");
+  });
+
+  it("add_chart saves before the ack with defaults filled in; Undo removes it", async () => {
+    const h = harness(start());
+    const ack = await send(h, { type: "add_chart", name: "ages", params: hist });
+    expect(ack).toMatchObject({ ok: true });
+    expect(h.state.workspace?.charts).toEqual([
+      { name: "ages", params: expect.objectContaining({ chart: "histogram", x: "age", bins: 30 }) },
+    ]);
+    expect(h.settled).toBe(1);
+    expect(h.toasts).toEqual(["saved chart ages"]);
+    expect(h.touches).toEqual([{ tools: ["chart"], columns: ["age"] }]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.workspace?.charts).toEqual([]);
+  });
+
+  it("add_chart refuses a duplicate name, a bad name, an undrawable chart", async () => {
+    const h = harness(start());
+    const bad = async (c: Record<string, unknown>) =>
+      (await send(h, { type: "add_chart", name: "ages", params: hist, ...c }))?.error;
+    await send(h, { type: "add_chart", name: "ages", params: hist });
+    expect(await bad({})).toBe('bad_command: duplicate chart name "ages"');
+    expect(await bad({ name: " " })).toMatch(/^bad_command: name must be a non-empty string/);
+    expect(await bad({ name: "x".repeat(65) })).toMatch(/^bad_command: name must be/);
+    expect(await bad({ name: "s", params: { chart: "scatter", x: "age" } })).toBe(
+      "bad_command: chart scatter is not drawable (Pick Y)",
+    );
+    expect(await bad({ name: "g", params: { x: "ghost" } })).toBe('bad_command: unknown column "ghost"');
+    expect(h.state.workspace?.charts).toHaveLength(1);
+  });
+
+  it("add_chart rolls back on a failed save and maps the engine's duplicate 422", async () => {
+    const h = harness(start());
+    h.deps.settle = async () => {
+      throw new Error("disk full");
+    };
+    expect(await send(h, { type: "add_chart", name: "a", params: hist })).toMatchObject({
+      ok: false, error: "save_failed: disk full",
+    });
+    h.deps.settle = async () => {
+      throw new Error("422: duplicate chart name");
+    };
+    expect((await send(h, { type: "add_chart", name: "a", params: hist }))?.error).toBe(
+      'bad_command: duplicate chart name "a"',
+    );
+    expect(h.state.workspace?.charts).toEqual([]);
+    expect(h.toasts).toEqual([]);
+  });
+});
+
+describe("edit_step / fill_editor", () => {
+  const send = (h: ReturnType<typeof harness>, c: Record<string, unknown>) =>
+    handleCommand({ id: "c1", ...c }, h.deps);
+
+  it("edit_step opens the step pinned to its input version; Undo closes it", async () => {
+    const h = harness(start([impute, scale]));
+    const ack = await send(h, { type: "edit_step", index: 1 });
+    expect(ack).toMatchObject({ ok: true, identity: currentIdentityKey(h.state) });
+    expect(h.state.editor).toMatchObject({ op: "scale", editIndex: 1 });
+    expect(h.state.workspace?.steps).toEqual([impute, scale]);
+    expect(h.touches).toEqual([{ steps: [1], columns: ["age"] }]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.editor).toBeNull();
+    expect(h.state.viewVersion).toBeNull();
+  });
+
+  it("edit_step refuses a bad index, answers busy on another editor or a review, no-ops on the same step", async () => {
+    const h = harness(start([impute, scale]));
+    expect(await send(h, { type: "edit_step", index: 2 })).toMatchObject({ ok: false, error: "bad_command: no step at index 2" });
+    expect(await send(h, { type: "edit_step", index: -1 })).toMatchObject({ ok: false });
+    h.state = appReducer(h.state, { type: "EDIT_STEP", index: 0 });
+    expect(await send(h, { type: "edit_step", index: 1 })).toMatchObject({ ok: false, error: "busy" });
+    expect(h.state.editor?.editIndex).toBe(0);
+    expect(await send(h, { type: "edit_step", index: 0 })).toMatchObject({ ok: true });
+    expect(h.undos.at(-1)).toBeUndefined();
+    h.state = appReducer(h.state, { type: "CLOSE_EDITOR" });
+    h.pending = true;
+    expect(await send(h, { type: "edit_step", index: 0 })).toMatchObject({ ok: false, error: "busy" });
+    h.state = appReducer(h.state, { type: "OPEN_EDITOR", op: "scale" });
+    h.pending = false;
+    expect(await send(h, { type: "edit_step", index: 0 })).toMatchObject({ ok: false, error: "busy" });
+  });
+
+  it("fill_editor opens a new-step editor, applying nothing; Undo closes it", async () => {
+    const h = harness(start());
+    const params = { columns: ["age"], strategy: "median" };
+    const ack = await send(h, { type: "fill_editor", op: "impute", params, target: "train" });
+    expect(ack).toMatchObject({ ok: true, identity: currentIdentityKey(h.state) });
+    expect(h.state.editor).toEqual({ op: "impute", params, target: "train" });
+    expect(h.state.workspace?.steps).toEqual([]);
+    expect(h.settled).toBe(0);
+    expect(h.touches).toEqual([{ columns: ["age"] }]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.editor).toBeNull();
+  });
+
+  it("fill_editor patches the open editor: params merged, target set; Undo restores", async () => {
+    const h = harness(start([impute]));
+    await send(h, { type: "edit_step", index: 0 });
+    const ack = await send(h, { type: "fill_editor", params: { strategy: "mean" }, target: "train" });
+    expect(ack).toMatchObject({ ok: true });
+    expect(h.state.editor).toMatchObject({
+      op: "impute", editIndex: 0, target: "train", params: { columns: ["age"], strategy: "mean" },
+    });
+    expect(h.state.workspace?.steps).toEqual([impute]);
+    h.undos.at(-1)!.forEach(h.deps.dispatch);
+    expect(h.state.editor).toMatchObject({ target: "both", params: { columns: ["age"] } });
+    expect(h.state.editor?.params.strategy).toBeUndefined();
+    // Same op named again is fine; nothing to undo when nothing changes.
+    await send(h, { type: "fill_editor", op: "impute", params: { columns: ["age"] } });
+    expect(h.undos.at(-1)).toBeUndefined();
+  });
+
+  it("fill_editor refuses: no op to open, op change on an edited step, unknown op / param, empty command", async () => {
+    const h = harness(start([impute]));
+    const bad = async (c: Record<string, unknown>) => (await send(h, { type: "fill_editor", ...c }))?.error;
+    expect(await bad({ params: { value: 1 } })).toBe("bad_command: op is required to open the editor");
+    expect(await bad({ op: "nope" })).toBe('bad_command: unknown op "nope"');
+    expect(await bad({ op: "impute", params: { ghost: 1 } })).toMatch(/^bad_command: unknown param "ghost" for impute/);
+    expect(await bad({})).toBe("bad_command: fill_editor needs op, params and / or target");
+    expect(await bad({ target: "all" })).toBe("bad_command: target must be train, test or both");
+    expect(h.state.editor).toBeNull();
+    await send(h, { type: "edit_step", index: 0 });
+    expect(await bad({ op: "scale" })).toMatch(/^bad_command: cannot change the op of the step being edited/);
+    expect(h.state.editor?.op).toBe("impute");
+  });
+
+  it("fill_editor answers busy while a review is pending", async () => {
+    const h = harness(start());
+    h.pending = true;
+    expect(await send(h, { type: "fill_editor", op: "impute" })).toMatchObject({ ok: false, error: "busy" });
+    expect(h.state.editor).toBeNull();
+  });
+
+  it("fill_editor on a new-step editor may switch op; Undo brings the previous editor back", async () => {
+    const h = harness(start());
+    await send(h, { type: "fill_editor", op: "impute", params: { columns: ["age"] } });
+    await send(h, { type: "fill_editor", op: "scale", params: { columns: ["income"] } });
+    expect(h.state.editor).toMatchObject({ op: "scale", params: { columns: ["income"] } });
+    h.undos.at(-1)!.forEach(h.deps.dispatch);
+    expect(h.state.editor).toMatchObject({ op: "impute", params: { columns: ["age"] } });
   });
 });
 

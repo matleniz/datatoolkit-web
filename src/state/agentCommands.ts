@@ -1,6 +1,12 @@
 import type { JsonSchema, Role, Step } from "../api/types";
 import { toolDef } from "../bench/toolrail/tools";
 import {
+  CHART_AGGS,
+  CHART_TYPES,
+  DEFAULT_CHART_DRAFT,
+  type ChartDraft,
+} from "./chartDraft";
+import {
   FILTER_OPS,
   gridViewKey,
   opIsList,
@@ -14,6 +20,8 @@ import { TOOL_IDS, type ToolId } from "./dockTypes";
 import { appReducer, type AppAction, type AppState } from "./reducer";
 import { applyStepOps, type StepOp } from "./stepOps";
 import { currentIdentityKey } from "./uiContext";
+import { chartDraftToParams } from "../bench/dock/chartPrefill";
+import { missingChartField } from "../bench/dock/chartDockModel";
 import { PER_COLUMN_PARAM_TOOLS, keyTunableFields, toolParamsKey } from "../bench/left/keyTunable";
 import type { EditorField } from "../bench/schemaFields";
 
@@ -37,6 +45,10 @@ export type AgentCommand =
   | { type: "pick_cell"; rid: number; column: string }
   | { type: "clear_selection" }
   | { type: "add_variable"; name: string; stat: VariableStat; column: string }
+  | { type: "draft_chart"; params: Partial<ChartDraft> }
+  | { type: "add_chart"; name: string; params: Partial<ChartDraft> }
+  | { type: "edit_step"; index: number }
+  | { type: "fill_editor"; op?: string; params?: Record<string, unknown>; target?: StepTarget }
   | { type: "set_target"; column: string | null }
   | { type: "set_dist_by"; by: string | null }
   | { type: "set_grid_view"; filter?: GridFilter | null; sort?: GridSortKey[] | null }
@@ -46,6 +58,8 @@ export type AgentCommand =
       params: Record<string, unknown>;
       column?: string;
     };
+
+type StepTarget = Step["target"];
 
 /** Statistics a variable can take (engine `formula` op, `_STATS`). */
 const VARIABLE_STATS = ["mean", "median", "std", "min", "max", "q25", "q75", "count"] as const;
@@ -80,6 +94,10 @@ export interface BridgeDeps {
   announce(summary: string, undo?: AppAction[]): void;
   /** Highlight what the command touched for a moment (`data-agent-touched`). */
   touch(touched: Touched): void;
+  /** True while a destructive proposal waits for the user's Apply / Dismiss. */
+  reviewPending(): boolean;
+  /** Engine schema of a transform op (validates `fill_editor`); cached by the client. */
+  opSchema(op: string): Promise<JsonSchema>;
   /** Column names of the frame shown now (validates `column` / `by`). */
   frameColumns(): Promise<string[]>;
   /** Engine schema of a key (validates `set_tool_params`); cached by the client. */
@@ -235,6 +253,84 @@ function parseAddVariable(raw: Record<string, unknown>): Parsed<AgentCommand> {
   return { type: "add_variable", name: raw.name, stat: raw.stat as VariableStat, column: raw.column };
 }
 
+/** Longest saved-chart name (the builder's own cap). */
+const CHART_NAME_MAX = 64;
+const CHART_COLUMN_KEYS = ["x", "y", "color", "facet_row", "facet_col", "size"] as const;
+const CHART_BOOL_KEYS = ["trendline", "log_x", "log_y"] as const;
+
+const isCount = (min: number, max: number) => (v: unknown) =>
+  Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
+
+/** Per chart param: what it must be, and the check. */
+const CHART_PARAM_RULES: Record<string, [want: string, ok: (v: unknown) => boolean]> = {
+  chart: [`one of ${CHART_TYPES.join(", ")}`, (v) => CHART_TYPES.includes(v as never)],
+  agg: [`null or one of ${CHART_AGGS.join(", ")}`, (v) => v === null || CHART_AGGS.includes(v as never)],
+  columns: ["a list of column names", (v) => isListOf(v, isColumnName)],
+  bins: ["an integer from 2 to 200", isCount(2, 200)],
+  sample_size: ["null or a positive integer", (v) => v === null || isCount(1, Infinity)(v)],
+  ...Object.fromEntries(
+    CHART_BOOL_KEYS.map((k) => [k, ["a boolean", (v: unknown) => typeof v === "boolean"]] as const),
+  ),
+  ...Object.fromEntries(
+    CHART_COLUMN_KEYS.map((k) => [k, ["null or a column name", (v: unknown) => v === null || isColumnName(v)]] as const),
+  ),
+};
+
+/** The chart builder's params, checked by shape (columns are checked against the frame later). */
+function parseChartParams(raw: unknown): Partial<ChartDraft> | string {
+  if (!isRecord(raw)) return "params must be an object";
+  for (const [key, v] of Object.entries(raw)) {
+    const rule = CHART_PARAM_RULES[key];
+    if (!rule) {
+      return `unknown param ${JSON.stringify(key)} (known: ${Object.keys(CHART_PARAM_RULES).join(", ")})`;
+    }
+    if (!rule[1](v)) return `params.${key} must be ${rule[0]}`;
+  }
+  return raw as Partial<ChartDraft>;
+}
+
+function parseDraftChart(raw: Record<string, unknown>): Parsed<AgentCommand> {
+  const params = parseChartParams(raw.params);
+  if (typeof params === "string") return { error: params };
+  if (Object.keys(params).length === 0) return { error: "params must be a non-empty object" };
+  return { type: "draft_chart", params };
+}
+
+function parseAddChart(raw: Record<string, unknown>): Parsed<AgentCommand> {
+  const name = typeof raw.name === "string" ? raw.name.trim() : "";
+  if (!name || name.length > CHART_NAME_MAX) {
+    return { error: `name must be a non-empty string of at most ${CHART_NAME_MAX} characters` };
+  }
+  const params = parseChartParams(raw.params);
+  if (typeof params === "string") return { error: params };
+  return { type: "add_chart", name, params };
+}
+
+function parseEditStep(raw: Record<string, unknown>): Parsed<AgentCommand> {
+  if (!isRid(raw.index)) return { error: "index must be a non-negative integer" };
+  return { type: "edit_step", index: raw.index };
+}
+
+function parseFillEditor(raw: Record<string, unknown>): Parsed<AgentCommand> {
+  const { op, params, target } = raw;
+  if (op !== undefined && (typeof op !== "string" || !op)) {
+    return { error: "op must be a non-empty string" };
+  }
+  if (params !== undefined && !isRecord(params)) return { error: "params must be an object" };
+  if (target !== undefined && target !== "train" && target !== "test" && target !== "both") {
+    return { error: "target must be train, test or both" };
+  }
+  if (op === undefined && params === undefined && target === undefined) {
+    return { error: "fill_editor needs op, params and / or target" };
+  }
+  return {
+    type: "fill_editor",
+    ...(op !== undefined ? { op } : {}),
+    ...(params !== undefined ? { params } : {}),
+    ...(target !== undefined ? { target } : {}),
+  };
+}
+
 function parseSetTarget(raw: Record<string, unknown>): Parsed<AgentCommand> {
   if (raw.column !== null && !isColumnName(raw.column)) {
     return { error: "column must be a non-empty string or null" };
@@ -360,6 +456,14 @@ export function parseCommand(raw: Record<string, unknown>): Parsed<AgentCommand>
       return { type: "clear_selection" };
     case "add_variable":
       return parseAddVariable(raw);
+    case "draft_chart":
+      return parseDraftChart(raw);
+    case "add_chart":
+      return parseAddChart(raw);
+    case "edit_step":
+      return parseEditStep(raw);
+    case "fill_editor":
+      return parseFillEditor(raw);
     case "set_target":
       return parseSetTarget(raw);
     case "set_dist_by":
@@ -740,7 +844,11 @@ export async function handleCommand(
   if (cmd.type === "pick_row" || cmd.type === "pick_cell" || cmd.type === "clear_selection") {
     return pick(id, cmd, deps);
   }
+  if (cmd.type === "edit_step") return editStep(id, cmd, deps);
+  if (cmd.type === "fill_editor") return fillEditor(id, cmd, deps);
   if (cmd.type === "add_variable") return addVariable(id, cmd, deps);
+  if (cmd.type === "draft_chart") return draftChart(id, cmd, deps);
+  if (cmd.type === "add_chart") return addChart(id, cmd, deps);
   const before = deps.getState();
   const actions = viewActions(cmd);
   return finish(id, deps, before, actions, viewOutcome(cmd, before));
@@ -901,4 +1009,208 @@ async function addVariable(
     { type: "REMOVE_VARIABLE", name: cmd.name },
   ]);
   return { id, ok: true, identity: currentIdentityKey(deps.getState()) };
+}
+
+/** Why a chart's column params are not on the frame (null = all are). */
+function unknownChartColumn(params: Partial<ChartDraft>, columns: string[]): string | null {
+  const named = [
+    ...CHART_COLUMN_KEYS.map((k) => params[k]),
+    ...(params.columns ?? []),
+  ].filter((c): c is string => typeof c === "string");
+  const ghost = named.find((c) => !columns.includes(c));
+  return ghost === undefined ? null : `unknown column ${JSON.stringify(ghost)}`;
+}
+
+const chartColumns = (params: Partial<ChartDraft>): string[] => [
+  ...new Set([
+    ...CHART_COLUMN_KEYS.map((k) => params[k]).filter((c): c is string => typeof c === "string"),
+    ...(params.columns ?? []),
+  ]),
+];
+
+/**
+ * draft_chart: fill the open chart builder as the user would (opening the
+ * window if needed). Nothing is saved; the params are merged over the draft.
+ */
+async function draftChart(
+  id: string,
+  cmd: Extract<AgentCommand, { type: "draft_chart" }>,
+  deps: BridgeDeps,
+): Promise<Ack> {
+  try {
+    const why = unknownChartColumn(cmd.params, await deps.frameColumns());
+    if (why) return fail(id, `bad_command: ${why}`);
+  } catch (e) {
+    return fail(id, `frame_unavailable: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  const before = deps.getState();
+  const wasOpen = before.dock.tools.includes("chart");
+  const previous = before.chartDraft;
+  const merged = { ...(previous ?? DEFAULT_CHART_DRAFT), ...cmd.params };
+  const same =
+    wasOpen &&
+    previous !== null &&
+    Object.entries(merged).every(([k, v]) => JSON.stringify(previous[k as keyof ChartDraft]) === JSON.stringify(v));
+  const undo: AppAction[] = [{ type: "SET_CHART_DRAFT", draft: previous }];
+  if (!wasOpen) undo.push({ type: "TOGGLE_TOOL", id: "chart" });
+  return finish(
+    id,
+    deps,
+    before,
+    [{ type: "OPEN_TOOL", id: "chart" }, { type: "PATCH_CHART_DRAFT", patch: cmd.params }],
+    {
+      summary: `chart draft: ${Object.entries(cmd.params)
+        .map(([k, v]) => `${k}=${Array.isArray(v) ? v.join(",") : String(v)}`)
+        .join(", ")}`,
+      undo: same ? undefined : undo,
+      touched: { tools: ["chart"], columns: chartColumns(cmd.params) },
+    },
+  );
+}
+
+/**
+ * add_chart: save a chart in `workspace.charts` (what the builder's Save does),
+ * persisted through the save gate before the ack. The name is unique; params
+ * are the builder's, defaults filled in, and must be drawable (x / y present
+ * where the type needs them).
+ */
+async function addChart(
+  id: string,
+  cmd: Extract<AgentCommand, { type: "add_chart" }>,
+  deps: BridgeDeps,
+): Promise<Ack> {
+  try {
+    const why = unknownChartColumn(cmd.params, await deps.frameColumns());
+    if (why) return fail(id, `bad_command: ${why}`);
+  } catch (e) {
+    return fail(id, `frame_unavailable: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  const draft: ChartDraft = { ...DEFAULT_CHART_DRAFT, ...cmd.params };
+  const missing = missingChartField(draft);
+  if (missing) return fail(id, `bad_command: chart ${draft.chart} is not drawable (${missing})`);
+  const duplicate = `bad_command: duplicate chart name ${JSON.stringify(cmd.name)}`;
+  if (deps.getState().workspace?.charts?.some((c) => c.name === cmd.name)) return fail(id, duplicate);
+  deps.dispatch({ type: "ADD_CHART", chart: { name: cmd.name, params: chartDraftToParams(draft) } });
+  try {
+    await deps.settle();
+  } catch (e) {
+    deps.dispatch({ type: "REMOVE_CHART", name: cmd.name });
+    const msg = e instanceof Error ? e.message : String(e);
+    return fail(id, /duplicate chart name/i.test(msg) ? duplicate : `save_failed: ${msg}`);
+  }
+  deps.touch({ tools: ["chart"], columns: chartColumns(cmd.params) });
+  deps.announce(`saved chart ${cmd.name}`, [{ type: "REMOVE_CHART", name: cmd.name }]);
+  return { id, ok: true, identity: currentIdentityKey(deps.getState()) };
+}
+
+const busy = (id: string): Ack => fail(id, "busy");
+
+/** Columns a params object names (for the highlight). */
+const paramColumns = (params: Record<string, unknown>): string[] =>
+  [params.columns, params.column].flat().filter(isColumnName);
+
+/**
+ * edit_step: open an applied step in the editor (what clicking its card does).
+ * Nothing is changed in the pipeline. `busy` while a review waits or the
+ * editor is open on anything but this step (the user's work is not replaced).
+ */
+async function editStep(
+  id: string,
+  cmd: Extract<AgentCommand, { type: "edit_step" }>,
+  deps: BridgeDeps,
+): Promise<Ack> {
+  const before = deps.getState();
+  const step = before.workspace?.steps[cmd.index];
+  if (!step) return fail(id, `bad_command: no step at index ${cmd.index}`);
+  if (deps.reviewPending()) return busy(id);
+  if (before.editor && before.editor.editIndex !== cmd.index) return busy(id);
+  const open = before.editor?.editIndex === cmd.index;
+  return finish(id, deps, before, open ? [] : [{ type: "EDIT_STEP", index: cmd.index }], {
+    summary: `editing step ${cmd.index + 1} (${step.op})`,
+    undo: open
+      ? undefined
+      : [
+          { type: "CLOSE_EDITOR" },
+          { type: "SET_VIEW_VERSION", version: before.viewVersion },
+          ...restoreFullSelection(before),
+        ],
+    touched: { steps: [cmd.index], columns: paramColumns(step.params) },
+  });
+}
+
+/** Why `op` / `params` cannot fill the editor (null = they can). Only keys are checked: the editor shows value errors itself. */
+async function badEditorFill(
+  op: string,
+  params: Record<string, unknown> | undefined,
+  deps: BridgeDeps,
+): Promise<string | null> {
+  let schema: JsonSchema;
+  try {
+    schema = await deps.opSchema(op);
+  } catch {
+    return `unknown op ${JSON.stringify(op)}`;
+  }
+  const known = Object.keys(isRecord(schema.properties) ? schema.properties : {});
+  const ghost = known.length === 0 ? undefined : Object.keys(params ?? {}).find((k) => !known.includes(k));
+  return ghost === undefined ? null : `unknown param ${JSON.stringify(ghost)} for ${op} (known: ${known.join(", ")})`;
+}
+
+/**
+ * fill_editor: review-first path. Opens the editor for a new step when none is
+ * (op required), else patches the open one (params merged, target set). Nothing
+ * is applied: the user previews and clicks Apply. Unlike propose_steps, which
+ * changes the pipeline at once (and reviews only destructive ops), this never
+ * touches `workspace.steps`. An edited step keeps its op.
+ */
+async function fillEditor(
+  id: string,
+  cmd: Extract<AgentCommand, { type: "fill_editor" }>,
+  deps: BridgeDeps,
+): Promise<Ack> {
+  if (deps.reviewPending()) return busy(id);
+  const editor = deps.getState().editor;
+  const op = cmd.op ?? editor?.op ?? undefined;
+  if (op === undefined) return fail(id, "bad_command: op is required to open the editor");
+  if (editor?.editIndex !== undefined && cmd.op !== undefined && cmd.op !== editor.op) {
+    return fail(id, `bad_command: cannot change the op of the step being edited (${editor.op})`);
+  }
+  const switching = editor === null || editor.op === null || op !== editor.op;
+  const why = await badEditorFill(op, cmd.params, deps);
+  if (why) return fail(id, `bad_command: ${why}`);
+
+  // Re-read: the user may have moved the editor while the schema loaded.
+  const before = deps.getState();
+  if (deps.reviewPending() || before.editor?.editIndex !== editor?.editIndex || before.editor?.op !== editor?.op) {
+    return busy(id);
+  }
+  const touched: Touched = { columns: paramColumns(cmd.params ?? {}) };
+  if (switching) {
+    const target = cmd.target ?? "both";
+    return finish(id, deps, before, [{ type: "OPEN_EDITOR", op, params: cmd.params ?? {}, target }], {
+      summary: `opened the ${op} editor`,
+      undo: [
+        before.editor
+          ? { type: "OPEN_EDITOR", op: before.editor.op, params: before.editor.params, target: before.editor.target }
+          : { type: "CLOSE_EDITOR" },
+      ],
+      touched,
+    });
+  }
+  const current = before.editor!;
+  const merged = { ...current.params, ...cmd.params };
+  const target = cmd.target ?? current.target;
+  const sameParams = Object.entries(merged).every(([k, v]) => JSON.stringify(current.params[k]) === JSON.stringify(v));
+  const actions: AppAction[] = [];
+  if (!sameParams) actions.push({ type: "SET_EDITOR_PARAMS", params: merged });
+  if (target !== current.target) actions.push({ type: "SET_EDITOR_TARGET", target });
+  return finish(id, deps, before, actions, {
+    summary: `filled the ${op} editor${cmd.params ? `: ${Object.keys(cmd.params).join(", ")}` : ""}`,
+    undo: actions.length
+      ? [
+          { type: "SET_EDITOR_PARAMS", params: current.params },
+          { type: "SET_EDITOR_TARGET", target: current.target },
+        ]
+      : undefined,
+    touched,
+  });
 }

@@ -100,6 +100,8 @@ function ActiveBridge({ token }: { token: string }) {
           answers.current.set(proposal.id, resolve);
           setReviews((list) => [...list, proposal]);
         }),
+      reviewPending: () => answers.current.size > 0,
+      opSchema: (op) => apiClient.transformSchema(op),
       announce: (summary, undo) => setToast({ summary, undo }),
       frameColumns: async () => {
         const { workspace: ws, role: r, viewVersion: v } = stateRef.current;
