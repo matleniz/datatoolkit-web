@@ -48,7 +48,7 @@ function ToolChip({ item }: { item: Extract<TranscriptItem, { kind: "tool" }> })
     jump.actions.forEach(dispatch);
     const { columns = [], tools = [], steps = [] } = jump.touch;
     const at = Date.now();
-    dispatch({ type: "AGENT_TOUCH", touch: { columns, tools, steps, at } });
+    dispatch({ type: "AGENT_TOUCH", touch: { columns, tools, steps, rows: [], cells: [], at } });
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => dispatch({ type: "AGENT_TOUCH_CLEAR", at }), TOUCH_MS);
   };
