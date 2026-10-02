@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Step } from "../src/api/types";
+import type { JsonSchema, Step } from "../src/api/types";
 import {
   describeOps,
   handleCommand,
@@ -25,6 +25,17 @@ const start = (steps: Step[] = []): AppState => ({
 });
 
 /** A fake store: the reducer behind getState / dispatch, review answered by `answer`. */
+const COLS = ["age", "income", "churn"];
+const distSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    columns: { type: "array", items: { type: "string" }, "x-dtk-widget": "columns" },
+    bins: { type: "integer" },
+    normalize: { type: "boolean" },
+    kind: { type: "string", enum: ["hist", "kde"] },
+  },
+};
+
 function harness(init: AppState, answer: (p: Proposal) => boolean | Promise<boolean> = () => true) {
   const h = {
     state: init,
@@ -54,6 +65,8 @@ function harness(init: AppState, answer: (p: Proposal) => boolean | Promise<bool
     touch: (t) => {
       h.touches.push(t);
     },
+    frameColumns: async () => COLS,
+    keySchema: async () => distSchema,
   };
   return h;
 }
@@ -353,6 +366,153 @@ describe("touch and undo plumbing (#88)", () => {
     h.undos[0]!.forEach(h.deps.dispatch);
     expect(h.state.role).toBe("train");
     expect(h.state.viewVersion).toBeNull();
+  });
+});
+
+describe("parse set_target / set_dist_by / set_tool_params", () => {
+  it("accepts a column or null, refuses a missing / empty / non-string value", () => {
+    expect(parseCommand({ type: "set_target", column: "age" })).toEqual({ type: "set_target", column: "age" });
+    expect(parseCommand({ type: "set_target", column: null })).toEqual({ type: "set_target", column: null });
+    for (const column of [undefined, "", 3]) {
+      expect(parseCommand({ type: "set_target", column })).toHaveProperty("error");
+    }
+    expect(parseCommand({ type: "set_dist_by", by: null })).toEqual({ type: "set_dist_by", by: null });
+    expect(parseCommand({ type: "set_dist_by", by: "" })).toHaveProperty("error");
+    expect(parseCommand({ type: "set_dist_by" })).toHaveProperty("error");
+  });
+
+  it("set_tool_params needs a known tool and non-empty params", () => {
+    expect(parseCommand({ type: "set_tool_params", tool: "dist", params: { bins: 5 }, column: "age" })).toEqual({
+      type: "set_tool_params", tool: "dist", params: { bins: 5 }, column: "age",
+    });
+    expect(parseCommand({ type: "set_tool_params", tool: "nope", params: { bins: 5 } })).toHaveProperty("error");
+    expect(parseCommand({ type: "set_tool_params", tool: "dist", params: {} })).toHaveProperty("error");
+    expect(parseCommand({ type: "set_tool_params", tool: "dist", params: [1] })).toHaveProperty("error");
+    expect(parseCommand({ type: "set_tool_params", tool: "dist", params: { bins: 5 }, column: 2 })).toHaveProperty("error");
+  });
+});
+
+describe("set_target / set_dist_by", () => {
+  it("set_target sets the column, highlights it; Undo restores the previous target", async () => {
+    const h = harness(start());
+    const was = h.state.targetColumn;
+    const ack = await handleCommand({ id: "t", type: "set_target", column: "age" }, h.deps);
+    expect(ack).toMatchObject({ id: "t", ok: true });
+    expect(h.state.targetColumn).toBe("age");
+    expect(h.touches).toEqual([{ columns: ["age"] }]);
+    expect(h.toasts).toEqual(["target set to age"]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.targetColumn).toBe(was);
+  });
+
+  it("set_target null clears the target; same value offers no Undo", async () => {
+    const h = harness(start());
+    await handleCommand({ id: "t", type: "set_target", column: null }, h.deps);
+    expect(h.state.targetColumn).toBeNull();
+    expect(h.toasts).toEqual(["target cleared"]);
+    await handleCommand({ id: "t2", type: "set_target", column: null }, h.deps);
+    expect(h.undos[1]).toBeUndefined();
+  });
+
+  it("refuses a column the frame does not have, changing nothing", async () => {
+    const h = harness(start());
+    const was = h.state.targetColumn;
+    const ack = await handleCommand({ id: "t", type: "set_target", column: "ghost" }, h.deps);
+    expect(ack).toEqual({ id: "t", ok: false, error: 'bad_command: unknown column "ghost"' });
+    expect(h.state.targetColumn).toBe(was);
+    expect(h.toasts).toEqual([]);
+    expect(h.touches).toEqual([]);
+  });
+
+  it("acks frame_unavailable when the columns cannot be read", async () => {
+    const h = harness(start());
+    h.deps.frameColumns = async () => {
+      throw new Error("engine down");
+    };
+    const ack = await handleCommand({ id: "t", type: "set_target", column: "age" }, h.deps);
+    expect(ack).toEqual({ id: "t", ok: false, error: "frame_unavailable: engine down" });
+  });
+
+  it("set_dist_by sets the split and highlights the Distribution window; Undo restores it", async () => {
+    const h = harness({ ...start(), distBy: "income" });
+    await handleCommand({ id: "d", type: "set_dist_by", by: "churn" }, h.deps);
+    expect(h.state.distBy).toBe("churn");
+    expect(h.touches).toEqual([{ tools: ["dist"], columns: ["churn"] }]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.distBy).toBe("income");
+    expect(await handleCommand({ id: "d2", type: "set_dist_by", by: "ghost" }, h.deps)).toMatchObject({
+      ok: false, error: expect.stringContaining("bad_command"),
+    });
+    await handleCommand({ id: "d3", type: "set_dist_by", by: null }, h.deps);
+    expect(h.state.distBy).toBeNull();
+  });
+});
+
+describe("set_tool_params", () => {
+  const send = (h: ReturnType<typeof harness>, extra: Record<string, unknown>) =>
+    handleCommand({ id: "p", type: "set_tool_params", tool: "dist", ...extra }, h.deps);
+
+  it("stores the params under the window key; Undo clears them when there were none", async () => {
+    const h = harness(start());
+    const ack = await send(h, { params: { bins: 12, kind: "kde" } });
+    expect(ack).toMatchObject({ ok: true });
+    expect(h.state.toolParams.dist).toEqual({ bins: 12, kind: "kde" });
+    expect(h.touches).toEqual([{ tools: ["dist"] }]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.toolParams).not.toHaveProperty("dist");
+  });
+
+  it("per-column tools key by the given column; params merge; Undo restores the previous ones", async () => {
+    const h = harness(start());
+    await send(h, { params: { bins: 5 }, column: "age" });
+    await send(h, { params: { normalize: true }, column: "age" });
+    expect(h.state.toolParams["dist::age"]).toEqual({ bins: 5, normalize: true });
+    expect(h.touches[1]).toEqual({ tools: ["dist"], columns: ["age"] });
+    h.undos[1]!.forEach(h.deps.dispatch);
+    expect(h.state.toolParams["dist::age"]).toEqual({ bins: 5 });
+  });
+
+  it("without a column a per-column tool follows the focused column, like the dock", async () => {
+    const h = harness(start());
+    h.deps.dispatch({ type: "PICK_COL", name: "income", add: false });
+    await send(h, { params: { bins: 7 } });
+    expect(h.state.toolParams["dist::income"]).toEqual({ bins: 7 });
+  });
+
+  it("refuses unknown keys, bad values, unknown columns, structural keys", async () => {
+    const h = harness(start());
+    const cases: [Record<string, unknown>, string][] = [
+      [{ params: { nope: 1 } }, 'unknown param "nope"'],
+      [{ params: { by: "age" } }, 'unknown param "by"'],
+      [{ params: { bins: "many" } }, "params.bins must be"],
+      [{ params: { kind: "pie" } }, "params.kind must be one of hist, kde"],
+      [{ params: { normalize: "yes" } }, "params.normalize must be a boolean"],
+      [{ params: { bins: 5 }, column: "ghost" }, 'unknown column "ghost"'],
+    ];
+    for (const [extra, why] of cases) {
+      const ack = await send(h, extra);
+      expect(ack).toMatchObject({ ok: false });
+      expect(ack?.error).toContain(`bad_command: `);
+      expect(ack?.error).toContain(why);
+    }
+    expect(h.state.toolParams).toEqual({});
+    expect(h.toasts).toEqual([]);
+  });
+
+  it("refuses a column on a tool without per-column params", async () => {
+    const h = harness(start());
+    h.deps.keySchema = async () => ({ type: "object", properties: { top: { type: "integer" } } });
+    const ack = await handleCommand(
+      { id: "p", type: "set_tool_params", tool: "corr", params: { top: 3 }, column: "age" },
+      h.deps,
+    );
+    expect(ack?.error).toBe("bad_command: corr has no per-column params");
+  });
+
+  it("refuses a tool whose schema has no tunable params", async () => {
+    const h = harness(start());
+    h.deps.keySchema = async () => ({ type: "object", properties: { columns: { type: "array", "x-dtk-widget": "columns" } } });
+    expect((await send(h, { params: { bins: 5 } }))?.error).toBe("bad_command: dist has no tunable params");
   });
 });
 

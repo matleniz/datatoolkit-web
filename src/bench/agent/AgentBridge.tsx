@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { postUiAck, putUiContext, uiEventsUrl, uiToken } from "../../api/client";
+import { apiClient, postUiAck, putUiContext, uiEventsUrl, uiToken } from "../../api/client";
 import {
   handleCommand,
   type BridgeDeps,
@@ -9,6 +9,7 @@ import {
 import { ensureWorkspaceSaved, useAppDispatch, useAppState } from "../../state/AppStore";
 import type { AppAction } from "../../state/reducer";
 import { buildUiContext } from "../../state/uiContext";
+import { effectiveVersion } from "../version";
 
 const PUBLISH_DEBOUNCE_MS = 300;
 const TOAST_MS = 12_000;
@@ -97,6 +98,13 @@ function ActiveBridge({ token }: { token: string }) {
           setReviews((list) => [...list, proposal]);
         }),
       announce: (summary, undo) => setToast({ summary, undo }),
+      frameColumns: async () => {
+        const { workspace: ws, role: r, viewVersion: v } = stateRef.current;
+        if (!ws) throw new Error("no workspace open");
+        const page = await apiClient.workspaceRows(ws, r, effectiveVersion(ws, v), 0, 1);
+        return page.columns.map((c) => c.name);
+      },
+      keySchema: (keyId) => apiClient.keySchema(keyId),
       touch: (touched) => {
         const { columns = [], tools = [], steps = [] } = touched;
         if (columns.length + tools.length + steps.length === 0) return;

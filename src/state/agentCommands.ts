@@ -1,10 +1,11 @@
-import type { Role, Step } from "../api/types";
+import type { JsonSchema, Role, Step } from "../api/types";
 import { toolDef } from "../bench/toolrail/tools";
 import { TOOL_IDS, type ToolId } from "./dockTypes";
 import { appReducer, type AppAction, type AppState } from "./reducer";
 import { applyStepOps, type StepOp } from "./stepOps";
 import { currentIdentityKey } from "./uiContext";
-import { PER_COLUMN_PARAM_TOOLS, toolParamsKey } from "../bench/left/keyTunable";
+import { PER_COLUMN_PARAM_TOOLS, keyTunableFields, toolParamsKey } from "../bench/left/keyTunable";
+import type { EditorField } from "../bench/schemaFields";
 
 /**
  * Commands the engine's UI bridge relays to Studio (`GET /api/ui/events`) and
@@ -21,7 +22,15 @@ export type AgentCommand =
     }
   | { type: "open_window"; tool: ToolId; params: Record<string, unknown> }
   | { type: "select_columns"; columns: string[] }
-  | { type: "set_view"; role?: Role; version?: number | null };
+  | { type: "set_view"; role?: Role; version?: number | null }
+  | { type: "set_target"; column: string | null }
+  | { type: "set_dist_by"; by: string | null }
+  | {
+      type: "set_tool_params";
+      tool: ToolId;
+      params: Record<string, unknown>;
+      column?: string;
+    };
 
 /** Body of `POST /api/ui/ack`. */
 export interface Ack {
@@ -52,6 +61,10 @@ export interface BridgeDeps {
   announce(summary: string, undo?: AppAction[]): void;
   /** Highlight what the command touched for a moment (`data-agent-touched`). */
   touch(touched: Touched): void;
+  /** Column names of the frame shown now (validates `column` / `by`). */
+  frameColumns(): Promise<string[]>;
+  /** Engine schema of a key (validates `set_tool_params`); cached by the client. */
+  keySchema(keyId: string): Promise<JsonSchema>;
 }
 
 /** What a command touched; every field optional, later commands declare only theirs. */
@@ -171,6 +184,40 @@ function parseSetView(raw: Record<string, unknown>): Parsed<AgentCommand> {
   };
 }
 
+const isColumnName = (v: unknown): v is string => typeof v === "string" && v !== "";
+
+function parseSetTarget(raw: Record<string, unknown>): Parsed<AgentCommand> {
+  if (raw.column !== null && !isColumnName(raw.column)) {
+    return { error: "column must be a non-empty string or null" };
+  }
+  return { type: "set_target", column: raw.column };
+}
+
+function parseSetDistBy(raw: Record<string, unknown>): Parsed<AgentCommand> {
+  if (raw.by !== null && !isColumnName(raw.by)) {
+    return { error: "by must be a non-empty string or null" };
+  }
+  return { type: "set_dist_by", by: raw.by };
+}
+
+function parseSetToolParams(raw: Record<string, unknown>): Parsed<AgentCommand> {
+  if (!TOOL_IDS.includes(raw.tool as ToolId)) {
+    return { error: `tool must be one of ${TOOL_IDS.join(", ")}` };
+  }
+  if (!isRecord(raw.params) || Object.keys(raw.params).length === 0) {
+    return { error: "params must be a non-empty object" };
+  }
+  if (raw.column !== undefined && !isColumnName(raw.column)) {
+    return { error: "column must be a non-empty string" };
+  }
+  return {
+    type: "set_tool_params",
+    tool: raw.tool as ToolId,
+    params: raw.params,
+    ...(raw.column !== undefined ? { column: raw.column } : {}),
+  };
+}
+
 /** Validate a relayed command; the error text is the `bad_command: …` reason. */
 export function parseCommand(raw: Record<string, unknown>): Parsed<AgentCommand> {
   switch (raw.type) {
@@ -187,6 +234,12 @@ export function parseCommand(raw: Record<string, unknown>): Parsed<AgentCommand>
     }
     case "set_view":
       return parseSetView(raw);
+    case "set_target":
+      return parseSetTarget(raw);
+    case "set_dist_by":
+      return parseSetDistBy(raw);
+    case "set_tool_params":
+      return parseSetToolParams(raw);
     default:
       return { error: `unknown type ${JSON.stringify(raw.type)}` };
   }
@@ -237,7 +290,10 @@ function restoreSelection(state: AppState): AppAction[] {
 const sameList = (a: string[], b: string[]) =>
   a.length === b.length && a.every((x, i) => x === b[i]);
 
-type ViewCommand = Exclude<AgentCommand, { type: "propose_steps" }>;
+type ViewCommand = Extract<
+  AgentCommand,
+  { type: "open_window" | "select_columns" | "set_view" }
+>;
 
 /** Actions of a non-step command (open_window / select_columns / set_view). */
 function viewActions(cmd: ViewCommand): AppAction[] {
@@ -303,6 +359,120 @@ function viewOutcome(cmd: ViewCommand, before: AppState): Outcome {
     summary: `opened ${label}${col ? ` (${col})` : ""}`,
     undo: undo.length ? undo : undefined,
     touched: { tools: [cmd.tool], ...(col ? { columns: [col] } : {}) },
+  };
+}
+
+const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const isListOf = (v: unknown, ok: (x: unknown) => boolean) => Array.isArray(v) && v.every(ok);
+
+/** What each widget accepts: a description for the error, and the check. */
+const WIDGET_VALUES: Partial<
+  Record<EditorField["widget"], [want: string, ok: (v: unknown, columns: string[]) => boolean]>
+> = {
+  number: ["a number", isFiniteNumber],
+  auto_number: ['a number or "auto"', (v) => v === "auto" || isFiniteNumber(v)],
+  bool: ["a boolean", (v) => typeof v === "boolean"],
+  text: ["a string", (v) => typeof v === "string"],
+  column: ["a column of the frame", (v, cols) => typeof v === "string" && cols.includes(v)],
+  columns: [
+    "a list of columns of the frame",
+    (v, cols) => isListOf(v, (c) => typeof c === "string" && cols.includes(c)),
+  ],
+  number_list: ["a list of numbers", (v) => isListOf(v, isFiniteNumber)],
+  string_list: ["a list of strings", (v) => isListOf(v, (x) => typeof x === "string")],
+  enum_list: ["a list of strings", (v) => isListOf(v, (x) => typeof x === "string")],
+};
+
+/** Why `value` is not acceptable for `field` (null = it is). */
+function badFieldValue(field: EditorField, value: unknown, columns: string[]): string | null {
+  const bad = (want: string) => `params.${field.key} must be ${want}`;
+  if (field.widget === "enum") {
+    const allowed = (field.enumValues ?? []).filter((v) => v !== "__null__");
+    const nullable = field.enumValues?.includes("__null__") ?? false;
+    const ok = value === null ? nullable : allowed.includes(String(value));
+    return ok ? null : bad(`one of ${allowed.join(", ")}`);
+  }
+  const rule = WIDGET_VALUES[field.widget];
+  if (!rule) return isRecord(value) ? null : bad("an object");
+  return rule[1](value, columns) ? null : bad(rule[0]);
+}
+
+/** Why `cmd` cannot run on a frame with `columns` / the key's `schema` (null = it can). */
+function badToolParams(
+  cmd: Extract<AgentCommand, { type: "set_tool_params" }>,
+  schema: JsonSchema,
+  columns: string[],
+): string | null {
+  const keyId = toolDef(cmd.tool).key;
+  const fields = new Map(keyTunableFields(schema, keyId).map((f) => [f.key, f]));
+  if (fields.size === 0) return `${cmd.tool} has no tunable params`;
+  if (cmd.column !== undefined) {
+    if (!PER_COLUMN_PARAM_TOOLS.has(cmd.tool)) return `${cmd.tool} has no per-column params`;
+    if (!columns.includes(cmd.column)) return `unknown column ${JSON.stringify(cmd.column)}`;
+  }
+  for (const [key, value] of Object.entries(cmd.params)) {
+    const field = fields.get(key);
+    if (!field) {
+      return `unknown param ${JSON.stringify(key)} for ${cmd.tool} (known: ${[...fields.keys()].join(", ")})`;
+    }
+    const why = badFieldValue(field, value, columns);
+    if (why) return why;
+  }
+  return null;
+}
+
+/** Column whose params the window reads: the explicit one, else the focus (as the dock does). */
+function paramColumn(
+  cmd: Extract<AgentCommand, { type: "set_tool_params" }>,
+  state: AppState,
+): string | null {
+  if (!PER_COLUMN_PARAM_TOOLS.has(cmd.tool)) return null;
+  return cmd.column ?? state.selection.columns[0] ?? state.selection.cell?.col ?? null;
+}
+
+/** Actions + outcome of the three "set one thing" commands, from the state before them. */
+function settingOutcome(
+  cmd: Extract<AgentCommand, { type: "set_target" | "set_dist_by" | "set_tool_params" }>,
+  before: AppState,
+): { actions: AppAction[]; outcome: Outcome } {
+  if (cmd.type === "set_target") {
+    const same = before.targetColumn === cmd.column;
+    return {
+      actions: [{ type: "SET_TARGET_COLUMN", name: cmd.column }],
+      outcome: {
+        summary: cmd.column ? `target set to ${cmd.column}` : "target cleared",
+        undo: same ? undefined : [{ type: "SET_TARGET_COLUMN", name: before.targetColumn }],
+        touched: { columns: cmd.column ? [cmd.column] : [] },
+      },
+    };
+  }
+  if (cmd.type === "set_dist_by") {
+    const same = before.distBy === cmd.by;
+    return {
+      actions: [{ type: "SET_DIST_BY", by: cmd.by }],
+      outcome: {
+        summary: cmd.by ? `Distribution split by ${cmd.by}` : "Distribution split cleared",
+        undo: same ? undefined : [{ type: "SET_DIST_BY", by: before.distBy }],
+        touched: { tools: ["dist"], columns: cmd.by ? [cmd.by] : [] },
+      },
+    };
+  }
+  const column = paramColumn(cmd, before);
+  const key = toolParamsKey(cmd.tool, column);
+  const previous = before.toolParams[key];
+  const merged = { ...previous, ...cmd.params };
+  const same = previous !== undefined && Object.entries(merged).every(([k, v]) => previous[k] === v);
+  return {
+    actions: [{ type: "SET_TOOL_PARAMS", key, params: merged }],
+    outcome: {
+      summary: `${toolDef(cmd.tool).label} params: ${Object.entries(cmd.params)
+        .map(([k, v]) => `${k}=${Array.isArray(v) ? v.join(",") : String(v)}`)
+        .join(", ")}${column ? ` (${column})` : ""}`,
+      undo: same
+        ? undefined
+        : [previous ? { type: "SET_TOOL_PARAMS", key, params: previous } : { type: "CLEAR_TOOL_PARAMS", key }],
+      touched: { tools: [cmd.tool], ...(column ? { columns: [column] } : {}) },
+    },
   };
 }
 
@@ -390,13 +560,56 @@ export async function handleCommand(
   const cmd = parseCommand(raw);
   if ("error" in cmd) return fail(id, `bad_command: ${cmd.error}`);
   if (cmd.type === "propose_steps") return proposeSteps(id, cmd, deps);
+  if (
+    cmd.type === "set_target" ||
+    cmd.type === "set_dist_by" ||
+    cmd.type === "set_tool_params"
+  ) {
+    return setSetting(id, cmd, deps);
+  }
   const before = deps.getState();
   const actions = viewActions(cmd);
+  return finish(id, deps, before, actions, viewOutcome(cmd, before));
+}
+
+/** Dispatch `actions`, highlight, announce and ack the identity after them. */
+function finish(
+  id: string,
+  deps: BridgeDeps,
+  before: AppState,
+  actions: AppAction[],
+  { summary, undo, touched }: Outcome,
+): Ack {
   // Identity of the frame after these actions (pure replay, no render wait).
   const identity = currentIdentityKey(reduceAll(before, actions));
-  const { summary, undo, touched } = viewOutcome(cmd, before);
   for (const a of actions) deps.dispatch(a);
   deps.touch(touched);
   deps.announce(summary, undo);
   return { id, ok: true, identity };
+}
+
+/** set_target / set_dist_by / set_tool_params: validate against the frame / schema, then apply. */
+async function setSetting(
+  id: string,
+  cmd: Extract<AgentCommand, { type: "set_target" | "set_dist_by" | "set_tool_params" }>,
+  deps: BridgeDeps,
+): Promise<Ack> {
+  const named =
+    cmd.type === "set_target" ? cmd.column : cmd.type === "set_dist_by" ? cmd.by : null;
+  try {
+    // Frame columns are fetched first; the state is read after the awaits.
+    const columns = await deps.frameColumns();
+    if (named !== null && !columns.includes(named)) {
+      return fail(id, `bad_command: unknown column ${JSON.stringify(named)}`);
+    }
+    if (cmd.type === "set_tool_params") {
+      const why = badToolParams(cmd, await deps.keySchema(toolDef(cmd.tool).key), columns);
+      if (why) return fail(id, `bad_command: ${why}`);
+    }
+  } catch (e) {
+    return fail(id, `frame_unavailable: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  const before = deps.getState();
+  const { actions, outcome } = settingOutcome(cmd, before);
+  return finish(id, deps, before, actions, outcome);
 }
