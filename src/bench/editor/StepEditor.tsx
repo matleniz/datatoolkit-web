@@ -12,6 +12,7 @@ import {
   featureOpColumnsNeedingImpute,
   fieldActive,
   imputeConstantNeedsNumber,
+  imputeOfferedColumns,
   stepParamsValid,
   fieldValuePresent,
   type EditorField,
@@ -540,13 +541,21 @@ function GenericField({
   // (string "0" raises), so it is typed as a number field for those.
   const fill = field.key === "fill_value";
   const fillNumeric = fill && imputeConstantNeedsNumber(params, columns);
+  const { workspace } = useAppState();
+  const offered = imputeOfferedColumns(
+    op,
+    field.key,
+    columns,
+    params,
+    workspace ? targetColumnOf(workspace) : null,
+  );
   let placeholder: string | undefined;
   if (fill) placeholder = fillNumeric ? "e.g. 0" : "e.g. MISSING";
   const control = fieldControl(
     fill ? { ...field, widget: fillNumeric ? "number" : "text" } : field,
     params[field.key],
     set,
-    columns,
+    offered,
     { placeholder },
   );
   if (!control) return null;

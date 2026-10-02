@@ -15,7 +15,7 @@ import { formulaPlaceholder } from "./formulaPlaceholder";
 import {
   FORMULA_FUNCS,
   FORMULA_OPS,
-  FORMULA_PY_EXAMPLES,
+  formulaPyExamples,
   formulaColumnRef,
   applyFormulaAutocomplete,
   formulaAutocomplete,
@@ -133,10 +133,13 @@ export function FormulaField({
     );
   }, [token, columns, varNames]);
 
+  const tokenText = token?.token;
   useEffect(() => {
     setActiveIdx(0);
-    setSuggestOpen(suggestions.length > 0);
-  }, [suggestions]);
+    // Nothing left to complete once the token is already the only candidate.
+    const complete = suggestions.every((s) => s === tokenText);
+    setSuggestOpen(suggestions.length > 0 && !complete);
+  }, [suggestions, tokenText]);
 
   const applyPick = (pick: string) => {
     const { expr: next, caret: nextCaret } = applyFormulaAutocomplete(
@@ -298,7 +301,7 @@ export function FormulaField({
 
       <span className="ed-help">Python</span>
       <Palette
-        items={FORMULA_PY_EXAMPLES}
+        items={formulaPyExamples(chipCols)}
         marker={{ "data-formula-py-palette": "" }}
         aria={(f) => `Insert ${f.label}`}
         onPick={(f) => insertAtCaret(f.insert)}

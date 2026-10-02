@@ -235,7 +235,7 @@ describe("mapFileInspect (Parkinson real Result fixture)", () => {
       expect(mapped.spec.encoding).toBe("utf-8");
     }
     expect(mapped.detected).toContain("header 0");
-    expect(mapped.detected).toContain("55603 × 12");
+    expect(mapped.detected).toContain("55,603 × 12");
     expect(mapped.detected).not.toContain("header 1");
     expect(mapped.detected).not.toMatch(/\b0 × 12\b/);
   });

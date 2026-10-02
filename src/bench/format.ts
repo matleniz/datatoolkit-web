@@ -7,6 +7,11 @@ export const TEXT_PREVIEW_CHARS = 500;
 export const EMPTY_DATA_ROWS_MSG =
   "0 data rows — nothing to display / analyse";
 
+/** Thousands-separated integer (55603 → "55,603"). */
+export function fmtCount(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
 export function isNull(v: unknown): boolean {
   return v === null || v === undefined;
 }

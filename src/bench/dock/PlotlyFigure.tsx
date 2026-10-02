@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import type { PlotPoint } from "./figureDisplay";
+import { dockFigureLayout, type PlotPoint } from "./figureDisplay";
 
 const FIGURE_RESIZE_MS = 120;
 
@@ -86,7 +86,11 @@ export function PlotlyFigure({
       if (cancelled || !el) return;
       const rawData = (plotly.data as object[]) ?? [];
       const data = applyDtkColorsToData(rawData);
-      const rawLayout = (plotly.layout as Record<string, unknown>) ?? {};
+      const rawLayout = dockFigureLayout(
+        (plotly.layout as Record<string, unknown>) ?? {},
+        rawData.length,
+      );
+      const withLegend = Boolean(rawLayout.legend);
       const template = (rawLayout.template as Record<string, unknown>) ?? {};
       const templateLayout = (template.layout as Record<string, unknown>) ?? {};
       const targetHeight =
@@ -99,7 +103,7 @@ export function PlotlyFigure({
         height: targetHeight,
         width: targetWidth,
         margin: {
-          t: 16,
+          t: withLegend ? 40 : 16,
           r: 10,
           b: 28,
           l: 36,

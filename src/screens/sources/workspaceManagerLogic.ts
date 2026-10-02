@@ -3,6 +3,7 @@
  * Summaries come from GET /workspaces/summaries — do not recompute store logic.
  */
 
+import { fmtCount } from "../../bench/format";
 import type { WorkspaceRoleSummary, WorkspaceSummary } from "../../api/types";
 
 export type WorkspaceSortKey = "name" | "mtime";
@@ -12,7 +13,7 @@ export function formatShape(
   shape: [number, number] | null | undefined,
 ): string {
   if (!shape || shape.length < 2) return "—";
-  return `${shape[0]} × ${shape[1]}`;
+  return `${fmtCount(shape[0])} × ${fmtCount(shape[1])}`;
 }
 
 export function formatMtime(iso: string, nowMs = Date.now()): string {

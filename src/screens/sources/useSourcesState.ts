@@ -8,8 +8,8 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from "react";
-import { apiClient } from "../../api/client";
-import type { WorkspaceSummary } from "../../api/types";
+import { apiClient, serializeWorkspace } from "../../api/client";
+import type { Workspace, WorkspaceSummary } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { engineMessage, type WorkspaceSourcesState } from "./sourcesLogic";
 import {
@@ -99,7 +99,7 @@ function useSourcesErrors(): [string[], SourcesErrors] {
 }
 
 /** Load workspace summaries on mount. */
-function useWorkspaceSummaries() {
+function useWorkspaceSummaries(workspace: Workspace | null) {
   const [summaries, setSummaries] = useState<WorkspaceSummary[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   useEffect(() => {
@@ -119,6 +119,33 @@ function useWorkspaceSummaries() {
       active = false;
     };
   }, []);
+
+  // The sidebar cards (roles, shapes) go stale once autosave PUTs a changed
+  // workspace: refetch after the save gate settles.
+  const serialized = workspace ? serializeWorkspace(workspace) : null;
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    if (serialized === null) return;
+    let active = true;
+    // AppStore's save effect runs after this one: read its gate next tick.
+    const timer = window.setTimeout(() => {
+      void (window.__DTK_WORKSPACE_SAVED__ ?? Promise.resolve())
+        .then(() => apiClient.listWorkspaceSummaries())
+        .then((list) => {
+          if (active) setSummaries(list);
+        })
+        .catch(() => {});
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [serialized]);
+
   return { summaries, setSummaries, listError };
 }
 
@@ -180,7 +207,7 @@ export function useSourcesState(): SourcesCore {
     });
   }, [src, dispatch]);
 
-  const { summaries, setSummaries, listError } = useWorkspaceSummaries();
+  const { summaries, setSummaries, listError } = useWorkspaceSummaries(workspace);
 
   return {
     dispatch,

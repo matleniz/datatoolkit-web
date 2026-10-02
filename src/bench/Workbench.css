@@ -1155,6 +1155,11 @@
   position: relative;
 }
 
+.formula-input-wrap > .ed-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .formula-suggest {
   position: absolute;
   z-index: 20;

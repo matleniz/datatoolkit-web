@@ -351,8 +351,14 @@ export async function inspectUploadedFile(
 }
 
 /** Kinds that often need a manual pick / override of their load options. */
-export function opensOptionsByDefault(spec: FileSourceSpec): boolean {
-  return spec.kind === "excel" || spec.kind === "json" || spec.kind === "csv";
+export function opensOptionsByDefault(
+  spec: FileSourceSpec,
+  parseError?: string | null,
+  colCount?: number,
+): boolean {
+  // Excel / JSON need a sheet / record_path pick; CSV only when it failed.
+  if (spec.kind === "excel" || spec.kind === "json") return true;
+  return spec.kind === "csv" && (Boolean(parseError) || colCount === 0);
 }
 
 /**

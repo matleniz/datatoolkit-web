@@ -134,7 +134,12 @@ test.describe("MAT-148 / MAT-151 source formats", () => {
     await createWorkspace(page, "fmt-store-b");
     await uploadAsTrainX(page, STORE_B_CSV, "store_b.csv");
 
+    // A readable CSV upload keeps its Options collapsed (#83): open them.
     const options = page.getByLabel("Load options for store_b.csv");
+    await page
+      .getByRole("button", { name: "Options", exact: true })
+      .first()
+      .click();
     await expect(options).toBeVisible({ timeout: 15_000 });
 
     // Force a wrong sniff-style state, then fix via Options (acceptance).
