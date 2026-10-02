@@ -20,6 +20,7 @@ import {
   WorkspaceRows,
   WorkspaceSummary,
 } from "./types";
+import { gridViewBody, type GridView } from "../state/gridView";
 import { InFlightDedupe } from "./requestDedupe";
 
 interface ApiClient {
@@ -52,6 +53,8 @@ interface ApiClient {
     offset: number,
     limit: number,
     signal?: AbortSignal,
+    /** View-only filter / sort, run by the engine on the full frame. */
+    view?: GridView,
   ): Promise<WorkspaceRows>;
   columnProfiles(
     workspace: Workspace,
@@ -361,6 +364,7 @@ class HttpApiClient implements ApiClient {
     offset: number,
     limit: number,
     signal?: AbortSignal,
+    view?: GridView,
   ): Promise<WorkspaceRows> {
     return this.request(
       "POST",
@@ -371,6 +375,7 @@ class HttpApiClient implements ApiClient {
         version,
         offset,
         limit,
+        ...(view ? gridViewBody(view) : {}),
       },
       undefined,
       signal,

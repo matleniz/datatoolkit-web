@@ -17,6 +17,7 @@ import type {
   WorkspaceRow,
   WorkspaceRowsColumn,
 } from "../api/types";
+import { isGridViewActive } from "../state/gridView";
 import { useAppDispatch, useAppState } from "../state/AppStore";
 import { buildDisplay, diffText, type DisplayFrame } from "./diff";
 import type { EditorField } from "./schemaFields";
@@ -47,7 +48,10 @@ export interface WorkbenchDataValue {
   profilesIdentity: string | null;
   columns: WorkspaceRowsColumn[];
   rows: WorkspaceRow[];
+  /** Rows after the view-only filter (what the grid pages through). */
   total: number;
+  /** Rows before the view-only filter. */
+  totalUnfiltered: number;
   profiles: Map<string, ColumnProfile>;
   display: DisplayFrame;
   preview: PreviewStep | null;
@@ -80,10 +84,10 @@ export interface WorkbenchDataValue {
 const WorkbenchDataContext = createContext<WorkbenchDataValue | null>(null);
 
 export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
-  const { workspace, role, viewVersion, editor } = useAppState();
+  const { workspace, role, viewVersion, editor, gridView } = useAppState();
   const dispatch = useAppDispatch();
 
-  const frame = useBenchFrame(workspace, role, viewVersion, dispatch);
+  const frame = useBenchFrame(workspace, role, viewVersion, dispatch, gridView);
   const { isLatest, columns, rows } = frame;
   const editIndex = editor?.editIndex;
   const atBase = workspace
@@ -103,16 +107,18 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
   });
   const { preview, nextRows, nextColumns, pendingStep } = pv;
 
+  // A step preview diffs the unfiltered frame: skip it under a view-only filter.
+  const diffable = atBase && !isGridViewActive(gridView);
   const display = useMemo(
     () =>
       buildDisplay(
         columns,
         rows,
-        atBase ? preview : null,
-        atBase ? nextRows : null,
-        atBase ? nextColumns : null,
+        diffable ? preview : null,
+        diffable ? nextRows : null,
+        diffable ? nextColumns : null,
       ),
-    [columns, rows, preview, nextRows, nextColumns, atBase],
+    [columns, rows, preview, nextRows, nextColumns, diffable],
   );
 
   const applyPending = useCallback(() => {
@@ -132,6 +138,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       columns,
       rows,
       total: frame.total,
+      totalUnfiltered: frame.totalUnfiltered,
       profiles: frame.profiles,
       display,
       preview: atBase ? preview : null,

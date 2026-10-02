@@ -2,13 +2,14 @@ import { useEffect, useRef } from "react";
 
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { chartPrefillFromSelection } from "../dock/chartPrefill";
+import { toggleSort } from "../../state/gridView";
 import { isNumericKind, isTextKind, KIND_LABEL } from "../kinds";
 import { toEngineParams } from "../presets";
 import { useWorkbenchData } from "../WorkbenchData";
 
 /** W2 — column context menu (prototype item order). */
 export function ContextMenu() {
-  const { ctx, selection, screen, targetColumn } = useAppState();
+  const { ctx, selection, screen, targetColumn, gridView } = useAppState();
   const dispatch = useAppDispatch();
   const { columns, profiles, isLatest } = useWorkbenchData();
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -114,6 +115,26 @@ export function ContextMenu() {
     });
   }
 
+  items.push({
+    kind: "item",
+    text: "Filter…",
+    hint: "view only",
+    run: () => dispatch({ type: "OPEN_GRID_FILTER", column: col }),
+  });
+  items.push({
+    kind: "item",
+    text: "Sort ascending",
+    hint: "view only",
+    run: () =>
+      dispatch({ type: "SET_GRID_VIEW", view: toggleSort(gridView, col, false) }),
+  });
+  items.push({
+    kind: "item",
+    text: "Sort descending",
+    hint: "view only",
+    run: () =>
+      dispatch({ type: "SET_GRID_VIEW", view: toggleSort(gridView, col, true) }),
+  });
   items.push({
     kind: "item",
     text: "Distribution",

@@ -303,7 +303,10 @@ export type WorkspaceRow = Record<string, JsonValue> & { _rid: number };
 export interface WorkspaceRows {
   columns: WorkspaceRowsColumn[];
   rows: WorkspaceRow[];
+  /** Row count after the view-only filter (= `total_unfiltered` without one). */
   total: number;
+  /** Row count before the view-only filter; absent on older engines. */
+  total_unfiltered?: number;
   version: number;
 }
 

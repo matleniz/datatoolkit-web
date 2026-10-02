@@ -14,6 +14,7 @@ import { colWidth, isNumericKind, KIND_BAR, KIND_LABEL } from "../kinds";
 import { stepSummary } from "../stages";
 import { useWorkbenchData } from "../WorkbenchData";
 import { columnWindow } from "./columnWindow";
+import { GridViewBar } from "./GridViewBar";
 
 type Dispatch = ReturnType<typeof useAppDispatch>;
 type Selection = ReturnType<typeof useAppState>["selection"];
@@ -325,6 +326,8 @@ export function Grid() {
           </span>
         </span>
       </div>
+
+      <GridViewBar />
 
       {pendingStep && preview ? (
         <div className="banner preview-banner" role="status">
