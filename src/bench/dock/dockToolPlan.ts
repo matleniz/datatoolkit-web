@@ -1,4 +1,4 @@
-import type { ColumnProfile, Role } from "../../api/types";
+import type { ColumnProfile, Result, Role } from "../../api/types";
 import type { ToolId } from "../../state/reducer";
 import {
   engineColumnsParam,
@@ -26,6 +26,8 @@ interface Ran {
   hasCols: boolean;
   /** The `columns` param sent (undefined when none was). */
   sent: string[] | undefined;
+  /** Columns the engine actually analysed, when it picked them itself. */
+  ran?: string[];
 }
 
 interface ToolPlan {
@@ -37,8 +39,6 @@ interface ToolPlan {
   columns?: (c: PlanCtx) => string[] | null;
   bound: (c: PlanCtx, ran: Ran) => string;
 }
-
-const MAX_CORR_COLUMNS = 7;
 
 function corrScope(c: PlanCtx) {
   const nums = c.profiles
@@ -57,9 +57,28 @@ export function corrSelectedCount(c: PlanCtx): number {
   return corrScope(c).selNum.length;
 }
 
-function corrColumns(c: PlanCtx): string[] {
+/**
+ * Columns the matrix is limited to: the selection, else none (the engine's
+ * own default, cap and "N more columns" note, #74). Never truncated here.
+ */
+function corrColumns(c: PlanCtx): string[] | null {
   const s = corrScope(c);
-  return (s.useSelection ? s.selNum : s.nums).slice(0, MAX_CORR_COLUMNS);
+  return s.useSelection ? s.selNum : null;
+}
+
+/** Numeric columns the matrix would cover (guard only). */
+function corrAvailable(c: PlanCtx): number {
+  const s = corrScope(c);
+  return s.useSelection ? s.selNum.length : s.nums.length;
+}
+
+/** Columns a correlations run covered: those sent, else its `matrix` table's. */
+export function corrRanColumns(result: Result, sent?: string[] | null): string[] {
+  if (sent && sent.length > 0) return sent;
+  const t = result.tables.find((tb) => tb.title === "matrix");
+  return (t?.records ?? [])
+    .map((r) => r.column)
+    .filter((n): n is string => typeof n === "string");
 }
 
 function selectionBound(cols: string[] | null, key: string, all: string) {
@@ -98,9 +117,9 @@ const TOOL_PLANS: Partial<Record<ToolId, ToolPlan>> = {
   corr: {
     engine: true,
     guard: (c) =>
-      corrColumns(c).length < 2 ? "Need at least two numeric columns." : null,
+      corrAvailable(c) < 2 ? "Need at least two numeric columns." : null,
     columns: corrColumns,
-    bound: (_c, ran) => `key correlations · ${ran.sent?.length ?? 0} columns`,
+    bound: (_c, ran) => `key correlations · ${(ran.sent ?? ran.ran)?.length ?? 0} columns`,
   },
   dist: {
     engine: true,
@@ -235,6 +254,7 @@ export function chartColumnsOf(
   runParams: string | null,
   scopeAll: boolean,
   selCols: string[],
+  ranColumns: string[] = [],
 ): { names: string[]; by: string | null } {
   let params: Record<string, unknown> = {};
   try {
@@ -246,7 +266,9 @@ export function chartColumnsOf(
   }
   let names = Array.isArray(params.columns)
     ? params.columns.filter((c): c is string => typeof c === "string")
-    : scopeAll
+    : id === "corr" && ranColumns.length > 0
+      ? [...ranColumns]
+      : scopeAll
       ? []
       : [...selCols];
   if (id === "target" && typeof params.target === "string") {
