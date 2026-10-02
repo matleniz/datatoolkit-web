@@ -9,7 +9,7 @@ describe("dtk-ui-token-meta plugin", () => {
   ])("%s injects the token on the dev server only", (_name, cfg) => {
     const plugin = (cfg.plugins ?? [])
       .flat()
-      .find((p) => p && (p as { name?: string }).name === "dtk-ui-token-meta") as
+      .find((p: unknown) => p && (p as { name?: string }).name === "dtk-ui-token-meta") as
       | { apply?: string }
       | undefined;
     expect(plugin?.apply).toBe("serve");

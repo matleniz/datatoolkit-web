@@ -3,5 +3,7 @@ node_modules
 test-results
 playwright-report
 e2e
+# tests/ui-token-plugin.test.ts imports this config, and `npm run build` type-checks tests/
+!e2e/vite.e2e.config.ts
 dist
 datatoolkit-data
