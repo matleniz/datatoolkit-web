@@ -1,3 +1,4 @@
+import { fmtCount } from "../../bench/format";
 import type {
   ChartSpec,
   CsvSource,
@@ -584,7 +585,7 @@ export function formatDetectedFromSpec(
   }
 
   if (shape && shape[0] !== undefined && shape[1] !== undefined) {
-    parts.push(`${shape[0]} × ${shape[1]}`);
+    parts.push(`${fmtCount(shape[0])} × ${fmtCount(shape[1])}`);
   }
 
   return parts.join(" · ");

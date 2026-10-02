@@ -94,7 +94,7 @@ function CsvOptions({
         <input
           type="text"
           aria-label="dtype"
-          placeholder='{"zip":"str"}'
+          placeholder='{"column":"str"}'
           value={
             spec.dtype && Object.keys(spec.dtype).length > 0
               ? JSON.stringify(spec.dtype)

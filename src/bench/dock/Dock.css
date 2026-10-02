@@ -206,6 +206,7 @@
 }
 
 .dock-win-title {
+  flex-shrink: 0;
   font-weight: 600;
   white-space: nowrap;
   min-width: 0;

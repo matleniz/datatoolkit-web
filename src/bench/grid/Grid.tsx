@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import type { ColumnProfile } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
@@ -22,6 +29,19 @@ function selectionText(selection: Selection): string {
   const n = selection.columns.length;
   if (n > 0) return n === 1 ? "1 column selected" : `${n} columns selected`;
   return selection.row !== null ? "1 row selected" : "Nothing selected";
+}
+
+/** Last horizontal scroll with data on screen; survives a grid remount. */
+let savedScrollLeft = 0;
+
+function isTypingTarget(t: EventTarget | null): boolean {
+  if (!(t instanceof HTMLElement)) return false;
+  return (
+    t.isContentEditable ||
+    t.tagName === "INPUT" ||
+    t.tagName === "TEXTAREA" ||
+    t.tagName === "SELECT"
+  );
 }
 
 function ColSpacer({ width }: { width: number }) {
@@ -277,9 +297,37 @@ export function Grid() {
     reportVisibleColumns(windowed.visible.map((c) => c.name));
   }, [windowed.visible, reportVisibleColumns]);
 
+  // Undo / redo re-renders the frame; the browser clamps scrollLeft to 0 while
+  // the content is momentarily narrower. Put the user's position back.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || display.cols.length === 0) return;
+    if (el.scrollLeft !== savedScrollLeft && savedScrollLeft > 0) {
+      el.scrollLeft = savedScrollLeft;
+      setScrollLeft(el.scrollLeft);
+    }
+  }, [display.cols]);
+
+  const hasSelection =
+    selection.columns.length > 0 ||
+    selection.row !== null ||
+    selection.cell !== null;
+  const ctxOpen = useAppState().ctx !== null;
+  useEffect(() => {
+    if (!hasSelection || ctxOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (isTypingTarget(e.target)) return;
+      dispatch({ type: "CLEAR_SELECTION" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hasSelection, ctxOpen, dispatch]);
+
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
+    if (el.scrollWidth > el.clientWidth) savedScrollLeft = el.scrollLeft;
     setScrollLeft(el.scrollLeft);
     if (!hasMore) return;
     const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
@@ -290,6 +338,16 @@ export function Grid() {
     <div className="grid-shell" data-owner="W2">
       <div className="grid-toolbar">
         <span className="grid-sel-text">{selText}</span>
+        {hasSelection ? (
+          <button
+            type="button"
+            className="chip"
+            title="Clear the selection (Esc)"
+            onClick={() => dispatch({ type: "CLEAR_SELECTION" })}
+          >
+            Clear
+          </button>
+        ) : null}
         {loading && display.rows.length > 0 ? (
           <span className="grid-inline-loading" aria-live="polite">
             Updating…

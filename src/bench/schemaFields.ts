@@ -445,6 +445,22 @@ export function coerceImputeFillValue(
   return params;
 }
 
+/**
+ * Impute never offers the target (leak footgun) and never offers a column it
+ * is imputing as its own By; other ops / fields see every column.
+ */
+export function imputeOfferedColumns(
+  op: string,
+  key: string,
+  columns: { name: string; kind: ColumnKind }[],
+  params: Record<string, unknown>,
+  target: string | null,
+): { name: string; kind: ColumnKind }[] {
+  if (op !== "impute" || !["columns", "by", "order"].includes(key)) return columns;
+  const imputed = key === "by" ? ((params.columns as string[] | null) ?? []) : [];
+  return columns.filter((c) => c.name !== target && !imputed.includes(c.name));
+}
+
 export function filterColumnsByDtype(
   columns: { name: string; kind: ColumnKind }[],
   filter: EditorField["dtypeFilter"],

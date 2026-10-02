@@ -121,7 +121,7 @@ export function useSourcesFiles({
         roles: { ...s.roles, [item.id]: role },
         guessedMap: { ...s.guessedMap, [item.id]: true },
       }));
-      if (opensOptionsByDefault(item.spec)) {
+      if (opensOptionsByDefault(item.spec, parseError, colCount)) {
         setOptionsOpen((prev) => ({ ...prev, [item.id]: true }));
       }
       if (isEmptyUpload(file, parseError, colCount)) {

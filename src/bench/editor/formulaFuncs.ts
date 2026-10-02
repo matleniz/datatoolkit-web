@@ -243,6 +243,24 @@ export const FORMULA_PY_EXAMPLES: FormulaPaletteItem[] = [
   },
 ];
 
+/**
+ * The examples above, written with the frame's own numeric columns (first
+ * for Age, second for Fare) so they match the data on screen; the static
+ * Titanic spelling stays the fallback when there are no numeric columns.
+ */
+export function formulaPyExamples(numericCols: string[]): FormulaPaletteItem[] {
+  const a = numericCols[0];
+  if (a === undefined) return FORMULA_PY_EXAMPLES;
+  const refA = formulaColumnRef(a);
+  const refB = formulaColumnRef(numericCols[1] ?? a);
+  const swap = (t: string) =>
+    t.replace(/\bAge\b/g, () => refA).replace(/\bFare\b/g, () => refB);
+  return FORMULA_PY_EXAMPLES.map((e) => {
+    const insert = swap(e.insert);
+    return { ...e, insert, label: insert, help: swap(e.help) };
+  });
+}
+
 export const FORMULA_OPS: FormulaPaletteItem[] = [
   { insert: "+", label: "+", help: "Addition", kind: "op" },
   { insert: "-", label: "−", help: "Subtraction", kind: "op" },

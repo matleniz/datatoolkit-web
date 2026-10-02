@@ -345,3 +345,28 @@ export function figureHasColumnAxis(plotly: Json, columns: readonly string[]): b
     return false;
   });
 }
+
+/**
+ * Layout tweaks so labels and legend never collide with the plot or the
+ * Plotly mode bar: automargin on both axes, and a horizontal legend above
+ * the plot on the left (the mode bar lives top-right). Pure presentation.
+ */
+export function dockFigureLayout(raw: Json, traceCount: number): Json {
+  const axis = (k: string) => ({
+    ...((raw[k] as Json | undefined) ?? {}),
+    automargin: true,
+  });
+  const hasLegend = raw.showlegend !== false && (raw.showlegend === true || traceCount > 1);
+  const out: Json = { ...raw, xaxis: axis("xaxis"), yaxis: axis("yaxis") };
+  if (hasLegend) {
+    out.legend = {
+      ...((raw.legend as Json | undefined) ?? {}),
+      orientation: "h",
+      x: 0,
+      xanchor: "left",
+      y: 1.02,
+      yanchor: "bottom",
+    };
+  }
+  return out;
+}
