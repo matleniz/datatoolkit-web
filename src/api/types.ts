@@ -343,6 +343,7 @@ export interface SuggestedParams {
 export interface ColumnProfile {
   name: string;
   kind: ColumnKind;
+  /** Non-null value count (total rows = count + missing). */
   count: number;
   missing: number;
   sentinel_candidates: SentinelCandidate[];
