@@ -225,9 +225,7 @@ async function checkGridAndInspector(
     );
   expect(stats.missing, "inspector missing").toBe(String(age.missing));
   expect(stats.distinct, "inspector distinct").toBe(String(age.distinct));
-  expect(stats["non-null"], "inspector non-null").toBe(
-    String(age.count - age.missing),
-  );
+  expect(stats["non-null"], "inspector non-null").toBe(String(age.count));
   return prof;
 }
 
