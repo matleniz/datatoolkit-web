@@ -147,7 +147,7 @@ def _announce(port: int, open_browser: bool, timeout: float = 120) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """CLI entry: ``dtk-studio [--port PORT] [--no-open] [--refresh]``."""
+    """CLI entry: ``dtk-studio [--port PORT] [--no-open] [--refresh] [--agent [PACK]]``."""
     parser = argparse.ArgumentParser(
         prog="dtk-studio",
         description="datatoolkit Studio + engine on http://localhost (no Docker).",
@@ -160,7 +160,20 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--no-open", action="store_true", help="do not open the browser")
     parser.add_argument("--refresh", action="store_true", help="download the latest Studio build")
+    parser.add_argument(
+        "--agent",
+        nargs="?",
+        const="agent-sdk",
+        default=None,
+        metavar="PACK",
+        help=(
+            "enable the in-Studio agent panel with this pack (default: agent-sdk; "
+            "sets DTK_AGENT_PACK; agent-sdk needs the engine extra agent-sdk)"
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.agent:
+        os.environ["DTK_AGENT_PACK"] = args.agent
     if not 0 < args.port < 65536:
         parser.error(f"--port must be 1-65535, got {args.port}")
 

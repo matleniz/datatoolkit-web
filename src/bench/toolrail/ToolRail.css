@@ -42,3 +42,10 @@
 .tool-btn:hover {
   background: var(--dtk-hairline);
 }
+
+/* Agent panel toggle (datatoolkit-issues#67), last in the rail. */
+.tool-rail-sep {
+  width: 24px;
+  border-top: 1px solid var(--dtk-border);
+  margin: 4px 0;
+}

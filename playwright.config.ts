@@ -53,6 +53,8 @@ const webServers = [
       DTK_HOME: dtkHome,
       DTK_UI_TOKEN: uiToken,
       DTK_CORS_ORIGINS: corsOrigins,
+      // Agent panel e2e (#67): scripted pack, no network, no key.
+      DTK_AGENT_PACK: process.env.DTK_AGENT_PACK ?? "stub",
     },
   },
   {
