@@ -12,7 +12,7 @@ import { identitySource, withRole } from "../dataIdentity";
 import { targetColumnOf } from "../left/datasetSource";
 import { keyParamsFromSchema } from "../left/keyParams";
 import { PER_COLUMN_PARAM_TOOLS, toolParamsKey } from "../left/keyTunable";
-import { computeStat, fmtStat } from "../left/stats";
+import { fmtStat } from "../left/stats";
 import { stripNullParams } from "../schemaFields";
 import { toolDef } from "../toolrail/tools";
 import { useDebounced, useKeyedAsync } from "../../hooks";
@@ -25,6 +25,7 @@ import {
 } from "./columnScope";
 import {
   chartColumnsOf,
+  corrRanColumns,
   corrSelectedCount,
   toolDataAttrs,
   toolPlan,
@@ -33,41 +34,9 @@ import {
 import { EMPTY_DATA_ROWS_MSG } from "../format";
 import { AnalysisResultView } from "./AnalysisResultView";
 import { chartPrefillForWindow } from "./chartPrefill";
+import { compareStatsPlan, useCompareStats } from "./compareStats";
 import { DockParamsPanel } from "./DockParamsPanel";
 import { IdentityStrip } from "./IdentityStrip";
-
-function pearson(
-  rows: WorkspaceRow[],
-  a: string,
-  b: string,
-): number | null {
-  const pairs: [number, number][] = [];
-  for (const r of rows) {
-    const x = r[a];
-    const y = r[b];
-    if (
-      typeof x === "number" &&
-      typeof y === "number" &&
-      x !== -999 &&
-      y !== -999
-    ) {
-      pairs.push([x, y]);
-    }
-  }
-  if (pairs.length < 3) return null;
-  const mx = pairs.reduce((s, p) => s + p[0], 0) / pairs.length;
-  const my = pairs.reduce((s, p) => s + p[1], 0) / pairs.length;
-  let num = 0;
-  let dx = 0;
-  let dy = 0;
-  for (const [x, y] of pairs) {
-    num += (x - mx) * (y - my);
-    dx += (x - mx) * (x - mx);
-    dy += (y - my) * (y - my);
-  }
-  if (!dx || !dy) return null;
-  return num / Math.sqrt(dx * dy);
-}
 
 function histBars(
   profile: ColumnProfile | undefined,
@@ -339,14 +308,16 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     // Structural wins over user params for columns / by / target / sources.
     const params = stripNullParams(keyParamsFromSchema(schema, available));
     const result = await apiClient.runKey(def.key, params);
+    const ran = id === "corr" ? corrRanColumns(result, cols) : [];
     return {
       result,
       hasColumnsParam: hasCols,
-      corrCols: id === "corr" ? (cols ?? []) : [],
+      corrCols: ran,
       runParams: JSON.stringify(params),
       bound: plan.bound(ctx, {
         hasCols,
         sent: available.columns as string[] | undefined,
+        ran,
       }),
     };
   };
@@ -374,7 +345,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     !cached,
   );
   const { shown, error, ready } = resolveRun(dockCacheKey, cached, run);
-  const { profiles, rows, result, msg, bound, hasColumnsParam, corrCols, runParams } =
+  const { profiles, result, msg, bound, hasColumnsParam, corrCols, runParams } =
     shown;
   /** Identity of the data currently rendered (null while loading). */
   const shownIdentity = dockCacheKey && ready ? identity.key : null;
@@ -413,7 +384,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
 
   /** Open in Chart (MAT-235): the columns / split the key actually ran on. */
   const openInChart = () => {
-    const { names, by } = chartColumnsOf(id, runParams, scopeAll, selCols);
+    const { names, by } = chartColumnsOf(id, runParams, scopeAll, selCols, corrCols);
     const cols = names.map((name) => ({
       name,
       kind: profileByName.get(name)?.kind ?? "text",
@@ -541,7 +512,8 @@ export function DockWindowBody({ id }: { id: ToolId }) {
         <CompareNative
           cols={selCols.filter((c) => profileByName.has(c)).slice(0, 6)}
           profiles={profileByName}
-          rows={rows}
+          source={identitySource(identity)}
+          statsKey={shownIdentity}
           target={target}
           bound=""
         />
@@ -580,16 +552,30 @@ export function DockWindowBody({ id }: { id: ToolId }) {
 function CompareNative({
   cols,
   profiles,
-  rows,
+  source,
+  statsKey,
   target,
   bound,
 }: {
   cols: string[];
   profiles: Map<string, ColumnProfile>;
-  rows: WorkspaceRow[];
+  /** The grid's dataset identity: stats run on the whole frame (#75). */
+  source: ReturnType<typeof identitySource>;
+  statsKey: string | null;
   target: string | null;
   bound: string;
 }) {
+  const kinds = useMemo(
+    () => new Map([...profiles].map(([n, p]) => [n, p.kind])),
+    [profiles],
+  );
+  const plan = useMemo(
+    () => compareStatsPlan(cols, kinds, target),
+    [cols, kinds, target],
+  );
+  const full = useCompareStats(statsKey, source, plan, target);
+  const pending = plan.numeric.length > 0 && !full.ready;
+  const cell = (v: string) => (pending ? "…" : v);
   const rowsDef: { name: string; fn: (c: string) => string }[] = [
     { name: "type", fn: (c) => profiles.get(c)?.kind ?? "—" },
     { name: "missing", fn: (c) => String(profiles.get(c)?.missing ?? 0) },
@@ -601,7 +587,7 @@ function CompareNative({
       fn: (c) => {
         const kind = profiles.get(c)?.kind;
         if (!kind || !isNumericKind(kind)) return "–";
-        return fmtStat(computeStat(rows, stat, c));
+        return cell(fmtStat(full.value?.stats[c]?.[stat] ?? null));
       },
     });
   }
@@ -609,8 +595,9 @@ function CompareNative({
     rowsDef.push({
       name: `r with ${target}`,
       fn: (c) => {
-        const r = c === target ? 1 : pearson(rows, c, target);
-        return r === null ? "–" : r.toFixed(2);
+        if (!isNumericKind(profiles.get(c)?.kind ?? "")) return "–";
+        const r = full.value?.corr[c] ?? null;
+        return cell(r === null ? "–" : r.toFixed(2));
       },
     });
   }
@@ -618,7 +605,12 @@ function CompareNative({
   return (
     <div data-compare-cols={cols.join(",")} data-scope-mode="selection">
       <div className="dock-bound muted">{bound}</div>
-      <div className="matrix">
+      {full.error && (
+        <div className="dock-msg" role="alert">
+          Could not compute the statistics on the full frame: {full.error}
+        </div>
+      )}
+      <div className="matrix" data-stats-state={full.error ? "error" : pending ? "loading" : "ready"}>
         <div className="matrix-head">
           <span className="matrix-corner" />
           {cols.map((n) => (
