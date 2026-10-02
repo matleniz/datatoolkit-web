@@ -434,3 +434,41 @@ test("issue 93: add_variable, formula step using @name, Undo both", async ({ pag
   await toast("Agent: variable @sigma = std(age)").getByRole("button", { name: "Undo" }).click();
   expect((await variables()).map((v) => v.name)).toEqual(["mu"]);
 });
+
+/** #92: draft_chart fills the builder (nothing saved); add_chart saves before the ack; Undo removes it. */
+test("issue 92: draft_chart a histogram of age, add_chart it, Undo", async ({ page, request }) => {
+  test.setTimeout(180_000);
+  await openWorkbench(page, true);
+  await published(request, page);
+  const toast = (text: string) => page.getByRole("status").filter({ hasText: text });
+  const charts = () => page.evaluate(() => window.__DTK_STATE__?.()?.workspace?.charts ?? []);
+  const draft = () => page.evaluate(() => window.__DTK_STATE__?.()?.chartDraft ?? null);
+  const stored = async () => {
+    const res = await request.get(`http://127.0.0.1:${process.env.DTK_E2E_API_PORT ?? "8766"}/api/workspaces/churn`);
+    return ((await res.json()) as { charts?: { name: string }[] }).charts ?? [];
+  };
+
+  const drafted = await send(request, page, {
+    type: "draft_chart", params: { chart: "histogram", x: "age", bins: 20 },
+  });
+  expect(drafted.ok).toBe(true);
+  await expect(page.locator('[data-tool="chart"]')).toBeVisible();
+  expect(await draft()).toMatchObject({ chart: "histogram", x: "age", bins: 20 });
+  expect(await charts()).toEqual([]);
+
+  const ghost = await send(request, page, { type: "add_chart", name: "g", params: { x: "ghost" } });
+  expect(ghost.error).toMatch(/^bad_command: unknown column/);
+
+  const added = await send(request, page, {
+    type: "add_chart", name: "age hist", params: { chart: "histogram", x: "age", bins: 20 },
+  });
+  expect(added.ok).toBe(true);
+  expect((await charts()).map((c) => c.name)).toEqual(["age hist"]);
+  expect((await stored()).map((c) => c.name)).toEqual(["age hist"]);
+  const dup = await send(request, page, { type: "add_chart", name: "age hist", params: { x: "age" } });
+  expect(dup.error).toBe('bad_command: duplicate chart name "age hist"');
+
+  await toast("Agent: saved chart age hist").getByRole("button", { name: "Undo" }).click();
+  expect(await charts()).toEqual([]);
+  await expect.poll(stored).toEqual([]);
+});

@@ -624,6 +624,96 @@ describe("add_variable", () => {
   });
 });
 
+describe("draft_chart / add_chart", () => {
+  const send = (h: ReturnType<typeof harness>, c: Record<string, unknown>) =>
+    handleCommand({ id: "c1", ...c }, h.deps);
+  const hist = { chart: "histogram", x: "age" };
+
+  it("draft_chart opens the window and fills the draft, saving nothing; Undo restores", async () => {
+    const h = harness(start());
+    const ack = await send(h, { type: "draft_chart", params: hist });
+    expect(ack).toMatchObject({ ok: true });
+    expect(h.state.dock.tools).toContain("chart");
+    expect(h.state.chartDraft).toMatchObject(hist);
+    expect(h.state.workspace?.charts).toEqual([]);
+    expect(h.settled).toBe(0);
+    expect(h.toasts).toEqual(["chart draft: chart=histogram, x=age"]);
+    expect(h.touches).toEqual([{ tools: ["chart"], columns: ["age"] }]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.chartDraft).toBeNull();
+    expect(h.state.dock.tools).not.toContain("chart");
+  });
+
+  it("draft_chart merges over the open draft and has no Undo when nothing changes", async () => {
+    const h = harness(start());
+    await send(h, { type: "draft_chart", params: hist });
+    await send(h, { type: "draft_chart", params: { bins: 10 } });
+    expect(h.state.chartDraft).toMatchObject({ x: "age", bins: 10 });
+    await send(h, { type: "draft_chart", params: { bins: 10 } });
+    expect(h.undos[2]).toBeUndefined();
+  });
+
+  it("refuses bad drafts", async () => {
+    const h = harness(start());
+    const bad = async (params: unknown) => (await send(h, { type: "draft_chart", params }))?.error;
+    expect(await bad({})).toBe("bad_command: params must be a non-empty object");
+    expect(await bad({ chart: "pizza" })).toMatch(/^bad_command: params.chart must be one of histogram,/);
+    expect(await bad({ bins: 1 })).toBe("bad_command: params.bins must be an integer from 2 to 200");
+    expect(await bad({ nope: 1 })).toMatch(/^bad_command: unknown param "nope"/);
+    expect(await bad({ x: "ghost" })).toBe('bad_command: unknown column "ghost"');
+    expect(await bad({ columns: ["age", "ghost"] })).toBe('bad_command: unknown column "ghost"');
+    expect(h.state.chartDraft).toBeNull();
+    expect(h.state.dock.tools).not.toContain("chart");
+  });
+
+  it("add_chart saves before the ack with defaults filled in; Undo removes it", async () => {
+    const h = harness(start());
+    const ack = await send(h, { type: "add_chart", name: "ages", params: hist });
+    expect(ack).toMatchObject({ ok: true });
+    expect(h.state.workspace?.charts).toEqual([
+      { name: "ages", params: expect.objectContaining({ chart: "histogram", x: "age", bins: 30 }) },
+    ]);
+    expect(h.settled).toBe(1);
+    expect(h.toasts).toEqual(["saved chart ages"]);
+    expect(h.touches).toEqual([{ tools: ["chart"], columns: ["age"] }]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.workspace?.charts).toEqual([]);
+  });
+
+  it("add_chart refuses a duplicate name, a bad name, an undrawable chart", async () => {
+    const h = harness(start());
+    const bad = async (c: Record<string, unknown>) =>
+      (await send(h, { type: "add_chart", name: "ages", params: hist, ...c }))?.error;
+    await send(h, { type: "add_chart", name: "ages", params: hist });
+    expect(await bad({})).toBe('bad_command: duplicate chart name "ages"');
+    expect(await bad({ name: " " })).toMatch(/^bad_command: name must be a non-empty string/);
+    expect(await bad({ name: "x".repeat(65) })).toMatch(/^bad_command: name must be/);
+    expect(await bad({ name: "s", params: { chart: "scatter", x: "age" } })).toBe(
+      "bad_command: chart scatter is not drawable (Pick Y)",
+    );
+    expect(await bad({ name: "g", params: { x: "ghost" } })).toBe('bad_command: unknown column "ghost"');
+    expect(h.state.workspace?.charts).toHaveLength(1);
+  });
+
+  it("add_chart rolls back on a failed save and maps the engine's duplicate 422", async () => {
+    const h = harness(start());
+    h.deps.settle = async () => {
+      throw new Error("disk full");
+    };
+    expect(await send(h, { type: "add_chart", name: "a", params: hist })).toMatchObject({
+      ok: false, error: "save_failed: disk full",
+    });
+    h.deps.settle = async () => {
+      throw new Error("422: duplicate chart name");
+    };
+    expect((await send(h, { type: "add_chart", name: "a", params: hist }))?.error).toBe(
+      'bad_command: duplicate chart name "a"',
+    );
+    expect(h.state.workspace?.charts).toEqual([]);
+    expect(h.toasts).toEqual([]);
+  });
+});
+
 describe("agentTouch slice", () => {
   const touch = { columns: ["age"], tools: [], steps: [], rows: [], cells: [], at: 5 };
   it("is set by AGENT_TOUCH and cleared only by the matching timestamp", () => {
