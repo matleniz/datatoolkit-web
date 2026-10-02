@@ -305,14 +305,23 @@ export function ChartMoreForm({
 }
 
 export function ChartRunStatus({
+  hint,
   ready,
   error,
   result,
 }: {
+  hint: string | null;
   ready: boolean;
   error: string | null | undefined;
   result: Parameters<typeof ResultView>[0]["result"] | null;
 }) {
+  if (hint) {
+    return (
+      <div className="dock-msg muted" data-chart-hint>
+        {hint}
+      </div>
+    );
+  }
   return (
     <>
       {error ? (

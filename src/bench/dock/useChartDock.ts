@@ -21,6 +21,7 @@ import {
   type ChartTileId,
   type PickerCol,
 } from "./chartPicker";
+import { missingChartField } from "./chartDockModel";
 import {
   chartDraftToParams,
   chartPrefillFromSelection,
@@ -80,8 +81,9 @@ export function useChartDock() {
 
   // identity.key covers role, version and the steps hash (MAT-175); the draft
   // counts by content, so unrelated workspace edits never re-run the chart.
+  const hint = chartDraft ? missingChartField(chartDraft) : null;
   const run = useKeyedAsync(
-    workspace?.datasets.train.x.path
+    workspace?.datasets.train.x.path && !hint
       ? `${identity.key}\0${JSON.stringify(chartDraft)}`
       : null,
     async (alive) => {
@@ -95,10 +97,11 @@ export function useChartDock() {
       const result = await apiClient.runKey("chart", params);
       return { result, runParams: JSON.stringify(params) };
     },
-    !!chartDraft,
+    !!chartDraft && !hint,
   );
-  const { ready, error } = run;
-  const shown = ready ? run.value : undefined;
+  const ready = hint ? true : run.ready;
+  const error = hint ? null : run.error;
+  const shown = ready && !hint ? run.value : undefined;
 
   const patch = (p: Partial<ChartDraft>) =>
     dispatch({ type: "PATCH_CHART_DRAFT", patch: p });
@@ -133,6 +136,7 @@ export function useChartDock() {
     targetCol,
     ready,
     error,
+    hint,
     result: shown?.result ?? null,
     runParams: shown?.runParams ?? null,
     shownIdentity: ready ? identity.key : null,
