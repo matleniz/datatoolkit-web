@@ -494,3 +494,48 @@ test("issue 92: draft_chart a histogram of age, add_chart it, Undo", async ({ pa
   expect(await charts()).toEqual([]);
   await expect.poll(stored).toEqual([]);
 });
+
+/** #94: fill_editor opens / fills the editor (nothing applied); the user's Apply adds the step. */
+test("issue 94: fill_editor an impute editor, user Apply, edit_step, Undo", async ({ page, request }) => {
+  test.setTimeout(180_000);
+  await openWorkbench(page, true);
+  await published(request, page);
+  const editor = page.getByLabel("Step editor");
+  const state = () => page.evaluate(() => window.__DTK_STATE__?.()?.editor ?? null);
+
+  const bad = await send(request, page, { type: "fill_editor", params: { strategy: "mean" } });
+  expect(bad.error).toBe("bad_command: op is required to open the editor");
+  const ghost = await send(request, page, { type: "fill_editor", op: "no_such_op" });
+  expect(ghost.error).toBe('bad_command: unknown op "no_such_op"');
+
+  const ctx = await published(request, page);
+  const opened = await send(request, page, {
+    type: "fill_editor", op: "impute", params: { columns: ["age"], strategy: "median" },
+  });
+  expect(opened).toMatchObject({ ok: true, identity: ctx.identity });
+  await expect.poll(state).toMatchObject({ op: "impute", params: { columns: ["age"], strategy: "median" } });
+  expect(await stepOps(page)).toEqual([]);
+  await expect(editor).toBeVisible();
+
+  const patched = await send(request, page, { type: "fill_editor", target: "train" });
+  expect(patched).toMatchObject({ ok: true, identity: ctx.identity });
+  await expect.poll(state).toMatchObject({ target: "train" });
+  expect(await stepOps(page)).toEqual([]);
+
+  // The user previews and clicks Apply.
+  const apply = editor.getByRole("button", { name: "Apply step" });
+  await expect(apply).toBeEnabled({ timeout: 30_000 });
+  await apply.click();
+  await expect.poll(() => stepOps(page), { timeout: 30_000 }).toEqual(["impute"]);
+
+  // edit_step opens it (op change refused); Undo closes it.
+  const edit = await send(request, page, { type: "edit_step", index: 0 });
+  expect(edit.ok).toBe(true);
+  await expect.poll(state).toMatchObject({ op: "impute", editIndex: 0 });
+  expect((await send(request, page, { type: "edit_step", index: 5 })).error)
+    .toBe("bad_command: no step at index 5");
+  const op = await send(request, page, { type: "fill_editor", op: "scale" });
+  expect(op.error).toMatch(/^bad_command: cannot change the op/);
+  await page.getByRole("status").filter({ hasText: "editing step 1" }).getByRole("button", { name: "Undo" }).click();
+  await expect.poll(state).toBeNull();
+});
