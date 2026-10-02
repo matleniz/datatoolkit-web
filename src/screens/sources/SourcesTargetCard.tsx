@@ -13,6 +13,8 @@ interface SourcesTargetCardProps {
   trainXFile: SourceFileItem | undefined;
   trainYFile: SourceFileItem | undefined;
   commonYCols: string[];
+  /** Effective key of the join by key. */
+  joinKey: string | null;
   resolvedTarget: string | null;
   infoText: string;
   patch: Patch;
@@ -22,11 +24,12 @@ function YFileOptions({
   yJoin,
   trainYFile,
   commonYCols,
+  joinKey,
   resolvedTarget,
   patch,
 }: Pick<
   SourcesTargetCardProps,
-  "yJoin" | "trainYFile" | "commonYCols" | "resolvedTarget" | "patch"
+  "yJoin" | "trainYFile" | "commonYCols" | "joinKey" | "resolvedTarget" | "patch"
 >) {
   return (
     <>
@@ -56,6 +59,24 @@ function YFileOptions({
           By key column
         </button>
       </div>
+      {yJoin === "key" && commonYCols.length > 0 ? (
+        <div data-testid="join-key-picker">
+          <div style={MUTED_LABEL}>Key column</div>
+          <div className="chips-row">
+            {commonYCols.map((col) => (
+              <button
+                key={col}
+                type="button"
+                className={`chip-mono ${joinKey === col ? "on" : ""}`}
+                aria-pressed={joinKey === col}
+                onClick={() => patch(() => ({ yKey: col }))}
+              >
+                {col}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {resolvedTarget ? (
         <div
           style={{

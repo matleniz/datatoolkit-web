@@ -7,7 +7,7 @@ import {
   type WorkspaceBuildResult,
   type WorkspaceSourcesState,
 } from "./sourcesLogic";
-import type { PreviewState } from "./sourcesScreenLogic";
+import { keyJoinReport, type PreviewState } from "./sourcesScreenLogic";
 import type { SourcesCore } from "./useSourcesState";
 
 type PreviewInputs = Pick<
@@ -33,6 +33,43 @@ function resolvePreviewTarget(
   return fromPreview ?? fallback ?? buildResult.targetLabel;
 }
 
+/** Match report of the key join, from label_join_preview on the two label sources. */
+function useKeyJoinReport(
+  core: SourcesCore,
+  buildResult: WorkspaceBuildResult,
+): void {
+  const { setPreview } = core;
+  const { pushError } = core.errors;
+  const ws = buildResult.workspace;
+  const key = ws.label.mode === "key" ? (ws.label.key ?? null) : null;
+  const x = ws.datasets.train.x;
+  const y = ws.datasets.train.y;
+  const ready = key !== null && Boolean(y?.path) && buildResult.errors.length === 0;
+
+  useEffect(() => {
+    let active = true;
+    const set = (keyJoin: PreviewState["keyJoin"]) =>
+      setPreview((prev) => ({ ...prev, keyJoin }));
+    if (!ready || key === null || !y) {
+      set(null);
+      return;
+    }
+    apiClient
+      .runKey("label_join_preview", { x, y, key_columns: [key] })
+      .then((res) => {
+        if (active) set(keyJoinReport(res, key));
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        set(null);
+        pushError(engineMessage(err));
+      });
+    return () => {
+      active = false;
+    };
+  }, [ready, key, x, y, setPreview, pushError]);
+}
+
 /** Compute live preview shapes / columns and engine errors. */
 export function useSourcesPreview(
   core: SourcesCore,
@@ -41,6 +78,8 @@ export function useSourcesPreview(
   const { dispatch, setPreview, src } = core;
   const { setEngineErrors, pushError } = core.errors;
   const { files, labelMode, roles, targetCol } = src;
+
+  useKeyJoinReport(core, buildResult);
 
   useEffect(() => {
     let active = true;

@@ -3,11 +3,18 @@ import {
   EMPTY_PREVIEW,
   EMPTY_TRAIN_MESSAGE,
   clearedByOptionsEdit,
+  keyJoinReport,
+  keyJoinText,
   trainParseErrorDisplay,
   trainStatus,
   visibleEngineErrors,
 } from "../src/screens/sources/sourcesScreenLogic";
-import type { SourceFileItem } from "../src/screens/sources/sourcesLogic";
+import type { Result } from "../src/api/types";
+import {
+  defaultJoinKey,
+  effectiveJoinKey,
+  type SourceFileItem,
+} from "../src/screens/sources/sourcesLogic";
 
 const trainX = (over: Partial<SourceFileItem> = {}): SourceFileItem => ({
   id: "f1",
@@ -69,5 +76,48 @@ describe("clearedByOptionsEdit", () => {
     expect(pred("old")).toBe(true);
     expect(pred("Stored train source failed to parse: x")).toBe(true);
     expect(pred("unrelated")).toBe(false);
+  });
+});
+
+describe("key join helpers", () => {
+  it("defaults to the first id-like common column", () => {
+    expect(defaultJoinKey(["age", "Index", "patient_id"])).toBe("Index");
+    expect(defaultJoinKey(["age", "patient_id"])).toBe("patient_id");
+    expect(defaultJoinKey(["age", "city"])).toBe("age");
+    expect(defaultJoinKey([])).toBeNull();
+  });
+
+  it("keeps a picked key only while it is still common", () => {
+    expect(effectiveJoinKey(["a", "id"], "a")).toBe("a");
+    expect(effectiveJoinKey(["a", "id"], "gone")).toBe("id");
+  });
+
+  it("reads matched counts from label_join_preview", () => {
+    const result: Result = {
+      metrics: { x_rows: 10, y_rows: 8 },
+      tables: [
+        {
+          title: "candidates",
+          records: [
+            { mode: "order", key: null, result_rows: 10 },
+            {
+              mode: "key",
+              key: "id",
+              match_x_to_y: 0.8,
+              match_y_to_x: 1,
+              result_rows: 10,
+            },
+          ],
+        },
+      ],
+      figures: [],
+      text: "",
+    };
+    const report = keyJoinReport(result, "id");
+    expect(report).toMatchObject({ matched: 8, xUnmatched: 2, yRows: 8 });
+    expect(keyJoinText(report!)).toBe(
+      "8 / 8 labels matched on id · 0 lost · 2 train rows without a label",
+    );
+    expect(keyJoinReport(result, "other")).toBeNull();
   });
 });

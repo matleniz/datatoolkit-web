@@ -1,5 +1,10 @@
 import { useId, useMemo } from "react";
-import { getCommonColumns, buildWorkspaceJson, resultSchemaColumns } from "./sourcesLogic";
+import {
+  getCommonColumns,
+  buildWorkspaceJson,
+  effectiveJoinKey,
+  resultSchemaColumns,
+} from "./sourcesLogic";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { SourcesFilesCard } from "./SourcesFilesCard";
 import { SourcesTargetCard } from "./SourcesTargetCard";
@@ -21,7 +26,7 @@ import "./sources.css";
 /** Workspace JSON candidate built from the current Sources choices. */
 function useBuildResult(core: SourcesCore) {
   const { activeWsName, workspace, src } = core;
-  const { files, roles, labelMode, yJoin, targetCol, mergeKey, mergeInTest } = src;
+  const { files, roles, labelMode, yJoin, yKey, targetCol, mergeKey, mergeInTest } = src;
   const steps = workspace?.steps;
   const charts = workspace?.charts;
   return useMemo(
@@ -32,6 +37,7 @@ function useBuildResult(core: SourcesCore) {
         roles,
         labelMode,
         yJoin,
+        yKey,
         targetCol,
         mergeKey,
         mergeInTest,
@@ -44,6 +50,7 @@ function useBuildResult(core: SourcesCore) {
       roles,
       labelMode,
       yJoin,
+      yKey,
       targetCol,
       mergeKey,
       mergeInTest,
@@ -57,7 +64,7 @@ export function SourcesScreen() {
   const fileInputId = useId();
   const core = useSourcesState();
   const { src, patch, preview, activeWsName, sourcesLoading } = core;
-  const { files, roles, labelMode, yJoin, targetCol, mergeKey, mergeInTest } = src;
+  const { files, roles, labelMode, yJoin, yKey, targetCol, mergeKey, mergeInTest } = src;
 
   const buildResult = useBuildResult(core);
   useSourcesPreview(core, buildResult);
@@ -73,6 +80,7 @@ export function SourcesScreen() {
     trainXFile && trainYFile
       ? getCommonColumns(trainXFile.cols, trainYFile.cols)
       : [];
+  const joinKey = effectiveJoinKey(commonYCols, yKey);
   const commonMergeCols =
     trainXFile && mergeFile
       ? getCommonColumns(trainXFile.cols, mergeFile.cols)
@@ -149,12 +157,14 @@ export function SourcesScreen() {
             trainXFile={trainXFile}
             trainYFile={trainYFile}
             commonYCols={commonYCols}
+            joinKey={joinKey}
             resolvedTarget={resolvedTarget}
             infoText={targetInfoText(
               buildResult,
               labelMode,
               Boolean(trainYFile),
               resolvedTarget,
+              preview.keyJoin,
             )}
             patch={patch}
           />
