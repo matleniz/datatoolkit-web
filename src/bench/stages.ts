@@ -252,8 +252,8 @@ const SUB_LABEL: Record<string, (p: Params) => string> = {
   },
   drop_high_missing: (p) =>
     `>${str(p.threshold ?? 0.5)}${p.target ? ` · keep ${str(p.target)}` : ""}`,
-  clip: colsWith((p) => `p${str(p.lower)}–p${str(p.upper)}`),
-  scale: (p) => `${cols(p).length} col · ${str(p.method)}`,
+  clip: colsWith((p) => `p${str(p.lower ?? 1)}–p${str(p.upper ?? 99)}`),
+  scale: (p) => `${cols(p).length} col · ${str(p.method ?? "standard")}`,
   rename: perColumn<string>("mapping", (a, b) => `${a} → ${b}`),
   cast: perColumn<string>("dtypes", (c, t) => `${c} → ${t}`),
   drop_columns: (p) => cols(p).join(", "),

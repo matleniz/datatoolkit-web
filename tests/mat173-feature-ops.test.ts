@@ -118,6 +118,11 @@ describe("MAT-173 feature ops stage + schema fields", () => {
       }),
     ).toBe("age · normal");
   });
+
+  it("stepSubLabel falls back to engine defaults (agent steps omit them)", () => {
+    expect(stepSubLabel("scale", { columns: ["age"] })).toBe("1 col · standard");
+    expect(stepSubLabel("clip", { columns: ["ledd"] })).toBe("ledd · p1–p99");
+  });
 });
 
 describe("MAT-241 python-style formulas", () => {
