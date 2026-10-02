@@ -1,5 +1,5 @@
 import { apiClient } from "../../api/client";
-import type { FileSourceSpec, Workspace } from "../../api/types";
+import type { FileSourceSpec, Result, Workspace } from "../../api/types";
 import { E2E_FIXTURES_DIR } from "../../e2eFixtures";
 import {
   defaultChurnSources,
@@ -66,6 +66,8 @@ export interface PreviewState {
   testShape: [number, number] | null;
   columns: string[] | null;
   target: string | null;
+  /** Match report of the key join (label_join_preview); null off key mode. */
+  keyJoin: KeyJoinReport | null;
 }
 
 export const EMPTY_PREVIEW: PreviewState = {
@@ -73,7 +75,55 @@ export const EMPTY_PREVIEW: PreviewState = {
   testShape: null,
   columns: null,
   target: null,
+  keyJoin: null,
 };
+
+/** Match counts of a join by key, from the engine `label_join_preview`. */
+export interface KeyJoinReport {
+  key: string;
+  xRows: number;
+  yRows: number;
+  /** y labels found in X. */
+  matched: number;
+  /** Train X rows with no label (the left join keeps them, label missing). */
+  xUnmatched: number;
+  /** Rows the join would give (more than xRows when y duplicates keys). */
+  resultRows: number;
+}
+
+/** The `key` candidate row of a label_join_preview Result, or null. */
+export function keyJoinReport(result: Result, key: string): KeyJoinReport | null {
+  const cand = result.tables
+    .find((t) => t.title === "candidates")
+    ?.records.find((r) => r["mode"] === "key" && r["key"] === key);
+  const xRows = Number(result.metrics["x_rows"]);
+  const yRows = Number(result.metrics["y_rows"]);
+  if (!cand || !Number.isFinite(xRows) || !Number.isFinite(yRows)) return null;
+  const xToY = Number(cand["match_x_to_y"]);
+  const yToX = Number(cand["match_y_to_x"]);
+  return {
+    key,
+    xRows,
+    yRows,
+    matched: Math.round(yToX * yRows),
+    xUnmatched: xRows - Math.round(xToY * xRows),
+    resultRows: Number(cand["result_rows"]),
+  };
+}
+
+const fmt = (n: number) => n.toLocaleString("en-US").replace(/,/g, "\u202f");
+
+/** "55 603 / 55 603 labels matched on Index · 0 lost", plus a warning on row multiplication. */
+export function keyJoinText(r: KeyJoinReport): string {
+  let text = `${fmt(r.matched)} / ${fmt(r.yRows)} labels matched on ${r.key} · ${fmt(r.yRows - r.matched)} lost`;
+  if (r.xUnmatched > 0) {
+    text += ` · ${fmt(r.xUnmatched)} train rows without a label`;
+  }
+  if (r.resultRows > r.xRows) {
+    text += ` · ${fmt(r.resultRows - r.xRows)} extra rows from duplicate keys`;
+  }
+  return text;
+}
 
 /** Sources to show for a workspace with no stored files (churn demo vs empty). */
 export function fallbackSources(name: string): WorkspaceSourcesState {
@@ -100,6 +150,7 @@ export function sourcesFromWorkspace(ws: Workspace): WorkspaceSourcesState {
     guessedMap,
     labelMode: extracted.labelMode,
     yJoin: extracted.yJoin,
+    yKey: extracted.yKey,
     targetCol: extracted.targetCol,
     mergeKey: extracted.mergeKey,
     mergeInTest: extracted.mergeInTest,
@@ -451,8 +502,12 @@ export function targetInfoText(
   labelMode: WorkspaceSourcesState["labelMode"],
   hasTrainY: boolean,
   resolvedTarget: string | null,
+  keyJoin: KeyJoinReport | null = null,
 ): string {
   if (build.info.y) return build.info.y;
+  if (labelMode === "yfile" && build.workspace.label.mode === "key" && keyJoin) {
+    return keyJoinText(keyJoin);
+  }
   if (labelMode !== "yfile") return "";
   if (!hasTrainY) return "No file has the role “Train y”.";
   return resolvedTarget ? `target = “${resolvedTarget}”` : "";

@@ -149,6 +149,7 @@ export interface WorkspaceBuildInput {
   roles: Record<string, FileRole>;
   labelMode: "yfile" | "column";
   yJoin: "order" | "key";
+  yKey?: string | null;
   targetCol?: string | null;
   mergeKey?: string | null;
   mergeInTest?: boolean;
@@ -217,22 +218,34 @@ interface YFileBuild extends BuildPart {
   labelJoin: LabelJoin;
 }
 
+/** Key chosen when none is picked: the first id-like common column, else the first common one. */
+export function defaultJoinKey(common: string[]): string | null {
+  const idLike = common.find((c) => isIndexColumnName(c) || /(^|[_\s])id$/i.test(c));
+  return idLike ?? common[0] ?? null;
+}
+
+/** The picked key when it is still a common column, else the default. */
+export function effectiveJoinKey(
+  common: string[],
+  picked: string | null | undefined,
+): string | null {
+  return picked && common.includes(picked) ? picked : defaultJoinKey(common);
+}
+
 function buildYFileKeyJoin(
   trainX: SourceFileItem | undefined,
   trainY: SourceFileItem,
-  targetCol: string | null | undefined,
+  yKey: string | null | undefined,
   errors: string[],
 ): LabelJoin {
-  const labelJoin: LabelJoin = { mode: "key", key: targetCol ?? undefined };
-  const commonWithX = trainX ? getCommonColumns(trainX.cols, trainY.cols) : [];
-  if (commonWithX.length === 0) {
+  const common = trainX ? getCommonColumns(trainX.cols, trainY.cols) : [];
+  if (common.length === 0) {
     errors.push(
       `${trainY.name} has no column in common with train X for key join.`,
     );
-  } else if (!targetCol || !commonWithX.includes(targetCol)) {
-    labelJoin.key = commonWithX[0];
+    return { mode: "key" };
   }
-  return labelJoin;
+  return { mode: "key", key: effectiveJoinKey(common, yKey) ?? undefined };
 }
 
 function checkOrderJoin(
@@ -282,7 +295,7 @@ function buildYFile(
     out.labelJoin = buildYFileKeyJoin(
       trainX,
       trainY,
-      input.targetCol,
+      input.yKey,
       out.errors,
     );
   } else {
@@ -598,6 +611,7 @@ export function extractFilesFromWorkspace(ws: Workspace): {
   roles: Record<string, FileRole>;
   labelMode: "yfile" | "column";
   yJoin: "order" | "key";
+  yKey: string | null;
   targetCol: string | null;
   mergeKey: string | null;
   mergeInTest: boolean;
@@ -606,6 +620,7 @@ export function extractFilesFromWorkspace(ws: Workspace): {
   const roles: Record<string, FileRole> = {};
   let labelMode: "yfile" | "column" = "yfile";
   const yJoin: "order" | "key" = ws.label?.mode ?? "order";
+  const yKey = yJoin === "key" ? (ws.label?.key ?? null) : null;
   let targetCol: string | null = null;
   let mergeKey: string | null = null;
   let mergeInTest = true;
@@ -675,6 +690,7 @@ export function extractFilesFromWorkspace(ws: Workspace): {
     roles,
     labelMode,
     yJoin,
+    yKey,
     targetCol,
     mergeKey,
     mergeInTest,
@@ -688,6 +704,7 @@ export function emptyWorkspaceSources(): WorkspaceSourcesState {
     guessedMap: {},
     labelMode: "yfile",
     yJoin: "order",
+    yKey: null,
     targetCol: null,
     mergeKey: null,
     mergeInTest: true,
@@ -772,6 +789,7 @@ export function defaultChurnSources(fixtureBase: string): WorkspaceSourcesState 
     guessedMap,
     labelMode: "yfile",
     yJoin: "order",
+    yKey: null,
     targetCol: null,
     mergeKey: "customer_id",
     mergeInTest: true,

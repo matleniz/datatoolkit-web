@@ -51,6 +51,8 @@ export interface WorkspaceSourcesState {
   guessedMap: Record<string, boolean>;
   labelMode: "yfile" | "column";
   yJoin: "order" | "key";
+  /** Key column of a join by key; null → the default (first id-like common column). */
+  yKey: string | null;
   targetCol: string | null;
   mergeKey: string | null;
   mergeInTest: boolean;
