@@ -73,4 +73,17 @@ describe("buildUiContext", () => {
     s = appReducer(s, { type: "EDIT_STEP", index: 0 });
     expect(buildUiContext(s, "s").editor).toMatchObject({ op: "impute", index: 0 });
   });
+
+  it("publishes the grid view and the rows it shows", () => {
+    let s = stateWith([impute]);
+    expect(buildUiContext(s, "s").grid).toEqual({ filter: null, sort: [], total: null });
+    const filter = { conditions: [{ column: "age", op: "isna" as const }], combine: "and" as const };
+    s = appReducer(s, { type: "SET_GRID_VIEW", view: { filter, sort: [{ column: "age", desc: true }] } });
+    s = appReducer(s, { type: "SET_GRID_TOTAL", total: 7 });
+    expect(buildUiContext(s, "s").grid).toEqual({
+      filter,
+      sort: [{ column: "age", desc: true }],
+      total: 7,
+    });
+  });
 });

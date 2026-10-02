@@ -1,6 +1,7 @@
 import { dataIdentity } from "../bench/dataIdentity";
 import { PER_COLUMN_PARAM_TOOLS, toolParamsKey } from "../bench/left/keyTunable";
 import { effectiveVersion } from "../bench/version";
+import type { GridFilter, GridSortKey } from "./gridView";
 import type { AppState } from "./reducer";
 
 /**
@@ -29,6 +30,8 @@ export interface UiContext {
     index: number | null;
     params: Record<string, unknown>;
   } | null;
+  /** The view-only filter / sort of the grid and the rows it shows (null while loading). */
+  grid: { filter: GridFilter | null; sort: GridSortKey[]; total: number | null };
 }
 
 /** Identity key of the frame `state` shows (the agent's `base_identity`). */
@@ -69,6 +72,8 @@ export type UiContextState = Pick<
   | "dock"
   | "toolParams"
   | "distBy"
+  | "gridView"
+  | "gridTotal"
 >;
 
 export function buildUiContext(
@@ -95,5 +100,6 @@ export function buildUiContext(
     editor: editor
       ? { op: editor.op, index: editor.editIndex ?? null, params: editor.params }
       : null,
+    grid: { filter: state.gridView.filter, sort: state.gridView.sort, total: state.gridTotal },
   };
 }

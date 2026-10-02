@@ -527,3 +527,78 @@ describe("agentTouch slice", () => {
     expect(s.agentTouch).toBeNull();
   });
 });
+
+describe("set_grid_view", () => {
+  const cond = { column: "age", op: "gt", value: 30 };
+  const filter = { conditions: [cond], combine: "and" };
+  const send = (h: ReturnType<typeof harness>, extra: Record<string, unknown>) =>
+    handleCommand({ id: "g", type: "set_grid_view", ...extra }, h.deps);
+
+  it("parses filter / sort, null clears, omitted stays undefined", () => {
+    expect(parseCommand({ type: "set_grid_view", filter, sort: [{ column: "age", desc: false }] })).toEqual({
+      type: "set_grid_view", filter, sort: [{ column: "age", desc: false }],
+    });
+    expect(parseCommand({ type: "set_grid_view", filter: null })).toEqual({ type: "set_grid_view", filter: null });
+    expect(parseCommand({ type: "set_grid_view", sort: null })).toEqual({ type: "set_grid_view", sort: null });
+  });
+
+  it("refuses malformed views", () => {
+    const bad = [
+      {},
+      { filter: "x" },
+      { filter: { conditions: [], combine: "and" } },
+      { filter: { conditions: [cond], combine: "xor" } },
+      { filter: { conditions: [{ column: "age", op: "like", value: 1 }], combine: "and" } },
+      { filter: { conditions: [{ column: "age", op: "gt" }], combine: "and" } },
+      { filter: { conditions: [{ column: "age", op: "isna", value: 1 }], combine: "and" } },
+      { filter: { conditions: [{ column: "age", op: "isin", value: 3 }], combine: "and" } },
+      { sort: [] },
+      { sort: [{ column: "age" }] },
+    ];
+    for (const extra of bad) expect(parseCommand({ type: "set_grid_view", ...extra })).toHaveProperty("error");
+  });
+
+  it("sets the view without touching the pipeline; Undo restores the previous view", async () => {
+    const h = harness(start());
+    const steps = h.state.workspace?.steps;
+    const ack = await send(h, { filter, sort: [{ column: "income", desc: true }] });
+    expect(ack).toMatchObject({ id: "g", ok: true, identity: currentIdentityKey(h.state) });
+    expect(h.state.gridView).toEqual({ filter, sort: [{ column: "income", desc: true }] });
+    expect(h.state.workspace?.steps).toBe(steps);
+    expect(h.touches).toEqual([{ columns: ["age", "income"] }]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.gridView).toEqual({ filter: null, sort: [] });
+  });
+
+  it("omitted keeps, null clears", async () => {
+    const h = harness(start());
+    await send(h, { filter, sort: [{ column: "income", desc: false }] });
+    await send(h, { sort: null });
+    expect(h.state.gridView).toEqual({ filter, sort: [] });
+    await send(h, { sort: [{ column: "churn", desc: true }] });
+    expect(h.state.gridView.filter).toEqual(filter);
+    await send(h, { filter: null });
+    expect(h.state.gridView).toEqual({ filter: null, sort: [{ column: "churn", desc: true }] });
+    expect(h.toasts.at(-1)).toBe("Grid view: sort by churn");
+    await send(h, { sort: null });
+    expect(h.toasts.at(-1)).toBe("Grid view cleared");
+  });
+
+  it("an unchanged view offers no Undo", async () => {
+    const h = harness(start());
+    await send(h, { filter: null });
+    expect(h.undos[0]).toBeUndefined();
+  });
+
+  it("refuses unknown columns and acks frame_unavailable, changing nothing", async () => {
+    const h = harness(start());
+    expect(await send(h, { sort: [{ column: "ghost", desc: false }] })).toEqual({
+      id: "g", ok: false, error: 'bad_command: unknown column "ghost"',
+    });
+    expect(h.state.gridView).toEqual({ filter: null, sort: [] });
+    h.deps.frameColumns = async () => {
+      throw new Error("engine down");
+    };
+    expect(await send(h, { filter })).toEqual({ id: "g", ok: false, error: "frame_unavailable: engine down" });
+  });
+});

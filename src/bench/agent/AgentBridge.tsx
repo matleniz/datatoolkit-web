@@ -55,15 +55,18 @@ function ActiveBridge({ token }: { token: string }) {
   }, [state]);
 
   const {
-    screen, workspace, role, viewVersion, selection, editor, dock, toolParams, distBy,
+    screen, workspace, role, viewVersion, selection, editor, dock, toolParams, distBy, gridView, gridTotal,
   } = state;
   const context = useMemo(
     () =>
       buildUiContext(
-        { screen, workspace, role, viewVersion, selection, editor, dock, toolParams, distBy },
+        {
+          screen, workspace, role, viewVersion, selection, editor, dock, toolParams, distBy,
+          gridView, gridTotal,
+        },
         session,
       ),
-    [screen, workspace, role, viewVersion, selection, editor, dock, toolParams, distBy, session],
+    [screen, workspace, role, viewVersion, selection, editor, dock, toolParams, distBy, gridView, gridTotal, session],
   );
   const contextRef = useRef(context);
   contextRef.current = context;
