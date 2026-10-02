@@ -8,6 +8,7 @@ import {
   parseCommand,
   type BridgeDeps,
   type Proposal,
+  type Touched,
 } from "../src/state/agentCommands";
 import { appReducer, emptyWorkspace, initialState, type AppAction, type AppState } from "../src/state/reducer";
 import { applyStepOps } from "../src/state/stepOps";
@@ -29,6 +30,8 @@ function harness(init: AppState, answer: (p: Proposal) => boolean | Promise<bool
     state: init,
     reviews: [] as Proposal[],
     toasts: [] as string[],
+    undos: [] as (AppAction[] | undefined)[],
+    touches: [] as Touched[],
     settled: 0,
     deps: {} as BridgeDeps,
   };
@@ -44,7 +47,13 @@ function harness(init: AppState, answer: (p: Proposal) => boolean | Promise<bool
       h.reviews.push(p);
       return answer(p);
     },
-    announce: (t) => h.toasts.push(t),
+    announce: (t, undo) => {
+      h.toasts.push(t);
+      h.undos.push(undo);
+    },
+    touch: (t) => {
+      h.touches.push(t);
+    },
   };
   return h;
 }
@@ -265,5 +274,96 @@ describe("view commands", () => {
     });
     expect(await handleCommand({ type: "set_view", role: "train" }, h.deps)).toBeNull();
     expect(await handleCommand("junk", h.deps)).toBeNull();
+  });
+});
+
+describe("touch and undo plumbing (#88)", () => {
+  it("propose_steps touches the new step cards + their columns; Undo is UNDO_STEPS", async () => {
+    const h = harness(start([impute]));
+    await handleCommand(propose(h.state, [{ add: { step: scale } }]), h.deps);
+    expect(h.touches).toEqual([{ steps: [1], columns: ["age"] }]);
+    expect(h.undos).toEqual([[{ type: "UNDO_STEPS" }]]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.workspace?.steps).toEqual([impute]);
+  });
+
+  it("touches a replaced step but not the untouched ones", async () => {
+    const h = harness(start([impute, scale]));
+    await handleCommand(
+      propose(h.state, [{ replace: { index: 1, step: { ...scale, params: { columns: ["fare"] } } } }]),
+      h.deps,
+    );
+    expect(h.touches).toEqual([{ steps: [1], columns: ["fare"] }]);
+  });
+
+  it("a refused command touches and announces nothing", async () => {
+    const h = harness(start([impute]));
+    await handleCommand(propose(h.state, [{ add: { step: scale } }], { base_identity: "nope" }), h.deps);
+    await handleCommand({ id: "x", type: "open_window", tool: "bogus" }, h.deps);
+    expect(h.touches).toEqual([]);
+    expect(h.toasts).toEqual([]);
+  });
+
+  it("select_columns touches the columns; Undo restores the previous selection", async () => {
+    const h = harness({
+      ...start(),
+      selection: { columns: ["fare"], row: null, cell: null, multi: false },
+    });
+    await handleCommand({ id: "s", type: "select_columns", columns: ["age", "sessions"] }, h.deps);
+    expect(h.touches).toEqual([{ columns: ["age", "sessions"] }]);
+    expect(h.toasts).toEqual(["selected age, sessions"]);
+    expect(h.state.selection.columns).toEqual(["age", "sessions"]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.selection.columns).toEqual(["fare"]);
+  });
+
+  it("select_columns of the current selection offers no Undo", async () => {
+    const h = harness({
+      ...start(),
+      selection: { columns: ["age"], row: null, cell: null, multi: false },
+    });
+    await handleCommand({ id: "s", type: "select_columns", columns: ["age"] }, h.deps);
+    expect(h.undos).toEqual([undefined]);
+  });
+
+  it("open_window touches the window + column; Undo closes it and restores the selection", async () => {
+    const h = harness(start());
+    await handleCommand({ id: "w", type: "open_window", tool: "dist", params: { column: "age" } }, h.deps);
+    expect(h.touches).toEqual([{ tools: ["dist"], columns: ["age"] }]);
+    expect(h.toasts).toEqual(["opened Distribution (age)"]);
+    expect(h.state.dock.tools).toEqual(["dist"]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.dock.tools).toEqual([]);
+    expect(h.state.selection.columns).toEqual([]);
+  });
+
+  it("open_window on an already open window has nothing to undo", async () => {
+    const h = harness(start());
+    await handleCommand({ id: "w", type: "open_window", tool: "corr" }, h.deps);
+    await handleCommand({ id: "w2", type: "open_window", tool: "corr" }, h.deps);
+    expect(h.undos[1]).toBeUndefined();
+    expect(h.touches[1]).toEqual({ tools: ["corr"] });
+  });
+
+  it("set_view announces the view; Undo restores role and version", async () => {
+    const h = harness(start([impute]));
+    await handleCommand({ id: "v", type: "set_view", role: "test", version: 0 }, h.deps);
+    expect(h.toasts).toEqual(["showing test v0"]);
+    expect(h.touches).toEqual([{}]);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.role).toBe("train");
+    expect(h.state.viewVersion).toBeNull();
+  });
+});
+
+describe("agentTouch slice", () => {
+  const touch = { columns: ["age"], tools: [], steps: [], at: 5 };
+  it("is set by AGENT_TOUCH and cleared only by the matching timestamp", () => {
+    let s = appReducer(initialState, { type: "AGENT_TOUCH", touch });
+    expect(s.agentTouch).toEqual(touch);
+    s = appReducer(s, { type: "AGENT_TOUCH_CLEAR", at: 4 });
+    expect(s.agentTouch).toEqual(touch);
+    s = appReducer(s, { type: "AGENT_TOUCH_CLEAR", at: 5 });
+    expect(s.agentTouch).toBeNull();
   });
 });

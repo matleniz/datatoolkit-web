@@ -265,3 +265,49 @@ test("issue 82: open_window opens the report-only analyses (duplicates, advisor,
   await page.getByRole("button", { name: "Inconsistencies" }).click();
   await expect(page.locator('[data-tool="inconsistencies"]')).toBeVisible();
 });
+
+/** #88: what the agent touched is outlined for ~2 s, then the attribute goes away. */
+test("issue 88: touched column / window / step carry data-agent-touched, toast Undo reverts", async ({
+  page, request,
+}) => {
+  test.setTimeout(180_000);
+  await openWorkbench(page, true);
+  const ctx0 = await published(request, page);
+  const touched = page.locator("[data-agent-touched]");
+  const header = (col: string) => page.getByRole("button", { name: new RegExp(`^${col}, `) });
+  const toast = (text: string) => page.getByRole("status").filter({ hasText: text });
+
+  // select_columns: the column headers are touched; Undo restores the selection.
+  const sel = await send(request, page, { type: "select_columns", columns: ["age"] });
+  expect(sel.ok).toBe(true);
+  await expect(header("age")).toHaveAttribute("data-agent-touched", "1");
+  await expect(header("sessions")).not.toHaveAttribute("data-agent-touched", /.*/);
+  await expect(toast("Agent: selected age")).toBeVisible();
+  await expect(touched).toHaveCount(0, { timeout: 6_000 }); // transient
+
+  // open_window: the dock window (and its column) are touched; Undo closes it.
+  const win = await send(request, page, {
+    type: "open_window", tool: "dist", params: { column: "sessions" },
+  });
+  expect(win.ok).toBe(true);
+  await expect(page.locator('[data-tool="dist"]')).toHaveAttribute("data-agent-touched", "1");
+  await expect(header("sessions")).toHaveAttribute("data-agent-touched", "1");
+  const opened = toast("Agent: opened Distribution (sessions)");
+  await expect(opened).toBeVisible();
+  await opened.getByRole("button", { name: "Undo" }).click();
+  await expect(page.locator('[data-tool="dist"]')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.__DTK_STATE__?.()?.selection.columns)).toEqual(["age"]);
+
+  // propose_steps: the new step card is touched; Undo = UNDO_STEPS.
+  const ack = await send(request, page, {
+    type: "propose_steps", workspace: "churn", base_identity: ctx0.identity,
+    ops: [{ add: { step: scale } }],
+  });
+  expect(ack.ok).toBe(true);
+  const card = page.getByLabel("Pipeline").locator('[data-agent-touched="1"]').filter({ hasText: "v1" });
+  await expect(card).toHaveCount(1);
+  await expect(header("age")).toHaveAttribute("data-agent-touched", "1");
+  await toast("Agent: add scale (age)").getByRole("button", { name: "Undo" }).click();
+  expect(await stepOps(page)).toEqual([]);
+  await expect(touched).toHaveCount(0, { timeout: 6_000 });
+});
