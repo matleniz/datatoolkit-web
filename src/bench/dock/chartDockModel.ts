@@ -34,3 +34,22 @@ export function moreOptionCount(draft: ChartDraft, vis: ChartVisibility): number
     draft.log_y ? "ly" : null,
   ].filter(Boolean).length;
 }
+
+/**
+ * Field the chart type needs before the engine can draw it, as a hint
+ * ("Pick X"), or null when the draft is runnable. Mirrors the engine's
+ * "chart '<type>' requires x" checks so no request is sent that would 422.
+ */
+export function missingChartField(draft: ChartDraft): string | null {
+  switch (draft.chart) {
+    case "scatter":
+    case "heatmap":
+    case "density_heatmap":
+      if (!draft.x) return "Pick X";
+      return draft.y ? null : "Pick Y";
+    case "scatter_matrix":
+      return null; // no columns = the engine's first numeric ones
+    default:
+      return draft.x ? null : "Pick X";
+  }
+}

@@ -92,8 +92,10 @@ export function profileBars(
 }
 
 export function missPct(profile: ColumnProfile | undefined): number {
-  if (!profile || !profile.count) return 0;
-  return Math.round((profile.missing / profile.count) * 100);
+  if (!profile) return 0;
+  // ColumnProfile.count is the non-null count; rows = count + missing.
+  const rows = profile.count + profile.missing;
+  return rows ? Math.round((profile.missing / rows) * 100) : 0;
 }
 
 export function isOutlierValue(

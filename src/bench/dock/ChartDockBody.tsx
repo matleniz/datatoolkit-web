@@ -67,7 +67,7 @@ export function ChartDockBody() {
           patch={patch}
         />
       ) : null}
-      <ChartRunStatus ready={dock.ready} error={dock.error} result={dock.result} />
+      <ChartRunStatus hint={dock.hint} ready={dock.ready} error={dock.error} result={dock.result} />
       <ChartSavedBar draft={draft} saved={dock.saved} />
     </div>
   );

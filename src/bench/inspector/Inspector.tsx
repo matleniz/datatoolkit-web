@@ -337,7 +337,7 @@ function MultiInspector({ cols }: { cols: string[] }) {
 function columnStats(pr: ColumnProfile | undefined, kind: ColumnKind) {
   if (!pr) return [];
   const stats: [string, string][] = [
-    ["non-null", String(pr.count - pr.missing)],
+    ["non-null", String(pr.count)],
     ["missing", String(pr.missing)],
     ["distinct", String(pr.distinct)],
   ];
