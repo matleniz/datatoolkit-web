@@ -130,7 +130,9 @@
   white-space: nowrap;
 }
 .agent-md th {
-  background: var(--dtk-code-bg);
+  background: var(--dtk-bg-subtle);
+  color: var(--dtk-ink);
+  font-weight: 600;
 }
 .agent-msg.user {
   align-self: flex-end;

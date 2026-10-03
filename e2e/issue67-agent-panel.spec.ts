@@ -159,6 +159,26 @@ test("issue 104: Dismiss marks the chip dismissed, status rejected", async ({ pa
   expect(await stepOps(page)).toEqual([]);
 });
 
+test("issue 145: a Markdown table header in a reply is readable", async ({ page }) => {
+  await openWorkbench(page);
+  const panel = await openPanel(page);
+  // The stub pack echoes "stub: <text>"; the blank line keeps the table apart.
+  await say(page, "table\n\n| col | n |\n|---|---|\n| age | 1 |");
+  const th = panel.locator(".agent-md th").first();
+  await expect(th).toHaveText("col", { timeout: 15_000 });
+  const style = await th.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { color: cs.color, background: cs.backgroundColor };
+  });
+  expect(style.color).not.toBe(style.background);
+  // Dark ink on a light header, not on the near-black code background.
+  const luminance = (rgb: string) => {
+    const [r = 0, g = 0, b = 0] = (rgb.match(/\d+/g) ?? []).map(Number);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  expect(luminance(style.background) - luminance(style.color)).toBeGreaterThan(128);
+});
+
 test("issue 67: with no agent pack the panel says why and offers Check again", async ({ page }) => {
   await page.route(/\/api\/ui\/agent(\?.*)?$/, (route) =>
     route.request().method() === "GET"
