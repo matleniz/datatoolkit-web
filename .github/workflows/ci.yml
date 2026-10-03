@@ -24,4 +24,7 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - run: npm run build
+      - name: No build-machine path in dist
+        run: node scripts/check-dist-paths.mjs dist
       - run: npx knip@6 --exclude types

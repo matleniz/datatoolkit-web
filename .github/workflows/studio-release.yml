@@ -28,6 +28,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: No build-machine path in dist
+        run: node scripts/check-dist-paths.mjs dist
       - name: Pack studio-dist.zip
         run: python3 scripts/pack-studio-dist.py dist release
       - name: Publish to the studio-latest release

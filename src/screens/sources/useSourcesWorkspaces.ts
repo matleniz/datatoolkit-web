@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { rememberWorkspaceName, forgetWorkspaceName } from "../../bootstrap";
 import { apiClient } from "../../api/client";
 import type { Workspace } from "../../api/types";
@@ -19,9 +19,9 @@ import {
   cacheMatchesWorkspace,
   emptyWorkspace,
   enrichFileItem,
-  fallbackSources,
   isUnknownWorkspaceError,
   sourcesFromWorkspace,
+  storedSourcesToLoad,
 } from "./sourcesScreenLogic";
 import type { SourcesCore } from "./useSourcesState";
 
@@ -66,12 +66,35 @@ function useLoadWorkspaceSources(core: SourcesCore) {
         return;
       }
       if (!stillCurrent()) return;
-      const fallback = fallbackSources(name);
-      applySources(fallback);
-      dispatch({ type: "SET_WORKSPACE_FILES", name, sources: fallback });
+      const empty = emptyWorkspaceSources();
+      applySources(empty);
+      dispatch({ type: "SET_WORKSPACE_FILES", name, sources: empty });
     },
     [applySources, dispatch, activeNameRef, selectGenRef, setEngineErrors],
   );
+}
+
+/**
+ * On mount, load the active workspace's stored files when the cache does not
+ * describe them (fresh session: the demo churn seeded by bootstrap.ts), so the
+ * screen and "Open workbench" use the stored paths (datatoolkit-issues#123).
+ */
+function useLoadStoredSourcesOnMount(
+  core: SourcesCore,
+  loadWorkspaceSources: ReturnType<typeof useLoadWorkspaceSources>,
+) {
+  const { activeWsName, filesByWorkspace, workspace, selectGenRef } = core;
+  const { setSourcesLoading } = core;
+  useEffect(() => {
+    const ws = storedSourcesToLoad(activeWsName, filesByWorkspace, workspace);
+    if (!ws) return;
+    const gen = ++selectGenRef.current;
+    void loadWorkspaceSources(ws.name, ws, filesByWorkspace, gen).finally(() => {
+      if (gen === selectGenRef.current) setSourcesLoading(false);
+    });
+    // Mount only: later switches go through `select`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 }
 
 export interface SourcesWorkspaceActions {
@@ -101,6 +124,7 @@ export function useSourcesWorkspaces(core: SourcesCore): SourcesWorkspaceActions
   } = core;
   const { setEngineErrors, guarded } = core.errors;
   const loadWorkspaceSources = useLoadWorkspaceSources(core);
+  useLoadStoredSourcesOnMount(core, loadWorkspaceSources);
 
   /** Make `name` the active workspace and clear the previous one's files. */
   const adopt = (name: string) => {

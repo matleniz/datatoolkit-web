@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type Dispatch,
@@ -15,6 +14,7 @@ import { engineMessage, type WorkspaceSourcesState } from "./sourcesLogic";
 import {
   EMPTY_PREVIEW,
   initialSourcesFor,
+  storedSourcesToLoad,
   type PreviewState,
 } from "./sourcesScreenLogic";
 
@@ -158,12 +158,9 @@ export function useSourcesState(): SourcesCore {
     workspace?.name ?? "churn",
   );
 
-  const initialSources = useMemo(
-    () => initialSourcesFor(activeWsName, filesByWorkspace),
-    [activeWsName, filesByWorkspace],
+  const [src, setSrc] = useState<WorkspaceSourcesState>(() =>
+    initialSourcesFor(activeWsName, filesByWorkspace, workspace),
   );
-
-  const [src, setSrc] = useState<WorkspaceSourcesState>(initialSources);
   const patch = useCallback<PatchSources>(
     (p) => setSrc((s) => ({ ...s, ...p(s) })),
     [],
@@ -172,7 +169,11 @@ export function useSourcesState(): SourcesCore {
   const [preview, setPreview] = useState<PreviewState>(EMPTY_PREVIEW);
   const [engineErrors, errors] = useSourcesErrors();
   const { setEngineErrors } = errors;
-  const [sourcesLoading, setSourcesLoading] = useState(false);
+  // Stored files still to enrich on mount (useSourcesWorkspaces): gate the
+  // navigation buttons until they are loaded.
+  const [sourcesLoading, setSourcesLoading] = useState(
+    () => storedSourcesToLoad(activeWsName, filesByWorkspace, workspace) !== null,
+  );
   const [optionsOpen, setOptionsOpen] = useState<Record<string, boolean>>({});
   const [optionsBusy, setOptionsBusy] = useState<Record<string, boolean>>({});
 

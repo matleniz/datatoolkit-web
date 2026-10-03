@@ -176,6 +176,9 @@ uvx --from "git+https://github.com/matleniz/datatoolkit-web#subdirectory=launche
 From a checkout: `npm run build`, `python3 scripts/pack-studio-dist.py dist
 /tmp/rel` (same zip as the release), then
 `DTK_STUDIO_URL=file:///tmp/rel uvx --from ./launcher dtk-studio --no-open`.
+The build runs on other machines, so it must not embed a path of the build
+machine: `node scripts/check-dist-paths.mjs dist` fails on one (run by the
+`ci` and `studio-release` workflows and the Docker build).
 The sh / ps1 scripts take the launcher from `DTK_LAUNCHER_SRC` (default this
 repo's `main`, `launcher/`). The `uv-launcher` workflow runs all of it on
 ubuntu, macOS and Windows (`scripts/smoke-uv-launcher.py`): `uvx --from
