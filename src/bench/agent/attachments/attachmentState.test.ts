@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   attachmentReducer,
   canSend,
+  earlierAttachments,
   formatSize,
   isUploading,
   NO_ATTACHMENTS,
@@ -58,5 +59,15 @@ describe("formatSize", () => {
     expect(formatSize(1536)).toBe("1.5 KB");
     expect(formatSize(5 * 1024 * 1024)).toBe("5.0 MB");
     expect(formatSize(-1)).toBe("");
+  });
+});
+
+describe("earlierAttachments (#129)", () => {
+  it("hides the session attachments already shown as a chip", () => {
+    let chips = attachmentReducer(NO_ATTACHMENTS, add("c1"));
+    chips = attachmentReducer(chips, { type: "ready", id: "c1", serverId: "a2" });
+    const attached = [{ id: "a1", name: "old.csv" }, { id: "a2", name: "c1.csv" }];
+    expect(earlierAttachments(attached, chips)).toEqual([{ id: "a1", name: "old.csv" }]);
+    expect(earlierAttachments(attached, NO_ATTACHMENTS)).toEqual(attached);
   });
 });

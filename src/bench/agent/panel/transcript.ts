@@ -1,4 +1,4 @@
-import type { AgentEvent, UsageTotals } from "./protocol";
+import type { AgentEvent, SessionAttachment, UsageTotals } from "./protocol";
 
 /**
  * The panel's message list, folded from the chat events (pure, unit-tested).
@@ -14,7 +14,14 @@ type ToolStatus = "running" | "review" | "applied" | "rejected" | "ok" | "error"
 type PermissionStatus = "pending" | "allowed" | "denied";
 
 export type TranscriptItem =
-  | { kind: "user"; key: string; text: string; local?: boolean }
+  | {
+      kind: "user";
+      key: string;
+      text: string;
+      local?: boolean;
+      /** Names of the files sent with this message (engine echo). */
+      files?: string[];
+    }
   | { kind: "assistant"; key: string; text: string }
   | {
       kind: "tool";
@@ -45,6 +52,11 @@ export interface Transcript {
   running: boolean;
   usage: UsageTotals;
   seq: number;
+  /**
+   * Files attached to the session's chat, in attach order. The engine keeps
+   * them across turns and the agent can read any of them (#129).
+   */
+  attached: SessionAttachment[];
 }
 
 export const EMPTY_TRANSCRIPT: Transcript = {
@@ -52,6 +64,7 @@ export const EMPTY_TRANSCRIPT: Transcript = {
   running: false,
   usage: { input: 0, output: 0 },
   seq: 0,
+  attached: [],
 };
 
 export type TranscriptAction =
@@ -63,6 +76,8 @@ export type TranscriptAction =
   | { type: "command_status"; command: string; ok: boolean; error?: string }
   /** Seed the cumulative usage from `GET /api/ui/agent`. */
   | { type: "usage_seed"; usage: UsageTotals }
+  /** The session's attachments from `GET /api/ui/agent/attachments`. */
+  | { type: "attachments_seed"; attached: SessionAttachment[] }
   | { type: "local_error"; message: string }
   | { type: "clear" };
 
@@ -88,15 +103,22 @@ function patchById(
   return hit ? { ...t, items } : t;
 }
 
-function onUserMessage(t: Transcript, text: string): Transcript {
+function onUserMessage(t: Transcript, ev: Extract<AgentEvent, { type: "user_message" }>): Transcript {
+  const files = ev.attachments?.map((a) => a.name);
   // The engine echoes what we already show: adopt the local copy.
-  const idx = t.items.findIndex((it) => it.kind === "user" && it.local && it.text === text);
+  const idx = t.items.findIndex((it) => it.kind === "user" && it.local && it.text === ev.text);
   if (idx >= 0) {
     const items = t.items.slice();
-    items[idx] = { ...items[idx], local: false } as TranscriptItem;
+    items[idx] = { ...items[idx], local: false, files } as TranscriptItem;
     return { ...t, items, running: true };
   }
-  return { ...push(t, { kind: "user", text }), running: true };
+  return { ...push(t, { kind: "user", text: ev.text, files }), running: true };
+}
+
+function onAttached(t: Transcript, att: SessionAttachment): Transcript {
+  const known = t.attached.some((a) => a.id === att.id);
+  const attached = known ? t.attached.map((a) => (a.id === att.id ? att : a)) : [...t.attached, att];
+  return { ...t, attached };
 }
 
 function onDelta(t: Transcript, text: string): Transcript {
@@ -157,7 +179,7 @@ export function reviewCommands(t: Transcript): string[] {
 function applyEvent(t: Transcript, ev: AgentEvent): Transcript {
   switch (ev.type) {
     case "user_message":
-      return onUserMessage(t, ev.text);
+      return onUserMessage(t, ev);
     case "assistant_delta":
       return onDelta(t, ev.text);
     case "tool_call":
@@ -182,9 +204,14 @@ function applyEvent(t: Transcript, ev: AgentEvent): Transcript {
       });
     case "usage":
       return onUsage(t, ev);
+    case "attachment_added":
+      return onAttached(t, ev.attachment);
+    case "attachment_removed":
+      return { ...t, attached: t.attached.filter((a) => a.id !== ev.id) };
     case "config":
-      // A pack change starts a new conversation engine-side (usage is kept).
-      return ev.reset ? { ...EMPTY_TRANSCRIPT, usage: t.usage, seq: t.seq } : t;
+      // A pack change starts a new conversation engine-side (usage and the
+      // session's attachments are kept).
+      return ev.reset ? { ...EMPTY_TRANSCRIPT, usage: t.usage, seq: t.seq, attached: t.attached } : t;
     case "done":
       return settle(t);
     case "error":
@@ -206,10 +233,13 @@ export function transcriptReducer(t: Transcript, action: TranscriptAction): Tran
       return onCommandStatus(t, action);
     case "usage_seed":
       return t.usage.input + t.usage.output > 0 ? t : { ...t, usage: action.usage };
+    case "attachments_seed":
+      return { ...t, attached: action.attached };
     case "local_error":
       return settle(push(t, { kind: "error", message: action.message }));
     case "clear":
-      return { ...EMPTY_TRANSCRIPT, usage: t.usage, seq: t.seq };
+      // Clears the view only: the engine keeps the session's attachments.
+      return { ...EMPTY_TRANSCRIPT, usage: t.usage, seq: t.seq, attached: t.attached };
   }
 }
 

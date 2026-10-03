@@ -178,6 +178,11 @@ export function MessageItem({
       return (
         <div className="agent-msg user" data-role="user">
           <PlainText text={item.text} />
+          {item.files?.length ? (
+            <div className="agent-msg-files" data-msg-files>
+              Attached: {item.files.join(", ")}
+            </div>
+          ) : null}
         </div>
       );
     case "assistant":

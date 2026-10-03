@@ -345,3 +345,9 @@
 .agent-pick-note.error {
   color: var(--dtk-error-fg);
 }
+
+.agent-msg-files {
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: 0.75;
+}
