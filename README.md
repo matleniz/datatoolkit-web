@@ -108,7 +108,10 @@ bridge: `event: agent` on `/api/ui/events` (`user_message`, `assistant_delta`,
 and `GET /api/ui/agent`, `POST /api/ui/agent/send|cancel|permission`. Each tool
 call shows as a chip; a click opens the window or highlights the step it
 touched. Step edits apply at once with the bridge's Undo toast; destructive
-ones wait in the review banner. The footer shows the session's cumulative
+ones wait in the review banner: the chip says "waiting for your review in
+Studio", then follows the command status (`applied after your review` /
+`dismissed in Studio`), and the UI context lists the open reviews (`reviews:
+[{command, summary}]`) so the agent can see what awaits the user. The footer shows the session's cumulative
 tokens and a Stop button while a turn runs. With no pack the panel says why.
 
 The engine picks the pack from `DTK_AGENT_PACK` (`agent-sdk`, `stub`, unset =

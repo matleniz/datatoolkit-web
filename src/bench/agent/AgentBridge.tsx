@@ -63,10 +63,11 @@ function ActiveBridge({ token }: { token: string }) {
           chartDraft, gridView, gridTotal,
         },
         session,
+        reviews.map((p) => ({ command: p.id, summary: p.summary })),
       ),
     [
       screen, workspace, role, viewVersion, selection, editor, dock, toolParams, distBy, chartDraft,
-      gridView, gridTotal, session,
+      gridView, gridTotal, session, reviews,
     ],
   );
   const contextRef = useRef(context);

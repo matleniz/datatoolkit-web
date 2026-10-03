@@ -48,6 +48,23 @@ export async function getAgentStatus(token: string): Promise<AgentStatus> {
   return parseAgentStatus(await res.json());
 }
 
+/**
+ * `GET /api/ui/commands/{id}`: the final ack of a recent command, or null while
+ * it waits for the user's review (or when the engine no longer knows it).
+ */
+export async function getCommandStatus(
+  token: string,
+  id: string,
+): Promise<{ ok: boolean; error?: string } | null> {
+  const url = `${API_BASE.replace(/\/$/, "")}/ui/commands/${encodeURIComponent(id)}`;
+  const res = await fetch(url, { headers: uiAuthHeaders(token) });
+  if (res.status === 404) return null;
+  if (!res.ok) await fail(res, "GET /ui/commands");
+  const body = (await res.json()) as { ok?: unknown; error?: unknown };
+  if (typeof body.ok !== "boolean") return null;
+  return { ok: body.ok, error: typeof body.error === "string" ? body.error : undefined };
+}
+
 async function post(token: string, path: string, body: unknown): Promise<Response> {
   const res = await fetch(agentUrl(path), {
     method: "POST",

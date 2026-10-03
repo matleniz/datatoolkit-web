@@ -96,4 +96,11 @@ describe("buildUiContext", () => {
       total: 7,
     });
   });
+
+  it("lists the proposals waiting in the review banner (#104)", () => {
+    const s = stateWith([impute]);
+    expect(buildUiContext(s, "s").reviews).toEqual([]);
+    const reviews = [{ command: "c1", summary: "add drop_columns (id)" }];
+    expect(buildUiContext(s, "s", reviews).reviews).toEqual(reviews);
+  });
 });

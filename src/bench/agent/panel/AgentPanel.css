@@ -147,7 +147,8 @@
   background: var(--dtk-muted);
   flex-shrink: 0;
 }
-.agent-chip.ok .agent-chip-dot {
+.agent-chip.ok .agent-chip-dot,
+.agent-chip.applied .agent-chip-dot {
   background: var(--dtk-ok-fg);
 }
 .agent-chip.review .agent-chip-dot {

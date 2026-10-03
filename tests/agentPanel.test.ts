@@ -12,6 +12,7 @@ import {
 import {
   EMPTY_TRANSCRIPT,
   formatUsage,
+  reviewCommands,
   transcriptReducer,
   type Transcript,
   type TranscriptAction,
@@ -109,6 +110,29 @@ describe("agent panel transcript (#67)", () => {
       "user", "denied", "error", "error",
     ]);
     expect(t.running).toBe(false);
+  });
+
+  it("a reviewed chip follows the command's final status after the turn (#104)", () => {
+    const t = run([
+      ev({ type: "tool_call", id: "a", name: "propose_steps", input: {} }),
+      ev({ type: "tool_result", id: "a", ok: true, pending: "review", command: "c1" }),
+      ev({ type: "tool_call", id: "b", name: "propose_steps", input: {} }),
+      ev({ type: "tool_result", id: "b", ok: true, pending: "review", command: "c2" }),
+      ev({ type: "tool_call", id: "c", name: "propose_steps", input: {} }),
+      ev({ type: "tool_result", id: "c", ok: true, pending: "review", command: "c3" }),
+      ev({ type: "done", stop_reason: "end_turn" }),
+    ]);
+    expect(reviewCommands(t)).toEqual(["c1", "c2", "c3"]);
+    const after = run([
+      { type: "command_status", command: "c1", ok: true },
+      { type: "command_status", command: "c2", ok: false, error: "rejected" },
+      { type: "command_status", command: "c3", ok: false, error: "stale" },
+      { type: "command_status", command: "c1", ok: false, error: "late" }, // decided once
+    ], t);
+    expect(after.items.map((i) => i.kind === "tool" && [i.status, i.error])).toEqual([
+      ["applied", undefined], ["rejected", undefined], ["error", "stale"],
+    ]);
+    expect(reviewCommands(after)).toEqual([]);
   });
 
   it("records a permission reply", () => {
