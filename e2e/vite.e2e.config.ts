@@ -3,28 +3,15 @@
  * Vite config for Playwright e2e — dedicated API port so parallel worktrees
  * (which fuser-kill 8765/5173) do not tear down this suite mid-run.
  */
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { uiTokenMeta } from "../scripts/uiToken";
 
 const apiPort = Number(process.env.DTK_E2E_API_PORT ?? "8766");
-
-/** Dev only: hand the page the bridge token (`DTK_UI_TOKEN`); no env, no meta, bridge off. */
-function uiTokenMeta(): Plugin {
-  return {
-    name: "dtk-ui-token-meta",
-    apply: "serve", // never bake a token into `vite build` output
-    transformIndexHtml() {
-      const token = process.env.DTK_UI_TOKEN;
-      if (!token) return [];
-      return [
-        { tag: "meta", attrs: { name: "dtk-ui-token", content: token }, injectTo: "head" },
-      ];
-    },
-  };
-}
+const apiTarget = `http://127.0.0.1:${apiPort}`;
 
 export default defineConfig({
-  plugins: [react(), uiTokenMeta()],
+  plugins: [react(), uiTokenMeta(apiTarget)],
   // Pre-bundle every dependency up front. Anything Vite discovers lazily on a
   // cold `node_modules/.vite` (plotly is imported dynamically) triggers a
   // "new dependencies optimized, reloading" page reload under a running spec.
@@ -42,7 +29,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: `http://127.0.0.1:${apiPort}`,
+        target: apiTarget,
         changeOrigin: true,
         ws: true,
       },
