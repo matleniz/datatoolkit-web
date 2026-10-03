@@ -1,42 +1,43 @@
 /**
- * Terminal pack wire format (datatoolkit-issues#115). ASSUMED CONTRACT: the
- * engine has not documented its PTY WebSocket yet (docs/agent-chat-protocol.md);
- * everything that depends on it lives in this file and `terminalSocket.ts`, so
- * aligning is a local change.
+ * Terminal pack wire format (datatoolkit-issues#115), as documented in the
+ * engine's docs/agent-chat-protocol.md, section "Terminal (#120)".
  *
- * Route: `GET /api/ui/agent/terminal?session=<sid>&token=<token>` (upgrade).
- * Browsers cannot set headers on a WebSocket, so the token rides in the query
- * string, like `EventSource` on `/api/ui/events`.
+ * `WS /api/ui/terminal?session=&pack=&model=&cols=&rows=&token=`. Browsers
+ * cannot set headers on a WebSocket, so the token rides in the query string.
  *
- * - client → server (text, JSON): `{type:"input", data}` keystrokes,
+ * - client → engine: binary = keystrokes (PTY input as is); text = JSON
  *   `{type:"resize", cols, rows}`.
- * - server → client: binary frame = raw PTY output; text frame = JSON control
- *   `{type:"ready", pack}`, `{type:"exit", code}`, `{type:"error", message}`.
+ * - engine → client: binary = PTY output bytes (fed to xterm undecoded); text
+ *   = JSON control `started`, `exit`, `error`.
+ * - a refused connection is accepted then closed with 44xx (see `closeReason`).
  */
 
-export type ClientFrame =
-  | { type: "input"; data: string }
-  | { type: "resize"; cols: number; rows: number };
-
 export type ServerControl =
-  | { type: "ready"; pack: string | null }
+  | { type: "started"; pack: string | null; model: string | null }
   | { type: "exit"; code: number | null }
   | { type: "error"; message: string };
 
 export function terminalUrl(
-  session: string,
-  token: string,
+  p: { session: string; token: string; pack: string; cols: number; rows: number; model?: string },
   base: string,
   origin: string,
 ): string {
-  const url = new URL(`${base.replace(/\/$/, "")}/ui/agent/terminal`, origin);
+  const url = new URL(`${base.replace(/\/$/, "")}/ui/terminal`, origin);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.search = new URLSearchParams({ session, token }).toString();
+  const q = new URLSearchParams({
+    session: p.session,
+    pack: p.pack,
+    cols: String(p.cols),
+    rows: String(p.rows),
+    token: p.token,
+  });
+  if (p.model) q.set("model", p.model);
+  url.search = q.toString();
   return url.toString();
 }
 
-export function encodeFrame(frame: ClientFrame): string {
-  return JSON.stringify(frame);
+export function encodeResize(cols: number, rows: number): string {
+  return JSON.stringify({ type: "resize", cols, rows });
 }
 
 /** Parse a text frame; anything that is not a known control is ignored (null). */
@@ -50,12 +51,34 @@ export function parseControl(raw: string): ServerControl | null {
   if (typeof v !== "object" || v === null) return null;
   const o = v as Record<string, unknown>;
   switch (o.type) {
-    case "ready":
-      return { type: "ready", pack: typeof o.pack === "string" ? o.pack : null };
+    case "started":
+      return {
+        type: "started",
+        pack: typeof o.pack === "string" ? o.pack : null,
+        model: typeof o.model === "string" ? o.model : null,
+      };
     case "exit":
       return { type: "exit", code: typeof o.code === "number" ? o.code : null };
     case "error":
       return { type: "error", message: typeof o.message === "string" ? o.message : "Terminal error" };
+    default:
+      return null;
+  }
+}
+
+/** What a refused / lost connection means for the user; null = nothing special. */
+export function closeReason(code: number): string | null {
+  switch (code) {
+    case 4401:
+      return "The bridge token was refused. Reload Studio.";
+    case 4403:
+      return "The engine refused the connection (terminal off, or origin / host not allowed). Start it with DTK_AGENT_TERMINAL=1.";
+    case 4404:
+      return "The engine does not know this terminal pack.";
+    case 4409:
+      return "This session already has a terminal for that pack (another tab?).";
+    case 4422:
+      return "The engine rejected the model or terminal size.";
     default:
       return null;
   }
