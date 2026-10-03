@@ -65,6 +65,16 @@ describe("buildUiContext", () => {
     ]);
   });
 
+  it("publishes the chart draft as the chart window's params", () => {
+    let s = stateWith([]);
+    s = appReducer(s, { type: "OPEN_TOOL", id: "chart" });
+    expect(buildUiContext(s, "s").windows).toEqual([{ tool: "chart", params: {} }]);
+    s = appReducer(s, { type: "PATCH_CHART_DRAFT", patch: { chart: "box", x: "cohort", y: "age" } });
+    expect(buildUiContext(s, "s").windows[0]?.params).toMatchObject({
+      chart: "box", x: "cohort", y: "age",
+    });
+  });
+
   it("reports selection and the open editor", () => {
     let s = stateWith([impute]);
     s = appReducer(s, { type: "PICK_COL", name: "age" });
