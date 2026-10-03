@@ -1,4 +1,5 @@
 import { AgentPanel } from "./agent/panel/AgentPanel";
+import { TerminalPanel } from "./agent/terminal/TerminalPanel";
 import { ContextMenu } from "./contextmenu/ContextMenu";
 import { Dock } from "./dock/Dock";
 import { StepEditor } from "./editor/StepEditor";
@@ -65,6 +66,7 @@ export function Workbench() {
             </div>
           )}
           <AgentPanel />
+          <TerminalPanel />
           <ToolRail />
         </div>
         <ContextMenu />

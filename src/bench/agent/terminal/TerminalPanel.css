@@ -1,0 +1,58 @@
+/* Opt-in terminal panel (datatoolkit-issues#115); header/close reuse the agent panel's classes. */
+.terminal-panel {
+  width: 520px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--dtk-border);
+  background: var(--dtk-bg-subtle);
+  font-size: 13px;
+  color: var(--dtk-ink);
+}
+.terminal-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--dtk-border-soft);
+  background: var(--dtk-surface);
+}
+.terminal-panel-who {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--dtk-font-mono);
+  font-size: 11px;
+  color: var(--dtk-muted);
+}
+.terminal-badge {
+  border: 1px solid var(--dtk-border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--dtk-muted);
+  cursor: help;
+}
+.terminal-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: #101114;
+}
+.terminal-host {
+  position: absolute;
+  inset: 6px;
+}
+.terminal-status {
+  position: absolute;
+  inset: auto 10px 10px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--dtk-surface);
+  border: 1px solid var(--dtk-border);
+}

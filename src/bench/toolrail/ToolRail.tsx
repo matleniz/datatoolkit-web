@@ -1,4 +1,5 @@
 import { AgentRailButton } from "../agent/panel/AgentRailButton";
+import { TerminalRailButton } from "../agent/terminal/TerminalRailButton";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import type { ToolId } from "../../state/reducer";
 import { TOOLS, openStepPicker, type RailToolId } from "./tools";
@@ -181,6 +182,7 @@ export function ToolRail() {
       })}
       <span className="tool-rail-sep" aria-hidden="true" />
       <AgentRailButton />
+      <TerminalRailButton />
     </nav>
   );
 }
