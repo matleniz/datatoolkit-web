@@ -55,8 +55,11 @@ describe("#81 grid view state", () => {
       op: "eq",
       value: 1,
     });
-    const s1 = appReducer(s0, { type: "SET_GRID_VIEW", view });
+    const s1 = appReducer({ ...s0, gridTotal: 12 }, { type: "SET_GRID_VIEW", view });
     expect(s1.gridView).toBe(view);
+    // A new view's row count is unknown until its rows load (#110); same view keeps it.
+    expect(s1.gridTotal).toBeNull();
+    expect(appReducer({ ...s1, gridTotal: 3 }, { type: "SET_GRID_VIEW", view: { ...view } }).gridTotal).toBe(3);
     expect(s1.workspace).toBe(s0.workspace);
     expect(dataIdentity(s1.workspace, "train", 0).key).toBe(
       dataIdentity(s0.workspace, "train", 0).key,

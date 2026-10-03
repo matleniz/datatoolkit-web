@@ -90,7 +90,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
 
   const frame = useBenchFrame(workspace, role, viewVersion, dispatch, gridView);
   // The agent reads the row count of the grid shown through the UI context.
-  const rowsShown = frame.rowsIdentity ? frame.total : null;
+  const rowsShown = frame.shownTotal;
   useEffect(() => {
     dispatch({ type: "SET_GRID_TOTAL", total: rowsShown });
   }, [dispatch, rowsShown]);

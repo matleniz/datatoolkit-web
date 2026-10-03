@@ -52,6 +52,8 @@ interface Frame {
   profiles: Map<string, ColumnProfile>;
   /** Identity of the frame held in `rows` / `columns` (null = none). */
   rowsIdentity: string | null;
+  /** `gridViewKey` of the view-only filter / sort `rows` were fetched with. */
+  rowsGridKey: string | null;
   /** Identity of the frame held in `profiles` (null = none). */
   profilesIdentity: string | null;
 }
@@ -68,6 +70,7 @@ const EMPTY_FRAME: Frame = {
   totalUnfiltered: 0,
   profiles: new Map(),
   rowsIdentity: null,
+  rowsGridKey: null,
   profilesIdentity: null,
 };
 const ZERO_SHAPE: PipelineShape = { rows: 0, cols: 0 };
@@ -300,6 +303,7 @@ export function useBenchFrame(
           total: res.total,
           totalUnfiltered,
           rowsIdentity: idKey,
+          rowsGridKey: gridViewKey(view),
         }));
         fail(null);
         // Unblock the grid as soon as rows arrive — do not wait on profiles.
@@ -406,6 +410,10 @@ export function useBenchFrame(
     stepErrors,
     loading,
     hasMore: frame.rows.length < frame.total,
+    // The row count of the frame AND grid view on screen; null while they load
+    // (never the previous view's count, datatoolkit-issues#110).
+    shownTotal:
+      frame.rowsIdentity === identityKey && frame.rowsGridKey === gridKey ? frame.total : null,
     version,
     isLatest,
     identity,

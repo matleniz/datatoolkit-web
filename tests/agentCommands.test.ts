@@ -44,6 +44,7 @@ function harness(init: AppState, answer: (p: Proposal) => boolean | Promise<bool
     undos: [] as (AppAction[] | undefined)[],
     touches: [] as Touched[],
     settled: 0,
+    gridSettled: 0,
     pending: false,
     deps: {} as BridgeDeps,
   };
@@ -54,6 +55,9 @@ function harness(init: AppState, answer: (p: Proposal) => boolean | Promise<bool
     },
     settle: async () => {
       h.settled += 1;
+    },
+    gridSettled: async () => {
+      h.gridSettled += 1;
     },
     review: async (p) => {
       h.reviews.push(p);
@@ -866,6 +870,29 @@ describe("set_grid_view", () => {
     expect(h.touches).toEqual([{ columns: ["age", "income"] }]);
     h.undos[0]!.forEach(h.deps.dispatch);
     expect(h.state.gridView).toEqual({ filter: null, sort: [] });
+  });
+
+  it("acks after the new view's row count is known, not with the old total (#110)", async () => {
+    const h = harness({ ...start(), gridTotal: 41 });
+    let release!: () => void;
+    h.deps.gridSettled = () => new Promise<void>((r) => (release = r));
+    let acked = false;
+    const pending = send(h, { filter }).then((a) => {
+      acked = true;
+      return a;
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    // The view is set, its total unknown (never the unfiltered 41), no ack yet.
+    expect(h.state.gridView.filter).toEqual(filter);
+    expect(h.state.gridTotal).toBeNull();
+    expect(acked).toBe(false);
+    release();
+    expect(await pending).toMatchObject({ ok: true });
+    // Same view again: nothing to reload, acked at once.
+    h.deps.gridSettled = async () => {
+      throw new Error("not awaited");
+    };
+    expect(await send(h, { filter })).toMatchObject({ ok: true });
   });
 
   it("omitted keeps, null clears", async () => {

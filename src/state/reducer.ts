@@ -24,7 +24,7 @@ import {
   type StepHistory,
 } from "./stepHistory";
 import { applyStepOps, orderSteps, type StepOp } from "./stepOps";
-import { EMPTY_GRID_VIEW, type GridView } from "./gridView";
+import { EMPTY_GRID_VIEW, gridViewKey, type GridView } from "./gridView";
 import type { ToolViewState } from "./toolViews";
 import type { WorkspaceSourcesState } from "./sourcesState";
 
@@ -123,7 +123,10 @@ export interface AppState {
   chartDraft: ChartDraft | null;
   /** Last engine error message while replaying / previewing (verbatim). */
   benchError: string | null;
-  /** Rows of the grid shown (after the view filter); published in the UI context. */
+  /**
+   * Rows of the grid shown (after the view filter); published in the UI
+   * context. null while the frame or the view's rows load.
+   */
   gridTotal: number | null;
   /**
    * Sources screen file lists keyed by workspace name (FX-A / MAT-139).
@@ -401,7 +404,10 @@ function reduceShell(
     case "SET_ROLE":
       return { ...state, role: action.role };
     case "SET_GRID_VIEW":
-      return { ...state, gridView: action.view };
+      // A new filter / sort: the count is unknown until its rows load.
+      return gridViewKey(action.view) === gridViewKey(state.gridView)
+        ? { ...state, gridView: action.view }
+        : { ...state, gridView: action.view, gridTotal: null };
     case "OPEN_GRID_FILTER":
       return { ...state, gridFilterColumn: action.column };
     case "CLOSE_GRID_FILTER":

@@ -95,6 +95,11 @@ export interface BridgeDeps {
   /** Resolve once the dispatched change is rendered and stored in the engine. */
   settle(): Promise<void>;
   /**
+   * Resolve once the grid's row count for the view just set is known (or a
+   * timeout) and the UI context carrying it is published.
+   */
+  gridSettled(): Promise<void>;
+  /**
    * Show the proposal and send the interim ack (`pending: "review"`); resolve
    * true on Apply, false on Dismiss. The bridge runs other commands while the
    * banner is open and resolves once the command queue is free again.
@@ -959,11 +964,15 @@ async function setGridView(
   const before = deps.getState();
   const view = nextGridView(cmd, before.gridView);
   const same = gridViewKey(view) === gridViewKey(before.gridView);
-  return finish(id, deps, before, [{ type: "SET_GRID_VIEW", view }], {
+  const ack = finish(id, deps, before, [{ type: "SET_GRID_VIEW", view }], {
     summary: gridViewSummary(view),
     undo: same ? undefined : [{ type: "SET_GRID_VIEW", view: before.gridView }],
     touched: { columns: [...new Set(named)] },
   });
+  // Ack once the context pairs the new view with its own row count: an agent
+  // reading it right after must not see the previous total (#110).
+  if (!same) await deps.gridSettled();
+  return ack;
 }
 
 /**
