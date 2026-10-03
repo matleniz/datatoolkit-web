@@ -2,6 +2,7 @@ import { useCallback, useReducer, useRef } from "react";
 
 import { apiClient } from "../../../api/client";
 import { attachmentReducer, NO_ATTACHMENTS, type Attachment } from "./attachmentState";
+import { attachFile } from "./attachFlow";
 import { detachAttachment, registerAttachment } from "./attachmentContract";
 
 export interface Attachments {
@@ -17,19 +18,29 @@ export function useAttachments(token: string, session: string): Attachments {
   const [items, dispatch] = useReducer(attachmentReducer, NO_ATTACHMENTS);
   const known = useRef(items);
   known.current = items;
+  /** Chips removed before their registration settled (#128): detached, never shown ready. */
+  const removed = useRef(new Set<string>());
 
   const addFiles = useCallback(
     (files: Iterable<File>) => {
       for (const file of files) {
         const id = crypto.randomUUID();
         dispatch({ type: "add", id, name: file.name, size: file.size });
-        apiClient
-          .upload(file.name, file)
-          .then((up) => registerAttachment(token, session, up.path))
-          .then((att) => dispatch({ type: "ready", id, serverId: att.id, kind: att.kind }))
+        attachFile(file, () => removed.current.has(id), {
+          upload: (f) => apiClient.upload(f.name, f),
+          register: (path) => registerAttachment(token, session, path),
+          detach: (serverId) => detachAttachment(token, session, serverId),
+        })
+          .then((out) => {
+            if (out.kind === "ready") {
+              const att = out.attachment;
+              dispatch({ type: "ready", id, serverId: att.id, kind: att.kind });
+            }
+          })
           .catch((err: unknown) =>
             dispatch({ type: "failed", id, error: err instanceof Error ? err.message : String(err) }),
-          );
+          )
+          .finally(() => removed.current.delete(id));
       }
     },
     [token, session],
@@ -37,9 +48,10 @@ export function useAttachments(token: string, session: string): Attachments {
 
   const remove = useCallback(
     (id: string) => {
-      const serverId = known.current.find((a) => a.id === id)?.serverId;
+      const item = known.current.find((a) => a.id === id);
       dispatch({ type: "remove", id });
-      if (serverId) detachAttachment(token, session, serverId).catch(() => undefined);
+      if (item?.serverId) detachAttachment(token, session, item.serverId).catch(() => undefined);
+      else if (item?.status === "uploading") removed.current.add(id);
     },
     [token, session],
   );

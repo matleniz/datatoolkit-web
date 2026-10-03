@@ -55,3 +55,41 @@ test("issue 116: attach a CSV, chip ready, send carries it, sources unchanged", 
   expect(await datasetsOf()).toBe(before);
   expect(before).not.toBe("null");
 });
+
+test("issue 128: a chip removed while uploading is not left attached to the session", async ({ page, request }) => {
+  test.setTimeout(120_000);
+  test.skip(!engineHasAttachments, "engine without the attachment routes (#121)");
+  // Hold the registration until the chip is gone: the engine registers the
+  // file, then Studio must detach it.
+  let release: () => void = () => undefined;
+  const removed = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/ui/agent/attachments", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    await removed;
+    await route.continue();
+  });
+  await openWorkbench(page, true);
+  const sid = await page.evaluate(() => window.sessionStorage.getItem("dtk-ui-session")!);
+
+  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Agent" });
+  await expect(panel.getByLabel("Message the agent")).toBeVisible({ timeout: 15_000 });
+
+  const registered = page.waitForResponse(
+    (r) => r.url().includes("/ui/agent/attachments") && r.request().method() === "POST",
+  );
+  await panel.locator("[data-attach-input]").setInputFiles(join(fixturesDir, "customers_extra.csv"));
+  await expect(panel.locator("[data-attachment]")).toHaveAttribute("data-attachment", "uploading");
+  await panel.getByRole("button", { name: "Remove customers_extra.csv" }).click();
+  await expect(panel.locator("[data-attachment]")).toHaveCount(0);
+  release();
+  expect((await registered).ok()).toBe(true);
+
+  await expect
+    .poll(async () => {
+      const r = await request.get(`${API}/agent/attachments`, { headers: AUTH, params: { session: sid } });
+      return r.ok() ? ((await r.json()) as unknown[]).length : -1;
+    }, { timeout: 15_000 })
+    .toBe(0);
+  await expect(panel.locator("[data-attachment]")).toHaveCount(0);
+});
