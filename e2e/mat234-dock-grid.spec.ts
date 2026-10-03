@@ -149,6 +149,12 @@ test("MAT-234: dock windows move and resize on a grid, layout survives reload", 
   await expect(page.locator(".dock-window:has-text('Loading…')")).toHaveCount(0, {
     timeout: 60_000,
   });
+  // Two windows open at half the dock width and fill the strip
+  // (datatoolkit-issues#101).
+  expect(await dockLayout(page)).toEqual({
+    dist: { x: 0, y: 0, w: 6, h: 8 },
+    missing: { x: 6, y: 0, w: 6, h: 8 },
+  });
   await page.evaluate(() => {
     window.__DTK_DISPATCH__!({ type: "OPEN_TOOL", id: "chart" });
   });
@@ -158,7 +164,8 @@ test("MAT-234: dock windows move and resize on a grid, layout survives reload", 
   });
 
   // Default grid: three equal windows side by side, filling the dock height.
-  // Chart (default w=6) reduces to w=4 to fit the remaining visible 4 columns.
+  // No visible slot is left for Chart (w=6, min 4), so the three windows
+  // share the 12 columns evenly (MAT-252).
   expect(await dockLayout(page)).toEqual({
     dist: { x: 0, y: 0, w: 4, h: 8 },
     missing: { x: 4, y: 0, w: 4, h: 8 },

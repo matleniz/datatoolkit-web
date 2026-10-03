@@ -24,8 +24,9 @@ export interface DockGridSpec {
 }
 
 export const DOCK_GRID: Record<DockPos, DockGridSpec> = {
-  // Three windows side by side fill the strip, like the former equal columns.
-  bottom: { cols: 12, rows: 8, w: 4, h: 8, minW: 2, minH: 3 },
+  // Half the strip (datatoolkit-issues#101): two windows side by side fill
+  // it; a third one makes the open windows share the width evenly (4 cols).
+  bottom: { cols: 12, rows: 8, w: 6, h: 8, minW: 2, minH: 3 },
   // Narrow pane: full width, two windows per visible height.
   right: { cols: 2, rows: 12, w: 2, h: 6, minW: 1, minH: 3 },
 };
@@ -35,7 +36,8 @@ export const TOOL_DEFAULT_SIZES: Partial<
   Record<ToolId, Partial<Record<DockPos, { w: number; h: number }>>>
 > = {
   chart: {
-    // Bottom dock: ~half dock width (6 of 12 cols) and full dock height (8 rows).
+    // Bottom dock: half the dock width (6 of 12 cols, the bottom default since
+    // datatoolkit-issues#101) and full dock height (8 rows).
     bottom: { w: 6, h: 8 },
     // Right dock: full pane width (2 of 2 cols).
     right: { w: 2, h: 6 },
