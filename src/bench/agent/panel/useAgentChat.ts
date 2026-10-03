@@ -4,12 +4,14 @@ import { uiEventsUrl } from "../../../api/client";
 import {
   AgentHttpError,
   cancelAgent,
+  getAgentOptions,
   getAgentStatus,
   getCommandStatus,
   replyPermission,
   sendAgentMessage,
+  setAgentConfig,
 } from "./agentClient";
-import { parseAgentEvent, type AgentStatus } from "./protocol";
+import { parseAgentEvent, type AgentOptions, type AgentStatus } from "./protocol";
 import {
   EMPTY_TRANSCRIPT,
   reviewCommands,
@@ -32,7 +34,7 @@ export function uiSession(): string {
 
 type AgentLink =
   | { state: "loading" }
-  | { state: "ready"; status: AgentStatus }
+  | { state: "ready"; status: AgentStatus; options: AgentOptions | null }
   | { state: "unreachable"; message: string };
 
 export interface AgentChat {
@@ -43,6 +45,9 @@ export interface AgentChat {
   reply(id: string, allow: boolean): void;
   refresh(): void;
   clear(): void;
+  /** Pick this session's pack / model; the error text is in `configError`. */
+  configure(pack: string, model: string | null): void;
+  configError: string | null;
 }
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -57,15 +62,18 @@ export function useAgentChat(token: string): AgentChat {
   const [session] = useState(uiSession);
   const [transcript, dispatch] = useReducer(transcriptReducer, EMPTY_TRANSCRIPT);
   const [link, setLink] = useState<AgentLink>({ state: "loading" });
+  const [configError, setConfigError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const refresh = useCallback(() => setTick((n) => n + 1), []);
 
   useEffect(() => {
     let live = true;
-    getAgentStatus(token)
-      .then((status) => {
+    // An engine without the options route (or a failing one) = no selector.
+    const options = getAgentOptions(token).catch(() => null);
+    Promise.all([getAgentStatus(token, session), options])
+      .then(([status, opts]) => {
         if (!live) return;
-        setLink({ state: "ready", status });
+        setLink({ state: "ready", status, options: opts });
         if (status.usage) dispatch({ type: "usage_seed", usage: status.usage });
       })
       .catch((err: unknown) => {
@@ -74,7 +82,7 @@ export function useAgentChat(token: string): AgentChat {
     return () => {
       live = false;
     };
-  }, [token, tick]);
+  }, [token, session, tick]);
 
   useEffect(() => {
     const source = new EventSource(uiEventsUrl(session, token));
@@ -85,10 +93,12 @@ export function useAgentChat(token: string): AgentChat {
       } catch {
         return;
       }
-      if (event) dispatch({ type: "event", event });
+      if (!event) return;
+      dispatch({ type: "event", event });
+      if (event.type === "config") refresh();
     });
     return () => source.close();
-  }, [session, token]);
+  }, [session, token, refresh]);
 
   // A reviewed command ends after the turn (Apply / Dismiss in Studio): the
   // engine's command status is what the agent sees, so the chip follows it.
@@ -132,7 +142,19 @@ export function useAgentChat(token: string): AgentChat {
     [token, session],
   );
 
+  const configure = useCallback(
+    (pack: string, model: string | null) => {
+      setConfigError(null);
+      setAgentConfig(token, session, pack, model)
+        .then((status) =>
+          setLink((l) => (l.state === "ready" ? { ...l, status } : l)),
+        )
+        .catch((err: unknown) => setConfigError(message(err)));
+    },
+    [token, session],
+  );
+
   const clear = useCallback(() => dispatch({ type: "clear" }), []);
 
-  return { link, transcript, send, stop, reply, refresh, clear };
+  return { link, transcript, send, stop, reply, refresh, clear, configure, configError };
 }

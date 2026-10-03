@@ -182,6 +182,9 @@ function applyEvent(t: Transcript, ev: AgentEvent): Transcript {
       });
     case "usage":
       return onUsage(t, ev);
+    case "config":
+      // A pack change starts a new conversation engine-side (usage is kept).
+      return ev.reset ? { ...EMPTY_TRANSCRIPT, usage: t.usage, seq: t.seq } : t;
     case "done":
       return settle(t);
     case "error":

@@ -6,8 +6,10 @@ import { canSend } from "../attachments/attachmentState";
 import { AttachmentBar } from "../attachments/AttachmentBar";
 import { dropProps } from "../attachments/dropProps";
 import { useAttachments } from "../attachments/useAttachments";
+import { AgentPicker } from "./AgentPicker";
 import { MessageItem } from "./MessageItem";
 import { setAgentPanelOpen, useAgentPanelOpen } from "./panelOpen";
+import { whoLine } from "./picker";
 import type { AgentStatus } from "./protocol";
 import { formatTokens, formatUsage } from "./transcript";
 import { uiSession, useAgentChat, type AgentChat } from "./useAgentChat";
@@ -36,12 +38,16 @@ export function AgentPanel() {
 }
 
 function PanelShell({ status, children }: { status?: AgentStatus; children: React.ReactNode }) {
-  const who = status?.available ? [status.pack, status.model].filter(Boolean).join(" · ") : "";
+  const who = status?.available ? whoLine(status) : "";
   return (
     <aside className="agent-panel" aria-label="Agent">
       <header className="agent-panel-head">
         <strong>Agent</strong>
-        {who ? <span className="agent-panel-who">{who}</span> : null}
+        {who ? (
+          <span className="agent-panel-who" data-agent-who title={status?.provider}>
+            {who}
+          </span>
+        ) : null}
         <button
           type="button"
           className="agent-panel-close"
@@ -99,9 +105,19 @@ function ChatPanel({ token, open }: { token: string; open: boolean }) {
       </PanelShell>
     );
   }
+  const picker = link.options ? (
+    <AgentPicker
+      options={link.options}
+      status={link.status}
+      busy={chat.transcript.running}
+      error={chat.configError}
+      onPick={chat.configure}
+    />
+  ) : null;
   if (!link.status.available) {
     return (
       <PanelShell>
+        {picker}
         <Absent title="No agent" onRetry={refresh}>
           {link.status.reason ?? "The engine runs without an agent pack."}
           {link.status.pack === null ? (
@@ -117,6 +133,7 @@ function ChatPanel({ token, open }: { token: string; open: boolean }) {
   }
   return (
     <PanelShell status={link.status}>
+      {picker}
       <Conversation chat={chat} status={link.status} token={token} />
     </PanelShell>
   );

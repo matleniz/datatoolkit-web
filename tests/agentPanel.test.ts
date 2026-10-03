@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import type { Step } from "../src/api/types";
-import { inlineCode, splitBlocks } from "../src/bench/agent/panel/blocks";
 import { chipJump, chipLabel, chipTarget, stepIndices } from "../src/bench/agent/panel/chips";
 import {
   parseAgentEvent,
@@ -141,24 +140,6 @@ describe("agent panel transcript (#67)", () => {
       { type: "reply", id: "p", allow: true },
     ]);
     expect(t.items[0]).toMatchObject({ status: "allowed" });
-  });
-});
-
-describe("agent panel message blocks (#67)", () => {
-  it("splits fenced code blocks, an open fence runs to the end", () => {
-    expect(splitBlocks("Try:\n```python\ndf.age.median()\n```\nthen apply.")).toEqual([
-      { kind: "text", text: "Try:" },
-      { kind: "code", lang: "python", code: "df.age.median()" },
-      { kind: "text", text: "then apply." },
-    ]);
-    expect(splitBlocks("```\na\nb")).toEqual([{ kind: "code", lang: "", code: "a\nb" }]);
-    expect(splitBlocks("")).toEqual([]);
-  });
-
-  it("splits inline code", () => {
-    expect(inlineCode("use `median` by `status`")).toEqual([
-      "use ", { code: "median" }, " by ", { code: "status" },
-    ]);
   });
 });
 
