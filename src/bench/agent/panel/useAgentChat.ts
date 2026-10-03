@@ -9,6 +9,7 @@ import {
   replyPermission,
   sendAgentMessage,
 } from "./agentClient";
+import type { WireAttachment } from "../attachments/attachmentContract";
 import { parseAgentEvent, type AgentStatus } from "./protocol";
 import {
   EMPTY_TRANSCRIPT,
@@ -38,7 +39,7 @@ type AgentLink =
 export interface AgentChat {
   link: AgentLink;
   transcript: Transcript;
-  send(text: string): void;
+  send(text: string, attachments?: WireAttachment[]): void;
   stop(): void;
   reply(id: string, allow: boolean): void;
   refresh(): void;
@@ -106,9 +107,9 @@ export function useAgentChat(token: string): AgentChat {
   }, [token, waiting]);
 
   const send = useCallback(
-    (text: string) => {
+    (text: string, attachments?: WireAttachment[]) => {
       dispatch({ type: "sent", text });
-      sendAgentMessage(token, session, text).catch((err: unknown) => {
+      sendAgentMessage(token, session, text, attachments).catch((err: unknown) => {
         dispatch({ type: "local_error", message: message(err) });
         if (err instanceof AgentHttpError && err.kind === "NoAgent") refresh();
       });

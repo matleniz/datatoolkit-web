@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { uiToken } from "../../../api/client";
+import { toWire } from "../attachments/attachmentContract";
+import { canSend } from "../attachments/attachmentState";
+import { AttachmentBar } from "../attachments/AttachmentBar";
+import { dropProps } from "../attachments/dropProps";
+import { useAttachments } from "../attachments/useAttachments";
 import { MessageItem } from "./MessageItem";
 import { setAgentPanelOpen, useAgentPanelOpen } from "./panelOpen";
 import type { AgentStatus } from "./protocol";
@@ -120,6 +125,7 @@ function ChatPanel({ token, open }: { token: string; open: boolean }) {
 function Conversation({ chat, status }: { chat: AgentChat; status: AgentStatus }) {
   const { transcript, send, stop, reply, clear } = chat;
   const [draft, setDraft] = useState("");
+  const attachments = useAttachments();
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -129,9 +135,10 @@ function Conversation({ chat, status }: { chat: AgentChat; status: AgentStatus }
 
   const submit = () => {
     const text = draft.trim();
-    if (!text || transcript.running) return;
-    send(text);
+    if (!canSend(text, attachments.items) || transcript.running) return;
+    send(text, toWire(attachments.items));
     setDraft("");
+    attachments.reset();
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -156,7 +163,7 @@ function Conversation({ chat, status }: { chat: AgentChat; status: AgentStatus }
         ))}
         {transcript.running ? <div className="agent-typing" aria-label="Agent is working">…</div> : null}
       </div>
-      <footer className="agent-panel-foot">
+      <footer className="agent-panel-foot" data-attach-drop {...dropProps(attachments)}>
         <textarea
           className="agent-input"
           aria-label="Message the agent"
@@ -166,6 +173,7 @@ function Conversation({ chat, status }: { chat: AgentChat; status: AgentStatus }
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKey}
         />
+        <AttachmentBar attachments={attachments} disabled={transcript.running} />
         <div className="agent-foot-row">
           <span className="agent-usage" data-agent-usage title="Tokens used this session">
             {formatUsage(transcript.usage)}
@@ -184,7 +192,7 @@ function Conversation({ chat, status }: { chat: AgentChat; status: AgentStatus }
             <button
               type="button"
               className="btn-primary"
-              disabled={!draft.trim()}
+              disabled={!canSend(draft, attachments.items)}
               onClick={submit}
             >
               Send

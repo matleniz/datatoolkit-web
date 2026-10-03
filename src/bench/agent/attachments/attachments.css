@@ -1,0 +1,40 @@
+.agent-attach-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid var(--border, #ccc);
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.agent-attach-chip[data-attachment="failed"] {
+  border-color: #c0392b;
+  color: #c0392b;
+}
+
+.agent-attach-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 14ch;
+}
+
+.agent-attach-meta {
+  opacity: 0.7;
+}
+
+.agent-attach-chip button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  padding: 0 2px;
+}
