@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
-import { uiToken } from "../../../api/client";
+import { uiSession, uiToken } from "../../../api/client";
 import { toWire } from "../attachments/attachmentContract";
 import { canSend, earlierAttachments } from "../attachments/attachmentState";
 import { AttachmentBar, SessionAttachments } from "../attachments/AttachmentBar";
@@ -12,7 +12,7 @@ import { setAgentPanelOpen, useAgentPanelOpen } from "./panelOpen";
 import { whoLine } from "./picker";
 import type { AgentStatus } from "./protocol";
 import { formatTokens, formatUsage } from "./transcript";
-import { uiSession, useAgentChat, type AgentChat } from "./useAgentChat";
+import { useAgentChat, type AgentChat } from "./useAgentChat";
 import "./AgentPanel.css";
 
 /**

@@ -113,7 +113,8 @@ function frameBody(ws: Workspace): Record<string, unknown> {
   };
 }
 
-const API_BASE: string = import.meta.env.VITE_API_URL ?? "/api";
+/** The engine API base (`/api` behind the Vite / nginx proxy); every module goes through it. */
+export const API_BASE: string = import.meta.env.VITE_API_URL ?? "/api";
 
 /**
  * Agent bridge (/api/ui, datatoolkit-issues#63). Not on `ApiClient`: these
@@ -127,8 +128,47 @@ export function uiToken(): string | null {
   return meta?.content?.trim() || null;
 }
 
-function uiUrl(path: string, base: string = API_BASE): string {
+/** `/ui/agent` -> `<API_BASE>/ui/agent`. */
+export function uiUrl(path: string, base: string = API_BASE): string {
   return `${base.replace(/\/$/, "")}/ui${path}`;
+}
+
+/**
+ * The per-tab UI session id, shared by the AgentBridge context, the agent
+ * chat, its attachments and the terminal, so the agent sees this tab.
+ */
+export function uiSession(): string {
+  const key = "dtk-ui-session";
+  const known = window.sessionStorage.getItem(key);
+  if (known) return known;
+  const id = crypto.randomUUID();
+  window.sessionStorage.setItem(key, id);
+  return id;
+}
+
+/** A failed `/ui/*` call: HTTP status, the engine's error `type` and its message. */
+export class UiHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly kind: string | undefined,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** Error of a non-ok `/ui/*` response; the engine answers `{type, message}`. */
+export async function uiError(res: Response, what: string): Promise<UiHttpError> {
+  let kind: string | undefined;
+  let message = `${what}: HTTP ${res.status}`;
+  try {
+    const body = (await res.json()) as { type?: unknown; message?: unknown };
+    if (typeof body.type === "string") kind = body.type;
+    if (typeof body.message === "string" && body.message) message = body.message;
+  } catch {
+    /* no JSON body */
+  }
+  return new UiHttpError(res.status, kind, message);
 }
 
 /** `EventSource` cannot set headers: the token goes in the query string. */

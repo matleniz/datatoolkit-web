@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { apiClient, postUiAck, putUiContext, uiEventsUrl, uiToken } from "../../api/client";
+import { apiClient, postUiAck, putUiContext, uiEventsUrl, uiSession, uiToken } from "../../api/client";
 import type { BridgeDeps, Proposal } from "../../state/agentCommands";
 import { commandRunner } from "../../state/agentQueue";
 import { ensureWorkspaceSaved, useAppDispatch, useAppState } from "../../state/AppStore";
@@ -17,15 +17,6 @@ const RENDER_WAIT_MS = 2_000;
 /** Longest wait for the row count of a new grid view before acking anyway. */
 const GRID_WAIT_MS = 15_000;
 
-function newSessionId(): string {
-  const key = "dtk-ui-session";
-  const known = window.sessionStorage.getItem(key);
-  if (known) return known;
-  const id = crypto.randomUUID();
-  window.sessionStorage.setItem(key, id);
-  return id;
-}
-
 /**
  * Agent bridge (datatoolkit-issues#63): publishes the view context to the
  * engine and runs the commands it relays. Renders nothing when the page has no
@@ -39,7 +30,7 @@ export function AgentBridge() {
 function ActiveBridge({ token }: { token: string }) {
   const state = useAppState();
   const dispatch = useAppDispatch();
-  const session = useMemo(newSessionId, []);
+  const session = useMemo(uiSession, []);
   const [reviews, setReviews] = useState<Proposal[]>([]);
   const [toast, setToast] = useState<{ summary: string; undo?: AppAction[] } | null>(null);
   const touchTimer = useRef<number | undefined>(undefined);

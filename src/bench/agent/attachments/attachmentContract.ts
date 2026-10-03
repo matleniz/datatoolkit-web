@@ -1,4 +1,4 @@
-import { uiAuthHeaders } from "../../../api/client";
+import { uiAuthHeaders, uiError, uiUrl } from "../../../api/client";
 import { parseSessionAttachment, type SessionAttachment } from "../panel/protocol";
 import type { Attachment } from "./attachmentState";
 import { readyAttachments } from "./attachmentState";
@@ -10,8 +10,7 @@ import { readyAttachments } from "./attachmentState";
  * for the agent; nothing here touches the workspace.
  */
 
-const API_BASE: string = import.meta.env.VITE_API_URL ?? "/api";
-const url = (path: string) => `${API_BASE.replace(/\/$/, "")}/ui/agent/attachments${path}`;
+const url = (path: string) => uiUrl(`/agent/attachments${path}`);
 
 export interface RegisteredAttachment {
   id: string;
@@ -19,14 +18,8 @@ export interface RegisteredAttachment {
 }
 
 async function failure(res: Response, what: string): Promise<Error> {
-  let message = `${what}: HTTP ${res.status}`;
-  try {
-    const body = (await res.json()) as { message?: unknown };
-    if (typeof body.message === "string" && body.message) message = body.message;
-  } catch {
-    /* no JSON body */
-  }
-  return new Error(res.status === 404 ? "This engine has no attachment routes (update dtk-engine)." : message);
+  if (res.status === 404) return new Error("This engine has no attachment routes (update dtk-engine).");
+  return uiError(res, what);
 }
 
 /** `POST /ui/agent/attachments`: attach an uploaded file to the session's chat. */
