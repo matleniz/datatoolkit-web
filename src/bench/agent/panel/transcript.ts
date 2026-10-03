@@ -6,8 +6,11 @@ import type { AgentEvent, UsageTotals } from "./protocol";
  * the agent session).
  */
 
-/** `review` = waiting in Studio's review banner (destructive step edits). */
-type ToolStatus = "running" | "review" | "ok" | "error";
+/**
+ * `review` = waiting in Studio's review banner (destructive step edits), then
+ * `applied` / `rejected` once the user decided (or `error`: stale, timeout...).
+ */
+type ToolStatus = "running" | "review" | "applied" | "rejected" | "ok" | "error";
 type PermissionStatus = "pending" | "allowed" | "denied";
 
 export type TranscriptItem =
@@ -22,6 +25,8 @@ export type TranscriptItem =
       status: ToolStatus;
       summary?: string;
       error?: string;
+      /** Bridge command id of a UI command (polled while under review). */
+      command?: string;
     }
   | {
       kind: "permission";
@@ -54,6 +59,8 @@ export type TranscriptAction =
   /** The user sent a message (shown before the engine echoes it). */
   | { type: "sent"; text: string }
   | { type: "reply"; id: string; allow: boolean }
+  /** Final ack of a reviewed command (`GET /api/ui/commands/{id}`). */
+  | { type: "command_status"; command: string; ok: boolean; error?: string }
   /** Seed the cumulative usage from `GET /api/ui/agent`. */
   | { type: "usage_seed"; usage: UsageTotals }
   | { type: "local_error"; message: string }
@@ -127,6 +134,26 @@ function toolStatus(ev: Extract<AgentEvent, { type: "tool_result" }>): ToolStatu
   return ev.pending === "review" ? "review" : "ok";
 }
 
+function onCommandStatus(
+  t: Transcript,
+  { command, ok, error }: Extract<TranscriptAction, { type: "command_status" }>,
+): Transcript {
+  const status: ToolStatus = ok ? "applied" : error === "rejected" ? "rejected" : "error";
+  const items = t.items.map((it) =>
+    it.kind === "tool" && it.command === command && it.status === "review"
+      ? { ...it, status, error: status === "error" ? error : undefined }
+      : it,
+  );
+  return { ...t, items };
+}
+
+/** Bridge command ids of the chips still waiting for the user's review. */
+export function reviewCommands(t: Transcript): string[] {
+  return t.items.flatMap((it) =>
+    it.kind === "tool" && it.status === "review" && it.command ? [it.command] : [],
+  );
+}
+
 function applyEvent(t: Transcript, ev: AgentEvent): Transcript {
   switch (ev.type) {
     case "user_message":
@@ -142,6 +169,7 @@ function applyEvent(t: Transcript, ev: AgentEvent): Transcript {
         status: toolStatus(ev),
         summary: ev.summary,
         error: ev.error,
+        command: ev.command,
       });
     case "permission_request":
       return push(t, {
@@ -171,6 +199,8 @@ export function transcriptReducer(t: Transcript, action: TranscriptAction): Tran
       return patchById(t, "permission", action.id, {
         status: action.allow ? "allowed" : "denied",
       });
+    case "command_status":
+      return onCommandStatus(t, action);
     case "usage_seed":
       return t.usage.input + t.usage.output > 0 ? t : { ...t, usage: action.usage };
     case "local_error":

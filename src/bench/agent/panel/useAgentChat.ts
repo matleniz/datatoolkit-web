@@ -5,11 +5,20 @@ import {
   AgentHttpError,
   cancelAgent,
   getAgentStatus,
+  getCommandStatus,
   replyPermission,
   sendAgentMessage,
 } from "./agentClient";
 import { parseAgentEvent, type AgentStatus } from "./protocol";
-import { EMPTY_TRANSCRIPT, transcriptReducer, type Transcript } from "./transcript";
+import {
+  EMPTY_TRANSCRIPT,
+  reviewCommands,
+  transcriptReducer,
+  type Transcript,
+} from "./transcript";
+
+/** How often a chip waiting for the user's review asks the engine for the outcome. */
+const REVIEW_POLL_MS = 1_500;
 
 /** Same per-tab id as the AgentBridge context, so the agent sees this tab. */
 function uiSession(): string {
@@ -80,6 +89,21 @@ export function useAgentChat(token: string): AgentChat {
     });
     return () => source.close();
   }, [session, token]);
+
+  // A reviewed command ends after the turn (Apply / Dismiss in Studio): the
+  // engine's command status is what the agent sees, so the chip follows it.
+  const waiting = reviewCommands(transcript).join(" ");
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = window.setInterval(() => {
+      for (const command of waiting.split(" ")) {
+        getCommandStatus(token, command)
+          .then((s) => s && dispatch({ type: "command_status", command, ...s }))
+          .catch(() => undefined);
+      }
+    }, REVIEW_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [token, waiting]);
 
   const send = useCallback(
     (text: string) => {

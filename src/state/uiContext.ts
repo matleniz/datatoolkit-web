@@ -32,6 +32,11 @@ export interface UiContext {
   } | null;
   /** The view-only filter / sort of the grid and the rows it shows (null while loading). */
   grid: { filter: GridFilter | null; sort: GridSortKey[]; total: number | null };
+  /**
+   * Agent proposals waiting in the review banner (`command` = the bridge
+   * command id, for `get_command_status`); empty = nothing awaits the user.
+   */
+  reviews: { command: string; summary: string }[];
 }
 
 /** Identity key of the frame `state` shows (the agent's `base_identity`). */
@@ -81,6 +86,7 @@ export type UiContextState = Pick<
 export function buildUiContext(
   state: UiContextState,
   session: string,
+  reviews: UiContext["reviews"] = [],
 ): UiContext {
   const ws = state.workspace;
   const version = ws ? effectiveVersion(ws, state.viewVersion) : 0;
@@ -103,5 +109,6 @@ export function buildUiContext(
       ? { op: editor.op, index: editor.editIndex ?? null, params: editor.params }
       : null,
     grid: { filter: state.gridView.filter, sort: state.gridView.sort, total: state.gridTotal },
+    reviews,
   };
 }

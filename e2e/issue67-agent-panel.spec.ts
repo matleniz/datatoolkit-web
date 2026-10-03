@@ -86,6 +86,66 @@ test("issue 67: a permission request waits for Allow / Deny; Deny fails the call
   expect(await stepOps(page)).toEqual([]);
 });
 
+/** #104: a destructive proposal waits for review past the command timeout; chip, context and status agree. */
+test("issue 104: 'drop' waits for review, Apply after the timeout, the chip and command status say applied", async ({
+  page, request,
+}) => {
+  test.setTimeout(180_000);
+  await openWorkbench(page, true);
+  const panel = await openPanel(page);
+  await say(page, "drop support_calls");
+
+  // The call returns at once: pending chip, the reply says so, the turn ends.
+  const chip = panel.locator('[data-tool-call="propose_steps"]');
+  await expect(chip).toContainText("propose_steps · add drop_columns");
+  await expect(chip).toContainText("waiting for your review in Studio", { timeout: 15_000 });
+  await expect(panel.locator('[data-role="assistant"]').last())
+    .toHaveText("stub: waiting for your review in Studio");
+  await expect(panel.getByRole("button", { name: "Send" })).toBeVisible({ timeout: 15_000 });
+  const review = page.getByLabel("Agent proposal");
+  await expect(review).toContainText("drop_columns (support_calls)");
+
+  // The UI context lists the open review with its command id.
+  const sid = await page.evaluate(() => window.sessionStorage.getItem("dtk-ui-session")!);
+  let command = "";
+  await expect.poll(async () => {
+    const res = await request.get(`${API}/context`, { headers: AUTH, params: { session: sid } });
+    const ctx = (await res.json()) as { reviews?: { command: string; summary: string }[] };
+    command = ctx.reviews?.[0]?.command ?? "";
+    return ctx.reviews?.[0]?.summary;
+  }, { timeout: 15_000 }).toBe("add drop_columns (support_calls)");
+  const status = async () =>
+    (await (await request.get(`${API}/commands/${command}`, { headers: AUTH })).json()) as Record<string, unknown>;
+  expect(await status()).toEqual({ id: command, ok: null, pending: "review" });
+
+  // Past the 30 s command timeout: still under review, not timed out.
+  await page.waitForTimeout(31_000);
+  await expect(chip).toContainText("waiting for your review in Studio");
+  expect(await status()).toMatchObject({ ok: null, pending: "review" });
+
+  await review.getByRole("button", { name: "Apply" }).click();
+  await expect(chip).toContainText("applied after your review", { timeout: 15_000 });
+  expect(await status()).toMatchObject({ id: command, ok: true });
+  expect(await stepOps(page)).toEqual(["drop_columns"]);
+  await expect.poll(async () => {
+    const res = await request.get(`${API}/context`, { headers: AUTH, params: { session: sid } });
+    return ((await res.json()) as { reviews: unknown[] }).reviews;
+  }, { timeout: 15_000 }).toEqual([]);
+});
+
+/** #104: Dismiss turns the chip to "dismissed" and the command status to rejected. */
+test("issue 104: Dismiss marks the chip dismissed, status rejected", async ({ page }) => {
+  test.setTimeout(120_000);
+  await openWorkbench(page, true);
+  const panel = await openPanel(page);
+  await say(page, "drop support_calls");
+  const chip = panel.locator('[data-tool-call="propose_steps"]');
+  await expect(chip).toContainText("waiting for your review in Studio", { timeout: 15_000 });
+  await page.getByLabel("Agent proposal").getByRole("button", { name: "Dismiss" }).click();
+  await expect(chip).toContainText("dismissed in Studio", { timeout: 15_000 });
+  expect(await stepOps(page)).toEqual([]);
+});
+
 test("issue 67: with no agent pack the panel says why and offers Check again", async ({ page }) => {
   await page.route("**/api/ui/agent", (route) =>
     route.request().method() === "GET"

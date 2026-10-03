@@ -31,6 +31,8 @@ function Paragraphs({ text }: { text: string }) {
 const STATUS_TEXT = {
   running: "running…",
   review: "waiting for your review in Studio",
+  applied: "applied after your review",
+  rejected: "dismissed in Studio",
   ok: "done",
   error: "failed",
 } as const;
@@ -40,7 +42,8 @@ function ToolChip({ item }: { item: Extract<TranscriptItem, { kind: "tool" }> })
   const dispatch = useAppDispatch();
   const timer = useRef<number | undefined>(undefined);
   const target = chipTarget(item.name, item.input);
-  const jump = item.status === "error" ? null : chipJump(target, workspace?.steps ?? []);
+  const failed = item.status === "error" || item.status === "rejected";
+  const jump = failed ? null : chipJump(target, workspace?.steps ?? []);
   const detail = item.error ?? item.summary;
 
   const go = () => {
