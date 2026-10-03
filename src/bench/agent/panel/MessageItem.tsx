@@ -1,22 +1,39 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { useAppDispatch, useAppState } from "../../../state/AppStore";
 import { chipJump, chipLabel, chipTarget } from "./chips";
 import { renderMarkdown } from "./markdown";
+import { createThrottle } from "./throttle";
 import { LINES_MAX, summaryLines } from "./toolSummary";
 import type { TranscriptItem } from "./transcript";
 
 /** How long a chip click highlights what it points at (same as AgentBridge). */
 const TOUCH_MS = 2_000;
+/** A streaming reply re-renders its Markdown at most this often (#131). */
+const STREAM_RENDER_MS = 100;
 
 /** User text stays plain (no Markdown); `pre-wrap` keeps its line breaks. */
 function PlainText({ text }: { text: string }) {
   return <p>{text}</p>;
 }
 
-/** The sanitised output of `renderMarkdown` (see markdown.ts). */
+/** `value`, updated at most once per `ms` while it keeps changing; the last value always lands. */
+function useThrottled<T>(value: T, ms: number): T {
+  const [shown, setShown] = useState(value);
+  const [throttle] = useState(() => createThrottle(ms, setShown));
+  useEffect(() => throttle.push(value), [throttle, value]);
+  useEffect(() => () => throttle.cancel(), [throttle]);
+  return shown;
+}
+
+/**
+ * The sanitised output of `renderMarkdown` (see markdown.ts). While a reply
+ * streams, each delta would re-parse and re-sanitise the whole text so far:
+ * the render is throttled instead (#131).
+ */
 function Markdown({ text }: { text: string }) {
-  const html = useMemo(() => renderMarkdown(text), [text]);
+  const shown = useThrottled(text, STREAM_RENDER_MS);
+  const html = useMemo(() => renderMarkdown(shown), [shown]);
   return <div className="agent-md" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
@@ -166,7 +183,8 @@ function PermissionCard({
   );
 }
 
-export function MessageItem({
+/** Memoised: a delta changes only the streaming item, the others keep their props (#131). */
+export const MessageItem = memo(function MessageItem({
   item,
   onReply,
 }: {
@@ -202,4 +220,4 @@ export function MessageItem({
         </div>
       );
   }
-}
+});
