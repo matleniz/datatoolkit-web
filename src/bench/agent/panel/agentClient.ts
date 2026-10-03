@@ -1,5 +1,10 @@
 import { uiAuthHeaders } from "../../../api/client";
-import { parseAgentStatus, type AgentStatus } from "./protocol";
+import {
+  parseAgentOptions,
+  parseAgentStatus,
+  type AgentOptions,
+  type AgentStatus,
+} from "./protocol";
 
 /**
  * Agent chat routes of the UI bridge (`/api/ui/agent*`, datatoolkit-issues#67),
@@ -34,8 +39,9 @@ async function fail(res: Response, what: string): Promise<never> {
 }
 
 /** Status of the engine's agent pack; an engine without the routes = no agent. */
-export async function getAgentStatus(token: string): Promise<AgentStatus> {
-  const res = await fetch(agentUrl(), { headers: uiAuthHeaders(token) });
+export async function getAgentStatus(token: string, session?: string): Promise<AgentStatus> {
+  const query = session ? `?session=${encodeURIComponent(session)}` : "";
+  const res = await fetch(agentUrl(query), { headers: uiAuthHeaders(token) });
   if (res.status === 404) {
     return {
       available: false,
@@ -45,6 +51,37 @@ export async function getAgentStatus(token: string): Promise<AgentStatus> {
     };
   }
   if (!res.ok) await fail(res, "GET /ui/agent");
+  return parseAgentStatus(await res.json());
+}
+
+/**
+ * `GET /api/ui/agent/options`: the packs / models Studio may pick from, or
+ * null for an engine without the route (no selector, today's behaviour).
+ */
+export async function getAgentOptions(
+  token: string,
+  refresh = false,
+): Promise<AgentOptions | null> {
+  const res = await fetch(agentUrl(refresh ? "/options?refresh=1" : "/options"), {
+    headers: uiAuthHeaders(token),
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) await fail(res, "GET /ui/agent/options");
+  return parseAgentOptions(await res.json());
+}
+
+/**
+ * `POST /api/ui/agent/config`: this session's pack / model (null model = the
+ * pack's default). Answers the session's new status; 409 `AgentBusy` while a
+ * turn runs, 422 `UnknownPack` / `UnknownModel` / `PackUnavailable` / `WrongPanel`.
+ */
+export async function setAgentConfig(
+  token: string,
+  session: string,
+  pack: string,
+  model: string | null,
+): Promise<AgentStatus> {
+  const res = await post(token, "/config", { session, pack, model });
   return parseAgentStatus(await res.json());
 }
 
