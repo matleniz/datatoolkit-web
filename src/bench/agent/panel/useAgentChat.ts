@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useReducer, useState } from "react";
 
-import { uiEventsUrl } from "../../../api/client";
+import { UiHttpError, uiEventsUrl, uiSession } from "../../../api/client";
 import { detachAttachment, listAttachments } from "../attachments/attachmentContract";
 import {
-  AgentHttpError,
   cancelAgent,
   getAgentOptions,
   getAgentStatus,
@@ -22,16 +21,6 @@ import {
 
 /** How often a chip waiting for the user's review asks the engine for the outcome. */
 const REVIEW_POLL_MS = 1_500;
-
-/** Same per-tab id as the AgentBridge context, so the agent sees this tab. */
-export function uiSession(): string {
-  const key = "dtk-ui-session";
-  const known = window.sessionStorage.getItem(key);
-  if (known) return known;
-  const id = crypto.randomUUID();
-  window.sessionStorage.setItem(key, id);
-  return id;
-}
 
 type AgentLink =
   | { state: "loading" }
@@ -127,7 +116,7 @@ export function useAgentChat(token: string): AgentChat {
       dispatch({ type: "sent", text });
       sendAgentMessage(token, session, text, attachments).catch((err: unknown) => {
         dispatch({ type: "local_error", message: message(err) });
-        if (err instanceof AgentHttpError && err.kind === "NoAgent") refresh();
+        if (err instanceof UiHttpError && err.kind === "NoAgent") refresh();
       });
     },
     [token, session, refresh],

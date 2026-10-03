@@ -1,6 +1,4 @@
-import { uiAuthHeaders } from "../../../api/client";
-
-const API_BASE: string = import.meta.env.VITE_API_URL ?? "/api";
+import { uiAuthHeaders, uiError, uiUrl } from "../../../api/client";
 
 export interface TerminalPack {
   id: string;
@@ -15,11 +13,11 @@ export interface TerminalPack {
  * or without terminal packs gives `[]`.
  */
 export async function getTerminalPacks(token: string): Promise<TerminalPack[]> {
-  const res = await fetch(`${API_BASE.replace(/\/$/, "")}/ui/agent/options`, {
+  const res = await fetch(uiUrl("/agent/options"), {
     headers: uiAuthHeaders(token),
   });
   if (res.status === 404) return [];
-  if (!res.ok) throw new Error(`GET /ui/agent/options: HTTP ${res.status}`);
+  if (!res.ok) throw await uiError(res, "GET /ui/agent/options");
   return parseTerminalPacks(await res.json());
 }
 

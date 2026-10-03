@@ -3,24 +3,12 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { uiToken } from "../../../api/client";
+import { API_BASE, uiSession, uiToken } from "../../../api/client";
 import { setTerminalPanelOpen, useTerminalPanelOpen } from "./terminalOpen";
 import { getTerminalPacks, type TerminalPack } from "./terminalOptions";
 import { terminalUrl } from "./terminalProtocol";
 import { TerminalSocket, type TerminalState } from "./terminalSocket";
 import "./TerminalPanel.css";
-
-const API_BASE: string = import.meta.env.VITE_API_URL ?? "/api";
-
-/** Same per-tab id as the agent chat and the AgentBridge context. */
-function uiSession(): string {
-  const key = "dtk-ui-session";
-  const known = window.sessionStorage.getItem(key);
-  if (known) return known;
-  const id = crypto.randomUUID();
-  window.sessionStorage.setItem(key, id);
-  return id;
-}
 
 /**
  * Opt-in terminal panel (datatoolkit-issues#115): a CLI agent (claude, gemini,
