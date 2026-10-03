@@ -65,12 +65,21 @@ type StepTarget = Step["target"];
 const VARIABLE_STATS = ["mean", "median", "std", "min", "max", "q25", "q75", "count"] as const;
 export type VariableStat = (typeof VARIABLE_STATS)[number];
 
-/** Body of `POST /api/ui/ack`. */
+/** Body of `POST /api/ui/ack` (final ack). */
 export interface Ack {
   id: string;
   ok: boolean;
   error?: string;
   identity?: string;
+}
+
+/**
+ * Interim ack: the command waits in the review banner. The engine answers the
+ * agent `pending: "review"` at once and keeps the id for the final ack.
+ */
+export interface PendingAck {
+  id: string;
+  pending: "review";
 }
 
 /** A destructive proposal waiting for the user's Apply / Dismiss. */
@@ -85,7 +94,11 @@ export interface BridgeDeps {
   dispatch(action: AppAction): void;
   /** Resolve once the dispatched change is rendered and stored in the engine. */
   settle(): Promise<void>;
-  /** Show the proposal; resolve true on Apply, false on Dismiss. */
+  /**
+   * Show the proposal and send the interim ack (`pending: "review"`); resolve
+   * true on Apply, false on Dismiss. The bridge runs other commands while the
+   * banner is open and resolves once the command queue is free again.
+   */
   review(proposal: Proposal): Promise<boolean>;
   /**
    * Applied-at-once notice. `undo` = the reducer actions that revert THIS
@@ -754,6 +767,7 @@ function reduceAll(state: AppState, actions: AppAction[]): AppState {
 }
 
 const fail = (id: string, error: string): Ack => ({ id, ok: false, error });
+const busy = (id: string): Ack => fail(id, "busy");
 
 /** Why `cmd` cannot apply on the frame Studio shows now (null = it can). */
 function staleReason(
@@ -791,6 +805,9 @@ async function proposeSteps(
     const out = applyStepOps(state.workspace?.steps ?? [], cmd.ops);
     return "error" in out ? fail(id, `bad_command: ${out.error}`) : null;
   };
+  // One review at a time, and no step edit under an open one (it would make
+  // the proposal stale): the agent retries after the user decides.
+  if (deps.reviewPending()) return busy(id);
   const refused = check();
   if (refused) return refused;
 
@@ -1102,8 +1119,6 @@ async function addChart(
   deps.announce(`saved chart ${cmd.name}`, [{ type: "REMOVE_CHART", name: cmd.name }]);
   return { id, ok: true, identity: currentIdentityKey(deps.getState()) };
 }
-
-const busy = (id: string): Ack => fail(id, "busy");
 
 /** Columns a params object names (for the highlight). */
 const paramColumns = (params: Record<string, unknown>): string[] =>

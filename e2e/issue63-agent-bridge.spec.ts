@@ -12,9 +12,11 @@ const AUTH = { Authorization: `Bearer ${process.env.DTK_UI_TOKEN}` };
 
 interface Ack {
   id: string;
-  ok: boolean;
+  /** null while the command waits in Studio's review banner. */
+  ok: boolean | null;
   error?: string;
   identity?: string;
+  pending?: "review";
 }
 
 const session = (page: Page) =>
@@ -44,14 +46,32 @@ async function published(
   return last!;
 }
 
-async function send(request: APIRequestContext, page: Page, cmd: Record<string, unknown>) {
+async function send(
+  request: APIRequestContext,
+  page: Page,
+  cmd: Record<string, unknown>,
+  timeout = 30,
+) {
   const sid = await session(page);
   const res = await request.post(`${API}/commands`, {
     headers: AUTH,
-    data: { ...cmd, session: sid, timeout: 30 },
+    data: { ...cmd, session: sid, timeout },
   });
   expect(res.ok()).toBe(true);
   return (await res.json()) as Ack;
+}
+
+/** `GET /api/ui/commands/{id}`: the final ack, or the pending one under review. */
+async function commandStatus(request: APIRequestContext, id: string): Promise<Ack> {
+  const res = await request.get(`${API}/commands/${id}`, { headers: AUTH });
+  expect(res.ok()).toBe(true);
+  return (await res.json()) as Ack;
+}
+
+/** The final ack of a reviewed command, once the user decided. */
+async function settled(request: APIRequestContext, id: string): Promise<Ack> {
+  await expect.poll(async () => (await commandStatus(request, id)).ok, { timeout: 30_000 }).not.toBeNull();
+  return commandStatus(request, id);
 }
 
 const stepOps = (page: Page) =>
@@ -178,21 +198,24 @@ test("issue 63: a destructive proposal is reviewed first (Apply / Dismiss)", asy
   });
   const review = page.getByLabel("Agent proposal");
 
-  // Dismiss → rejected, nothing applied.
-  const dismissed = send(request, page, drop("support_calls"));
+  // The agent's call returns at once: pending review (datatoolkit-issues#97).
+  // Dismiss → the final ack is rejected, nothing applied.
+  const dismissed = await send(request, page, drop("support_calls"));
+  expect(dismissed).toEqual({ id: dismissed.id, ok: null, pending: "review" });
   await expect(review).toBeVisible();
   await expect(review).toContainText("drop_columns (support_calls)");
   expect(await stepOps(page)).toEqual([]);
   await review.getByRole("button", { name: "Dismiss" }).click();
-  expect(await dismissed).toMatchObject({ ok: false, error: "rejected" });
+  expect(await settled(request, dismissed.id)).toMatchObject({ ok: false, error: "rejected" });
   await expect(review).toBeHidden();
   expect(await stepOps(page)).toEqual([]);
 
-  // Apply → applied, ack with the new identity.
-  const applied = send(request, page, drop("support_calls"));
+  // Apply → applied, final ack with the new identity.
+  const applied = await send(request, page, drop("support_calls"));
+  expect(applied.pending).toBe("review");
   await expect(review).toBeVisible();
   await review.getByRole("button", { name: "Apply" }).click();
-  const ack = await applied;
+  const ack = await settled(request, applied.id);
   expect(ack.ok).toBe(true);
   expect(ack.identity).not.toBe(ctx0.identity);
   expect(await stepOps(page)).toEqual(["drop_columns"]);
@@ -200,14 +223,49 @@ test("issue 63: a destructive proposal is reviewed first (Apply / Dismiss)", asy
   await expect(page.getByRole("button", { name: "support_calls, number" })).toHaveCount(0);
 
   // Removing a step is destructive too.
-  const removal = send(request, page, {
+  const removal = await send(request, page, {
     type: "propose_steps", workspace: "churn", base_identity: ack.identity,
     ops: [{ remove: { index: 0 } }],
   });
   await expect(review).toContainText("remove step 1 (drop_columns)");
   await review.getByRole("button", { name: "Apply" }).click();
-  expect((await removal).ok).toBe(true);
+  expect((await settled(request, removal.id)).ok).toBe(true);
   expect(await stepOps(page)).toEqual([]);
+});
+
+/** #97: a review outlives the command timeout and does not block the queue. */
+test("issue 97: pending review ack, queue free meanwhile, Apply after the timeout", async ({
+  page, request,
+}) => {
+  test.setTimeout(180_000);
+  await openWorkbench(page, true);
+  const ctx0 = await published(request, page);
+  const review = page.getByLabel("Agent proposal");
+
+  const pending = await send(request, page, {
+    type: "propose_steps", workspace: "churn", base_identity: ctx0.identity,
+    ops: [{ add: { step: { op: "drop_columns", target: "both", params: { columns: ["support_calls"] } } } }],
+  }, 2);
+  expect(pending).toEqual({ id: pending.id, ok: null, pending: "review" });
+  await expect(review).toBeVisible();
+
+  // View commands run while the banner is open; another proposal is busy.
+  const sel = await send(request, page, { type: "select_columns", columns: ["age"] });
+  expect(sel).toMatchObject({ ok: true });
+  const busy = await send(request, page, {
+    type: "propose_steps", workspace: "churn", base_identity: ctx0.identity,
+    ops: [{ add: { step: scale } }],
+  });
+  expect(busy).toMatchObject({ ok: false, error: "busy" });
+
+  // Past the 2 s command timeout the command is still under review, not timed out.
+  await page.waitForTimeout(3_000);
+  expect(await commandStatus(request, pending.id)).toMatchObject({ ok: null, pending: "review" });
+  await review.getByRole("button", { name: "Apply" }).click();
+  const final = await settled(request, pending.id);
+  expect(final).toMatchObject({ ok: true });
+  expect(final.identity).not.toBe(ctx0.identity);
+  expect(await stepOps(page)).toEqual(["drop_columns"]);
 });
 
 test("issue 63: open_window, select_columns and set_view drive the view", async ({

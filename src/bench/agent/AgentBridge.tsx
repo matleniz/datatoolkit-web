@@ -1,11 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { apiClient, postUiAck, putUiContext, uiEventsUrl, uiToken } from "../../api/client";
-import {
-  handleCommand,
-  type BridgeDeps,
-  type Proposal,
-} from "../../state/agentCommands";
+import type { BridgeDeps, Proposal } from "../../state/agentCommands";
+import { commandRunner } from "../../state/agentQueue";
 import { ensureWorkspaceSaved, useAppDispatch, useAppState } from "../../state/AppStore";
 import type { AppAction } from "../../state/reducer";
 import { buildUiContext } from "../../state/uiContext";
@@ -89,7 +86,7 @@ function ActiveBridge({ token }: { token: string }) {
   }, [toast]);
 
   useEffect(() => {
-    const deps: BridgeDeps = {
+    const deps: Omit<BridgeDeps, "review"> = {
       getState: () => stateRef.current,
       dispatch,
       settle: async () => {
@@ -99,11 +96,6 @@ function ActiveBridge({ token }: { token: string }) {
         });
         await ensureWorkspaceSaved(stateRef.current.workspace);
       },
-      review: (proposal) =>
-        new Promise<boolean>((resolve) => {
-          answers.current.set(proposal.id, resolve);
-          setReviews((list) => [...list, proposal]);
-        }),
       reviewPending: () => answers.current.size > 0,
       opSchema: (op) => apiClient.transformSchema(op),
       announce: (summary, undo) => setToast({ summary, undo }),
@@ -126,20 +118,20 @@ function ActiveBridge({ token }: { token: string }) {
         );
       },
     };
-    // One command at a time: the next one's stale check sees the previous
-    // one's result.
-    let queue: Promise<void> = Promise.resolve();
-    const run = (raw: unknown) => {
-      queue = queue.then(async () => {
-        const ack = await handleCommand(raw, deps);
-        if (ack) await postUiAck(token, ack).catch(() => undefined);
+    const show = (proposal: Proposal) =>
+      new Promise<boolean>((resolve) => {
+        answers.current.set(proposal.id, resolve);
+        setReviews((list) => [...list, proposal]);
       });
-    };
+    // One command at a time; an open review hands its turn over (agentQueue).
+    const run = commandRunner(deps, show, (ack) =>
+      postUiAck(token, ack).catch(() => undefined),
+    );
 
     const source = new EventSource(uiEventsUrl(session, token));
     source.addEventListener("command", (ev) => {
       try {
-        run(JSON.parse((ev as MessageEvent<string>).data));
+        void run(JSON.parse((ev as MessageEvent<string>).data));
       } catch {
         /* not JSON: nothing to ack without an id */
       }

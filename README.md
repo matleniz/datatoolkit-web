@@ -83,7 +83,10 @@ windows, editor) to the engine's `/api/ui` and runs the commands it relays
 (`propose_steps`, `open_window`, `select_columns`, `set_view`), all through the
 reducer (undoable). Agent step edits apply at once with an "Undo" notice;
 destructive ones (a removed step, `drop_columns`, `filter_rows`,
-`drop_low_variance`, `drop_correlated`) wait for Apply / Dismiss. The page gets
+`drop_low_variance`, `drop_correlated`) wait for Apply / Dismiss: Studio acks
+them `pending: "review"` at once (the agent's call returns, the final ack is in
+`GET /api/ui/commands/{id}` once the user decides), view commands keep running
+while the banner is open, and another `propose_steps` answers `busy`. The page gets
 the engine's per-run token from `<meta name="dtk-ui-token">` (never stored).
 `dtk-studio` fills it in; with `npm run dev`, pass the same token to both sides:
 
