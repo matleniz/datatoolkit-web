@@ -1,8 +1,9 @@
-import { useMemo, useRef } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 
 import { useAppDispatch, useAppState } from "../../../state/AppStore";
 import { chipJump, chipLabel, chipTarget } from "./chips";
 import { renderMarkdown } from "./markdown";
+import { LINES_MAX, summaryLines } from "./toolSummary";
 import type { TranscriptItem } from "./transcript";
 
 /** How long a chip click highlights what it points at (same as AgentBridge). */
@@ -28,14 +29,66 @@ const STATUS_TEXT = {
   error: "failed",
 } as const;
 
+/** One value, cut with a "show more" toggle when long. */
+function Value({ line }: { line: ReturnType<typeof summaryLines>[number] }) {
+  const [more, setMore] = useState(false);
+  return (
+    <>
+      <span className="agent-kv-value">{more ? line.full : line.short}</span>
+      {line.truncated ? (
+        <button type="button" className="agent-more" onClick={() => setMore(!more)}>
+          {more ? "show less" : "show more"}
+        </button>
+      ) : null}
+    </>
+  );
+}
+
+function ToolDetails({ item, id }: { item: Extract<TranscriptItem, { kind: "tool" }>; id: string }) {
+  const [allInput, setAllInput] = useState(false);
+  const lines = summaryLines(item.input);
+  const shown = allInput ? lines : lines.slice(0, LINES_MAX);
+  const output = item.error ?? item.summary;
+  return (
+    <div className="agent-chip-body" id={id}>
+      <div className="agent-chip-section">Input</div>
+      {lines.length === 0 ? <div className="agent-kv-empty">(none)</div> : null}
+      {shown.map((line) => (
+        <div key={line.key} className="agent-kv">
+          <span className="agent-kv-key">{line.key}:</span> <Value line={line} />
+        </div>
+      ))}
+      {lines.length > shown.length ? (
+        <button type="button" className="agent-more" onClick={() => setAllInput(true)}>
+          +{lines.length - shown.length} more
+        </button>
+      ) : null}
+      <div className="agent-chip-section">Output</div>
+      {output ? (
+        <div className={`agent-kv${item.error ? " error" : ""}`}>
+          <Value line={summaryLines({ output })[0]!} />
+        </div>
+      ) : (
+        <div className="agent-kv-empty">{item.status === "running" ? "(running…)" : "(none)"}</div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Collapsed by default (datatoolkit-issues#113): one line with the label, the
+ * status and, for a failed call, its error; the toggle expands input / output.
+ * "Show" keeps the jump / highlight of what the call touched.
+ */
 function ToolChip({ item }: { item: Extract<TranscriptItem, { kind: "tool" }> }) {
   const { workspace } = useAppState();
   const dispatch = useAppDispatch();
   const timer = useRef<number | undefined>(undefined);
+  const [open, setOpen] = useState(false);
+  const bodyId = useId();
   const target = chipTarget(item.name, item.input);
   const failed = item.status === "error" || item.status === "rejected";
   const jump = failed ? null : chipJump(target, workspace?.steps ?? []);
-  const detail = item.error ?? item.summary;
 
   const go = () => {
     if (!jump) return;
@@ -49,18 +102,32 @@ function ToolChip({ item }: { item: Extract<TranscriptItem, { kind: "tool" }> })
 
   return (
     <div className={`agent-chip ${item.status}`} data-tool-call={item.name}>
-      <button
-        type="button"
-        className="agent-chip-btn"
-        disabled={!jump}
-        title={jump ? "Show what this call touched" : undefined}
-        onClick={go}
-      >
-        <span className="agent-chip-dot" aria-hidden="true" />
-        <span className="agent-chip-label">{chipLabel(item.name, target)}</span>
-      </button>
-      <span className="agent-chip-status">{STATUS_TEXT[item.status]}</span>
-      {detail ? <span className="agent-chip-detail">{detail}</span> : null}
+      <div className="agent-chip-row">
+        <button
+          type="button"
+          className="agent-chip-btn"
+          aria-expanded={open}
+          aria-controls={open ? bodyId : undefined}
+          onClick={() => setOpen(!open)}
+        >
+          <span className="agent-chip-caret" aria-hidden="true">{open ? "▾" : "▸"}</span>
+          <span className="agent-chip-dot" aria-hidden="true" />
+          <span className="agent-chip-label">{chipLabel(item.name, target)}</span>
+          <span className="agent-chip-status">{STATUS_TEXT[item.status]}</span>
+        </button>
+        {jump ? (
+          <button
+            type="button"
+            className="agent-chip-jump"
+            title="Show what this call touched"
+            onClick={go}
+          >
+            Show
+          </button>
+        ) : null}
+      </div>
+      {!open && item.error ? <div className="agent-chip-detail">{item.error}</div> : null}
+      {open ? <ToolDetails item={item} id={bodyId} /> : null}
     </div>
   );
 }
