@@ -102,3 +102,31 @@ test("issue 115: a dropped socket offers Reconnect", async ({ page }) => {
   await expect(panel.locator('[data-terminal-state="dropped"]')).toContainText("already has a terminal");
   await expect(panel.getByRole("button", { name: "Reconnect" })).toBeVisible();
 });
+
+test("issue 146: agent + terminal open together keep the rail, both closes and the grid on screen", async ({
+  page,
+}) => {
+  await page.routeWebSocket(/\/api\/ui\/terminal/, (ws) => {
+    ws.send(JSON.stringify({ type: "started", pack: "claude-code", model: null, command: ["claude"] }));
+  });
+  await mockOptions(page);
+  await openWorkbench(page, true);
+  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  const agent = page.getByRole("complementary", { name: "Agent" });
+  await expect(agent).toBeVisible();
+  const terminal = await start(page);
+  await expect(terminal).toContainText("claude-code");
+
+  const viewport = page.viewportSize()!;
+  const inside = async (box: { x: number; y: number; width: number; height: number } | null) => {
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+  };
+  await inside(await page.locator(".tool-rail").boundingBox());
+  await inside(await agent.getByRole("button", { name: "Close agent panel" }).boundingBox());
+  await inside(await terminal.getByRole("button", { name: "Close terminal panel" }).boundingBox());
+  const main = await page.locator(".workbench-main").boundingBox();
+  expect(main!.width).toBeGreaterThanOrEqual(240);
+  await page.screenshot({ path: test.info().outputPath("agent-terminal-1440.png") });
+});

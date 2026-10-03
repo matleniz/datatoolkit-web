@@ -296,8 +296,8 @@
 }
 
 .side-slot.right {
-  width: var(--dtk-inspector-w);
-  flex-shrink: 0;
+  flex: 0 1 var(--dtk-inspector-w);
+  min-width: 200px;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -329,9 +329,10 @@
   background: var(--dtk-bg-subtle);
 }
 
+/* The side panels shrink before the grid drops below a usable width (#146). */
 .workbench-main {
   flex: 1;
-  min-width: 0;
+  min-width: 260px;
   min-height: 0;
   display: flex;
   flex-direction: column;
