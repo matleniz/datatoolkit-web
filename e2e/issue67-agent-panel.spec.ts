@@ -57,8 +57,21 @@ test("issue 67: 'add a step' from the panel refreshes the grid, Undo restores", 
   const after = await grid.getAttribute("data-identity-current");
   await expect(grid).toHaveAttribute("data-identity", after!, { timeout: 60_000 });
 
+  // #113: collapsed by default; expanding shows the input and the result.
+  const toggle = chip.getByRole("button", { name: /propose_steps/ });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(chip.getByText("Input", { exact: true })).toHaveCount(0);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(chip.getByText("Input", { exact: true })).toBeVisible();
+  await expect(chip.locator(".agent-kv-key", { hasText: "ops:" })).toBeVisible();
+  await expect(chip.getByText("Output", { exact: true })).toBeVisible();
+  await expect(chip.locator(".agent-chip-body")).toContainText("scale");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+
   // The chip links to the step it added (highlighted step card).
-  await chip.getByRole("button").click();
+  await chip.getByRole("button", { name: "Show" }).click();
   await expect(page.locator("[data-agent-touched]").first()).toBeVisible();
 
   // Undo (AgentBridge toast) -> back to the first frame.
