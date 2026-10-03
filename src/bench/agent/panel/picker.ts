@@ -2,7 +2,7 @@ import type { AgentOptions, AgentStatus, PackMode, PackOption } from "./protocol
 
 /** Pure helpers behind the mode / pack / model selector (datatoolkit-issues#114). */
 
-export const MODE_ORDER: PackMode[] = ["api", "cli", "test"];
+const MODE_ORDER: PackMode[] = ["api", "cli", "test"];
 
 const MODE_LABEL: Record<PackMode, string> = {
   api: "API (direct)",
