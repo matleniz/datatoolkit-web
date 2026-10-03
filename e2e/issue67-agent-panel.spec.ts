@@ -106,6 +106,29 @@ test("issue 67: with no agent pack the panel says why and offers Check again", a
   const panel = page.getByRole("complementary", { name: "Agent" });
   await expect(panel).toContainText("No agent");
   await expect(panel).toContainText("no agent pack configured (DTK_AGENT_PACK)");
+  await expect(panel).toContainText("a logged-in claude CLI");
   await expect(panel.getByRole("button", { name: "Check again" })).toBeVisible();
   await expect(panel.getByLabel("Message the agent")).toHaveCount(0);
+});
+
+test("issue 107: pack on but the CLI logged out shows the engine reason only", async ({ page }) => {
+  await page.route("**/api/ui/agent", (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({
+          json: {
+            available: false,
+            pack: "agent-sdk",
+            reason: "claude CLI not logged in: run `claude` and /login, or set ANTHROPIC_API_KEY",
+            running: false,
+            usage: { input_tokens: 0, output_tokens: 0 },
+            max_tokens: null,
+          },
+        })
+      : route.continue(),
+  );
+  await openWorkbench(page, true);
+  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Agent" });
+  await expect(panel).toContainText("claude CLI not logged in");
+  await expect(panel).not.toContainText("Start it with");
 });

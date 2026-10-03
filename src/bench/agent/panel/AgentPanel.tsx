@@ -98,9 +98,14 @@ function ChatPanel({ token, open }: { token: string; open: boolean }) {
     return (
       <PanelShell>
         <Absent title="No agent" onRetry={refresh}>
-          {link.status.reason ?? "The engine runs without an agent pack."} Start it with{" "}
-          <code>DTK_AGENT_PACK=agent-sdk</code> (or <code>dtk-api --agent</code>) and an{" "}
-          <code>ANTHROPIC_API_KEY</code> in its environment.
+          {link.status.reason ?? "The engine runs without an agent pack."}
+          {link.status.pack === null ? (
+            <>
+              {" "}Start it with <code>DTK_AGENT_PACK=agent-sdk</code> (or{" "}
+              <code>dtk-api --agent</code>) and a logged-in <code>claude</code> CLI (or{" "}
+              <code>ANTHROPIC_API_KEY</code>).
+            </>
+          ) : null}
         </Absent>
       </PanelShell>
     );
@@ -141,8 +146,8 @@ function Conversation({ chat, status }: { chat: AgentChat; status: AgentStatus }
       <div className="agent-messages" ref={listRef} aria-label="Agent conversation" aria-live="polite">
         {transcript.items.length === 0 ? (
           <p className="agent-hint">
-            Ask about the data on screen or for a step, e.g. “impute age with the median by
-            status”. Step edits apply at once with Undo; destructive ones wait for your review.
+            Ask about the data on screen or for a step, e.g. “open the distribution of age by
+            cohort” or “impute ledd with the median”. Step edits apply at once with Undo; destructive ones wait for your review.
             {status.provider ? ` What the agent reads is sent to ${status.provider}.` : ""}
           </p>
         ) : null}
