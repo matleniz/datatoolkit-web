@@ -112,8 +112,13 @@ async function post(token: string, path: string, body: unknown): Promise<Respons
   return res;
 }
 
-export async function sendAgentMessage(token: string, session: string, text: string): Promise<void> {
-  await post(token, "/send", { session, text });
+export async function sendAgentMessage(
+  token: string,
+  session: string,
+  text: string,
+  attachments?: string[],
+): Promise<void> {
+  await post(token, "/send", attachments ? { session, text, attachments } : { session, text });
 }
 
 export async function cancelAgent(token: string, session: string): Promise<void> {

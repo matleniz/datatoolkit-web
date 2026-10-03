@@ -23,7 +23,7 @@ import {
 const REVIEW_POLL_MS = 1_500;
 
 /** Same per-tab id as the AgentBridge context, so the agent sees this tab. */
-function uiSession(): string {
+export function uiSession(): string {
   const key = "dtk-ui-session";
   const known = window.sessionStorage.getItem(key);
   if (known) return known;
@@ -40,7 +40,7 @@ type AgentLink =
 export interface AgentChat {
   link: AgentLink;
   transcript: Transcript;
-  send(text: string): void;
+  send(text: string, attachments?: string[]): void;
   stop(): void;
   reply(id: string, allow: boolean): void;
   refresh(): void;
@@ -116,9 +116,9 @@ export function useAgentChat(token: string): AgentChat {
   }, [token, waiting]);
 
   const send = useCallback(
-    (text: string) => {
+    (text: string, attachments?: string[]) => {
       dispatch({ type: "sent", text });
-      sendAgentMessage(token, session, text).catch((err: unknown) => {
+      sendAgentMessage(token, session, text, attachments).catch((err: unknown) => {
         dispatch({ type: "local_error", message: message(err) });
         if (err instanceof AgentHttpError && err.kind === "NoAgent") refresh();
       });
