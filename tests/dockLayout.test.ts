@@ -50,9 +50,9 @@ describe("dockLayout helpers (MAT-234)", () => {
   it("findSpot fills the first row left to right, then wraps below", () => {
     const { cols, w, h } = DOCK_GRID.bottom;
     expect(findSpot({}, cols, w, h)).toEqual({ x: 0, y: 0 });
-    const two = { compare: { x: 0, y: 0, w, h }, corr: { x: 4, y: 0, w, h } };
-    expect(findSpot(two, cols, w, h)).toEqual({ x: 8, y: 0 });
-    const full = { ...two, dist: { x: 8, y: 0, w, h } };
+    const one = { compare: { x: 0, y: 0, w, h } };
+    expect(findSpot(one, cols, w, h)).toEqual({ x: 6, y: 0 });
+    const full = { ...one, corr: { x: 6, y: 0, w, h } };
     expect(findSpot(full, cols, w, h)).toEqual({ x: 0, y: h });
   });
 
@@ -66,8 +66,9 @@ describe("dockLayout helpers (MAT-234)", () => {
 
   it("syncDockLayouts keeps open tools only and places new ones", () => {
     const start = syncDockLayouts(emptyDockLayouts(), ["compare", "corr"]);
-    expect(start.bottom.compare).toEqual({ x: 0, y: 0, w: 4, h: 8 });
-    expect(start.bottom.corr).toEqual({ x: 4, y: 0, w: 4, h: 8 });
+    // Bottom dock: half-width windows, two fill the strip (datatoolkit-issues#101).
+    expect(start.bottom.compare).toEqual({ x: 0, y: 0, w: 6, h: 8 });
+    expect(start.bottom.corr).toEqual({ x: 6, y: 0, w: 6, h: 8 });
     // Right dock stacks full-width windows.
     expect(start.right.compare).toEqual({ x: 0, y: 0, w: 2, h: 6 });
     expect(start.right.corr).toEqual({ x: 0, y: 6, w: 2, h: 6 });
@@ -75,7 +76,19 @@ describe("dockLayout helpers (MAT-234)", () => {
     const next = syncDockLayouts(start, ["corr", "dist"]);
     expect(next.bottom.compare).toBeUndefined();
     expect(next.bottom.corr).toEqual(start.bottom.corr);
-    expect(next.bottom.dist).toEqual({ x: 0, y: 0, w: 4, h: 8 });
+    expect(next.bottom.dist).toEqual({ x: 0, y: 0, w: 6, h: 8 });
+  });
+
+  it("bottom dock opens half-width windows, a third one shares the width (datatoolkit-issues#101)", () => {
+    expect(DOCK_GRID.bottom.w).toBe(6);
+    const one = syncDockLayouts(emptyDockLayouts(), ["dist"]);
+    expect(one.bottom.dist).toEqual({ x: 0, y: 0, w: 6, h: 8 });
+    // A third window does not fit beside two half-width ones: the three share
+    // the 12 columns evenly, all visible without scroll.
+    const three = syncDockLayouts(one, ["dist", "missing", "outliers"]);
+    expect(three.bottom.dist).toEqual({ x: 0, y: 0, w: 4, h: 8 });
+    expect(three.bottom.missing).toEqual({ x: 4, y: 0, w: 4, h: 8 });
+    expect(three.bottom.outliers).toEqual({ x: 8, y: 0, w: 4, h: 8 });
   });
 
   it("applyGridLayout stores moved / resized rects, clamped to the grid", () => {
@@ -143,15 +156,15 @@ describe("dockLayout helpers (MAT-234)", () => {
   });
 
   describe("per-tool default sizes (MAT-252)", () => {
-    it("defaultWindowSize gives Chart a larger default size and keeps standard for others", () => {
+    it("defaultWindowSize gives Chart its own size and the grid default to others", () => {
       expect(TOOL_DEFAULT_SIZES.chart?.bottom).toEqual({ w: 6, h: 8 });
       expect(TOOL_DEFAULT_SIZES.chart?.right).toEqual({ w: 2, h: 6 });
       expect(defaultWindowSize("chart", "bottom")).toEqual({ w: 6, h: 8 });
       expect(defaultWindowSize("chart", "right")).toEqual({ w: 2, h: 6 });
 
-      // Other tools keep standard grid defaults (4x8 in bottom, 2x6 in right).
-      expect(defaultWindowSize("dist", "bottom")).toEqual({ w: 4, h: 8 });
-      expect(defaultWindowSize("compare", "bottom")).toEqual({ w: 4, h: 8 });
+      // Other tools take the grid defaults (6x8 in bottom, 2x6 in right).
+      expect(defaultWindowSize("dist", "bottom")).toEqual({ w: 6, h: 8 });
+      expect(defaultWindowSize("compare", "bottom")).toEqual({ w: 6, h: 8 });
       expect(defaultWindowSize("dist", "right")).toEqual({ w: 2, h: 6 });
     });
 
@@ -160,12 +173,12 @@ describe("dockLayout helpers (MAT-234)", () => {
       const one = syncDockLayouts(emptyDockLayouts(), ["chart"]);
       expect(one.bottom.chart).toEqual({ x: 0, y: 0, w: 6, h: 8 });
 
-      // 2 windows: Chart (w6) and dist (w4) fit side by side on row 0 (6+4=10 <= 12).
+      // 2 windows: Chart (w6) and dist (w6) fill row 0 side by side (6+6=12).
       const two = syncDockLayouts(emptyDockLayouts(), ["chart", "dist"]);
       expect(two.bottom.chart).toEqual({ x: 0, y: 0, w: 6, h: 8 });
-      expect(two.bottom.dist).toEqual({ x: 6, y: 0, w: 4, h: 8 });
+      expect(two.bottom.dist).toEqual({ x: 6, y: 0, w: 6, h: 8 });
 
-      // 3 windows: 3rd window cannot fit at >=4 cols in remaining 2 cols, so windows
+      // 3 windows: 3rd window cannot fit at >=4 cols in the full row, so windows
       // redistribute evenly to 4 cols each (full height, all visible without scroll).
       const three = syncDockLayouts(emptyDockLayouts(), ["chart", "dist", "missing"]);
       expect(three.bottom.chart).toEqual({ x: 0, y: 0, w: 4, h: 8 });
@@ -180,14 +193,14 @@ describe("dockLayout helpers (MAT-234)", () => {
       expect(four.bottom.corr).toEqual({ x: 9, y: 0, w: 3, h: 8 });
     });
 
-    it("syncDockLayouts places Chart 3rd by reducing to visible free space (4 cols)", () => {
-      // Chart opened after dist: dist takes 4 cols (0..3), chart takes 6 cols (4..9).
+    it("syncDockLayouts places Chart 3rd by sharing the width evenly (4 cols each)", () => {
+      // Chart opened after dist: dist takes 6 cols (0..5), chart takes 6 cols (6..11).
       const distThenChart = syncDockLayouts(emptyDockLayouts(), ["dist", "chart"]);
-      expect(distThenChart.bottom.dist).toEqual({ x: 0, y: 0, w: 4, h: 8 });
-      expect(distThenChart.bottom.chart).toEqual({ x: 4, y: 0, w: 6, h: 8 });
+      expect(distThenChart.bottom.dist).toEqual({ x: 0, y: 0, w: 6, h: 8 });
+      expect(distThenChart.bottom.chart).toEqual({ x: 6, y: 0, w: 6, h: 8 });
 
-      // Two standard tools take 8 cols (0..7); Chart reduces from w=6 to visible
-      // free space (w=4) so it stays completely visible on row 0 without scroll.
+      // Two standard tools take all 12 cols; no visible slot of >= 4 cols is
+      // left, so the three windows share the row (4 cols each), no scroll.
       const twoThenChart = syncDockLayouts(emptyDockLayouts(), ["dist", "missing", "chart"]);
       expect(twoThenChart.bottom.dist).toEqual({ x: 0, y: 0, w: 4, h: 8 });
       expect(twoThenChart.bottom.missing).toEqual({ x: 4, y: 0, w: 4, h: 8 });
@@ -195,7 +208,7 @@ describe("dockLayout helpers (MAT-234)", () => {
     });
 
     it("syncDockLayouts places Chart 4th by rearranging all 4 windows into 3 cols each", () => {
-      // Three standard tools take all 12 cols (4x3); opening Chart 4th redistributes
+      // Three standard tools share all 12 cols (4x3); opening Chart 4th redistributes
       // all 4 windows into 3 cols each (3x4 = 12 cols), visible on row 0 without scroll.
       const fourTools = syncDockLayouts(emptyDockLayouts(), [
         "dist",
@@ -326,6 +339,6 @@ describe("dock layout reducer (MAT-234)", () => {
     const t = loaded(emptyWorkspace("demo"));
     expect(t.dock.tools).toEqual(["compare"]);
     expect(t.dock.pos).toBe("bottom");
-    expect(t.dock.layouts.bottom.compare).toEqual({ x: 0, y: 0, w: 4, h: 8 });
+    expect(t.dock.layouts.bottom.compare).toEqual({ x: 0, y: 0, w: 6, h: 8 });
   });
 });

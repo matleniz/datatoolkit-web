@@ -21,7 +21,7 @@ async function dockLayout(page: Page) {
   return page.evaluate(() => window.__DTK_STATE__!().dock.layouts.bottom);
 }
 
-test("MAT-252: Chart opens with a larger default size (~half dock width, full height)", async ({
+test("MAT-252: Chart opens at half the dock width and full height", async ({
   page,
 }) => {
   test.setTimeout(240_000);
@@ -31,8 +31,7 @@ test("MAT-252: Chart opens with a larger default size (~half dock width, full he
   await openWorkspaceBench(page, titanicWorkspace(), "Age");
 
   // Open Chart and a standard default window (Distribution) side by side.
-  // Chart gets w=6 (half the 12-col dock), Dist gets w=4 (1/3 dock width).
-  // Both fit on row 0 (6 + 4 = 10 <= 12).
+  // Both get w=6 (half the 12-col dock, datatoolkit-issues#101) and fill row 0.
   await page.evaluate(() => {
     const d = window.__DTK_DISPATCH__!;
     d({ type: "PICK_COL", name: "Age" });
@@ -54,20 +53,18 @@ test("MAT-252: Chart opens with a larger default size (~half dock width, full he
     timeout: 60_000,
   });
 
-  // Check dock grid layout units:
-  // Chart default is ~half dock width (w=6) and full height (h=8).
-  // Standard tool (Distribution) keeps default w=4, h=8.
-  // Both fit side by side on row 0 (6 + 4 = 10 <= 12).
+  // Check dock grid layout units: half dock width (w=6), full height (h=8).
   const layout = await dockLayout(page);
   expect(layout.chart).toEqual({ x: 0, y: 0, w: 6, h: 8 });
-  expect(layout.dist).toEqual({ x: 6, y: 0, w: 4, h: 8 });
+  expect(layout.dist).toEqual({ x: 6, y: 0, w: 6, h: 8 });
 
-  // Verify pixel dimensions: Chart width is ~1.5x of standard 4-col windows
-  // (~half dock width vs 1/3 dock width, giving ~2x visual figure area).
+  // Verify pixel dimensions: each window takes about half the dock width.
+  const dockB = await box(dock.locator(".dock-wins"));
   const chartB = await box(chart);
   const distB = await box(dist);
 
-  expect(chartB.width).toBeGreaterThan(distB.width * 1.4);
+  expect(Math.abs(chartB.width - distB.width)).toBeLessThan(2);
+  expect(chartB.width).toBeGreaterThan(dockB.width * 0.45);
 
   // Verify the Plotly figure is fully visible and fills the Chart window comfortably.
   const figB = await box(chartPlot);
