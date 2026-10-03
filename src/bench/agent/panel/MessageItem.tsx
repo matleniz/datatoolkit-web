@@ -1,31 +1,22 @@
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 
 import { useAppDispatch, useAppState } from "../../../state/AppStore";
-import { inlineCode, splitBlocks } from "./blocks";
 import { chipJump, chipLabel, chipTarget } from "./chips";
+import { renderMarkdown } from "./markdown";
 import type { TranscriptItem } from "./transcript";
 
 /** How long a chip click highlights what it points at (same as AgentBridge). */
 const TOUCH_MS = 2_000;
 
-function Paragraphs({ text }: { text: string }) {
-  return (
-    <>
-      {splitBlocks(text).map((b, i) =>
-        b.kind === "code" ? (
-          <pre key={i} className="agent-code" data-lang={b.lang || undefined}>
-            <code>{b.code}</code>
-          </pre>
-        ) : (
-          <p key={i}>
-            {inlineCode(b.text).map((part, j) =>
-              typeof part === "string" ? part : <code key={j}>{part.code}</code>,
-            )}
-          </p>
-        ),
-      )}
-    </>
-  );
+/** User text stays plain (no Markdown); `pre-wrap` keeps its line breaks. */
+function PlainText({ text }: { text: string }) {
+  return <p>{text}</p>;
+}
+
+/** The sanitised output of `renderMarkdown` (see markdown.ts). */
+function Markdown({ text }: { text: string }) {
+  const html = useMemo(() => renderMarkdown(text), [text]);
+  return <div className="agent-md" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 const STATUS_TEXT = {
@@ -119,13 +110,13 @@ export function MessageItem({
     case "user":
       return (
         <div className="agent-msg user" data-role="user">
-          <Paragraphs text={item.text} />
+          <PlainText text={item.text} />
         </div>
       );
     case "assistant":
       return (
         <div className="agent-msg assistant" data-role="assistant">
-          <Paragraphs text={item.text} />
+          <Markdown text={item.text} />
         </div>
       );
     case "tool":
