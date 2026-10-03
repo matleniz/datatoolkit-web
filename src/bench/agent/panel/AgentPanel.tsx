@@ -10,7 +10,7 @@ import { MessageItem } from "./MessageItem";
 import { setAgentPanelOpen, useAgentPanelOpen } from "./panelOpen";
 import type { AgentStatus } from "./protocol";
 import { formatTokens, formatUsage } from "./transcript";
-import { useAgentChat, type AgentChat } from "./useAgentChat";
+import { uiSession, useAgentChat, type AgentChat } from "./useAgentChat";
 import "./AgentPanel.css";
 
 /**
@@ -117,15 +117,16 @@ function ChatPanel({ token, open }: { token: string; open: boolean }) {
   }
   return (
     <PanelShell status={link.status}>
-      <Conversation chat={chat} status={link.status} />
+      <Conversation chat={chat} status={link.status} token={token} />
     </PanelShell>
   );
 }
 
-function Conversation({ chat, status }: { chat: AgentChat; status: AgentStatus }) {
+function Conversation({ chat, status, token }: { chat: AgentChat; status: AgentStatus; token: string }) {
   const { transcript, send, stop, reply, clear } = chat;
   const [draft, setDraft] = useState("");
-  const attachments = useAttachments();
+  const [session] = useState(uiSession);
+  const attachments = useAttachments(token, session);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

@@ -13,11 +13,11 @@ import { toWire } from "./attachmentContract";
 const add = (id: string, name = `${id}.csv`) => ({ type: "add", id, name, size: 10 }) as const;
 
 describe("attachmentReducer", () => {
-  it("adds as uploading, then ready with the server path", () => {
+  it("adds as uploading, then ready with the engine id", () => {
     let s = attachmentReducer(NO_ATTACHMENTS, add("a"));
     expect(s[0]).toMatchObject({ status: "uploading", name: "a.csv" });
-    s = attachmentReducer(s, { type: "ready", id: "a", path: "/up/a.csv" });
-    expect(s[0]).toMatchObject({ status: "ready", path: "/up/a.csv" });
+    s = attachmentReducer(s, { type: "ready", id: "a", serverId: "a1", kind: "table" });
+    expect(s[0]).toMatchObject({ status: "ready", serverId: "a1", kind: "table" });
   });
 
   it("marks a failure and removes chips", () => {
@@ -46,9 +46,9 @@ describe("toWire", () => {
   it("lists ready attachments only, undefined when none", () => {
     let s = attachmentReducer(NO_ATTACHMENTS, add("a"));
     expect(toWire(s)).toBeUndefined();
-    s = attachmentReducer(s, { type: "ready", id: "a", path: "/up/a.csv" });
+    s = attachmentReducer(s, { type: "ready", id: "a", serverId: "a1", kind: "table" });
     s = attachmentReducer(s, add("b"));
-    expect(toWire(s)).toEqual([{ name: "a.csv", path: "/up/a.csv" }]);
+    expect(toWire(s)).toEqual(["a1"]);
   });
 });
 

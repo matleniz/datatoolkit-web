@@ -10,17 +10,27 @@ import { fixturesDir, openWorkbench } from "./helpers";
 const API = `http://127.0.0.1:${process.env.DTK_E2E_API_PORT ?? "8766"}/api/ui`;
 const AUTH = { Authorization: `Bearer ${process.env.DTK_UI_TOKEN}` };
 
+let engineHasAttachments = true;
+
 test.beforeEach(async ({ request }) => {
   const res = await request.get(`${API}/agent`, { headers: AUTH });
   test.skip(res.status() === 404, "engine without the agent chat routes (#67)");
+  const att = await request.get(`${API}/agent/attachments?session=probe`, { headers: AUTH });
+  // Until the engine ships #121 the registration routes are mocked in the test.
+  engineHasAttachments = att.status() !== 404;
 });
 
 test("issue 116: attach a CSV, chip ready, send carries it, sources unchanged", async ({ page }) => {
   test.setTimeout(120_000);
+  if (!engineHasAttachments) {
+    await page.route("**/api/ui/agent/attachments**", (route) =>
+      route.fulfill({ json: { id: "a1", name: "customers_extra.csv", kind: "table" } }),
+    );
+  }
   await openWorkbench(page, true);
-  const sourcesOf = () =>
-    page.evaluate(() => JSON.stringify(window.__DTK_STATE__?.()?.workspace?.sources ?? null));
-  const before = await sourcesOf();
+  const datasetsOf = () =>
+    page.evaluate(() => JSON.stringify(window.__DTK_STATE__?.()?.workspace?.datasets ?? null));
+  const before = await datasetsOf();
 
   await page.getByRole("button", { name: "Agent", exact: true }).click();
   const panel = page.getByRole("complementary", { name: "Agent" });
@@ -35,12 +45,13 @@ test("issue 116: attach a CSV, chip ready, send carries it, sources unchanged", 
   await panel.getByLabel("Message the agent").fill("please add a step");
   await panel.getByRole("button", { name: "Send" }).click();
   const body = (await sent).postDataJSON() as {
-    attachments?: { name: string; path: string }[];
+    attachments?: string[];
   };
   expect(body.attachments).toHaveLength(1);
-  expect(body.attachments?.[0].name).toBe("customers_extra.csv");
+  expect(typeof body.attachments?.[0]).toBe("string");
   await expect(panel.locator("[data-attachment]")).toHaveCount(0);
 
   await expect(panel.getByRole("button", { name: "Send" })).toBeVisible({ timeout: 30_000 });
-  expect(await sourcesOf()).toBe(before);
+  expect(await datasetsOf()).toBe(before);
+  expect(before).not.toBe("null");
 });

@@ -11,14 +11,16 @@ export interface Attachment {
   name: string;
   size: number;
   status: AttachmentStatus;
-  /** Server-side path returned by the upload route (ready only). */
-  path?: string;
+  /** Engine attachment id (ready only): what `/ui/agent/send` takes. */
+  serverId?: string;
+  /** `table` | `text` | `other`, as classified by the engine. */
+  kind?: string;
   error?: string;
 }
 
 export type AttachmentAction =
   | { type: "add"; id: string; name: string; size: number }
-  | { type: "ready"; id: string; path: string }
+  | { type: "ready"; id: string; serverId: string; kind?: string }
   | { type: "failed"; id: string; error: string }
   | { type: "remove"; id: string }
   | { type: "reset" };
@@ -31,7 +33,7 @@ export function attachmentReducer(state: Attachment[], action: AttachmentAction)
       return [...state, { id: action.id, name: action.name, size: action.size, status: "uploading" }];
     case "ready":
       return state.map((a) =>
-        a.id === action.id ? { ...a, status: "ready", path: action.path, error: undefined } : a,
+        a.id === action.id ? { ...a, status: "ready", serverId: action.serverId, kind: action.kind, error: undefined } : a,
       );
     case "failed":
       return state.map((a) =>

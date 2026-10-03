@@ -1,5 +1,4 @@
 import { uiAuthHeaders } from "../../../api/client";
-import type { WireAttachment } from "../attachments/attachmentContract";
 import { parseAgentStatus, type AgentStatus } from "./protocol";
 
 /**
@@ -80,7 +79,7 @@ export async function sendAgentMessage(
   token: string,
   session: string,
   text: string,
-  attachments?: WireAttachment[],
+  attachments?: string[],
 ): Promise<void> {
   await post(token, "/send", attachments ? { session, text, attachments } : { session, text });
 }
