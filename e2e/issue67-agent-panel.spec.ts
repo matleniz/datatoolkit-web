@@ -160,7 +160,7 @@ test("issue 104: Dismiss marks the chip dismissed, status rejected", async ({ pa
 });
 
 test("issue 67: with no agent pack the panel says why and offers Check again", async ({ page }) => {
-  await page.route("**/api/ui/agent", (route) =>
+  await page.route(/\/api\/ui\/agent(\?.*)?$/, (route) =>
     route.request().method() === "GET"
       ? route.fulfill({
           json: {
@@ -185,7 +185,7 @@ test("issue 67: with no agent pack the panel says why and offers Check again", a
 });
 
 test("issue 107: pack on but the CLI logged out shows the engine reason only", async ({ page }) => {
-  await page.route("**/api/ui/agent", (route) =>
+  await page.route(/\/api\/ui\/agent(\?.*)?$/, (route) =>
     route.request().method() === "GET"
       ? route.fulfill({
           json: {
@@ -204,4 +204,72 @@ test("issue 107: pack on but the CLI logged out shows the engine reason only", a
   const panel = page.getByRole("complementary", { name: "Agent" });
   await expect(panel).toContainText("claude CLI not logged in");
   await expect(panel).not.toContainText("Start it with");
+});
+
+/** #114: the selector reads GET /api/ui/agent/options and POSTs the choice (mocked until the engine stub serves it). */
+test("issue 114: mode / pack / model selector, unavailable packs disabled, choice posted", async ({ page }) => {
+  const status = (pack: string, title: string, mode: string, model: string | null) => ({
+    available: true, pack, title, mode, panel: "chat", provider: "test provider", model,
+    running: false, usage: { input_tokens: 0, output_tokens: 0 }, max_tokens: null,
+  });
+  let current = status("agent-sdk", "Claude (Agent SDK)", "cli", null);
+  const posted: unknown[] = [];
+  await page.route(/\/api\/ui\/agent(\?.*)?$/, (route) => route.fulfill({ json: current }));
+  await page.route("**/api/ui/agent/options*", (route) =>
+    route.fulfill({
+      json: {
+        default: { pack: "agent-sdk", model: null },
+        packs: [
+          { id: "agent-sdk", title: "Claude (Agent SDK)", mode: "cli", panel: "chat", available: true, default_model: null,
+            models: [{ id: "sonnet", label: "Sonnet 5.5" }, { id: "opus", label: "Opus 5.5" }], model_free_text: false },
+          { id: "api-anthropic", title: "Anthropic API", mode: "api", panel: "chat", available: true, default_model: null,
+            models: [{ id: "claude-sonnet-5-5", label: "claude-sonnet-5-5" }], model_free_text: false },
+          { id: "api-openai", title: "OpenAI-compatible", mode: "api", panel: "chat", available: false,
+            reason: "DTK_OPENAI_BASE_URL is not set", models: [], model_free_text: true },
+          { id: "claude-code", title: "Claude Code", mode: "cli", panel: "terminal", available: false,
+            reason: "terminal off: set DTK_AGENT_TERMINAL=1", models: [], model_free_text: false },
+        ],
+      },
+    }),
+  );
+  await page.route("**/api/ui/agent/config", (route) => {
+    const body = route.request().postDataJSON() as { pack: string; model: string | null };
+    posted.push(body);
+    current = status(body.pack, body.pack === "api-anthropic" ? "Anthropic API" : "Claude (Agent SDK)",
+      body.pack === "api-anthropic" ? "api" : "cli", body.model);
+    return route.fulfill({ json: current });
+  });
+
+  await openWorkbench(page, true);
+  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Agent" });
+  const mode = panel.getByLabel("Agent mode", { exact: true });
+  const pack = panel.getByLabel("Agent pack", { exact: true });
+  const model = panel.getByLabel("Agent model", { exact: true });
+  await expect(mode).toHaveValue("cli");
+  await expect(pack).toHaveValue("agent-sdk");
+  await expect(panel.locator("[data-agent-who]")).toContainText("Claude (Agent SDK)");
+
+  // Unavailable / terminal packs are listed disabled, with their reason.
+  await expect(pack.locator('option[value="claude-code"]')).toHaveAttribute("disabled", "");
+  await expect(pack.locator('option[value="claude-code"]')).toContainText("weaker guarantee");
+
+  await model.selectOption("opus");
+  await expect.poll(() => posted.at(-1)).toEqual(expect.objectContaining({ pack: "agent-sdk", model: "opus" }));
+  await expect(panel.locator("[data-agent-who]")).toContainText("opus");
+
+  await mode.selectOption("api");
+  await expect.poll(() => posted.at(-1)).toEqual(expect.objectContaining({ pack: "api-anthropic", model: null }));
+  await expect(pack).toHaveValue("api-anthropic");
+  await expect(pack.locator('option[value="api-openai"]')).toHaveAttribute("disabled", "");
+  await expect(pack.locator('option[value="api-openai"]')).toContainText("DTK_OPENAI_BASE_URL is not set");
+});
+
+test("issue 114: an engine without the options route keeps no selector", async ({ page }) => {
+  await page.route("**/api/ui/agent/options*", (route) => route.fulfill({ status: 404, json: { detail: "Not Found" } }));
+  await openWorkbench(page, true);
+  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Agent" });
+  await expect(panel.getByLabel("Message the agent")).toBeVisible({ timeout: 15_000 });
+  await expect(panel.locator("[data-agent-picker]")).toHaveCount(0);
 });

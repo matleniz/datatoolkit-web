@@ -43,8 +43,43 @@ export type AgentEvent =
       /** Cumulative per session, when the engine keeps it. */
       total?: UsageTotals;
     }
+  /** The session's pack / model changed (`POST /api/ui/agent/config`). */
+  | { type: "config"; pack: string | null; model: string | null; reset: boolean }
   | { type: "done"; stopReason?: string }
   | { type: "error"; message: string; code?: string };
+
+export type PackMode = "api" | "cli" | "test";
+export type PackPanel = "chat" | "terminal";
+
+export interface ModelOption {
+  id: string;
+  label: string;
+  description?: string;
+  /** What an alias resolves to (`sonnet` -> `claude-sonnet-5-5`). */
+  resolved?: string;
+}
+
+/** One entry of `GET /api/ui/agent/options`. */
+export interface PackOption {
+  id: string;
+  title: string;
+  mode: PackMode;
+  panel: PackPanel;
+  available: boolean;
+  /** Why unavailable (missing key, CLI not logged in, extra not installed...). */
+  reason?: string;
+  provider?: string;
+  defaultModel: string | null;
+  models: ModelOption[];
+  /** No model list from the provider: the model is typed in. */
+  modelFreeText: boolean;
+  modelsError?: string;
+}
+
+export interface AgentOptions {
+  default: { pack: string | null; model: string | null };
+  packs: PackOption[];
+}
 
 /** `GET /api/ui/agent`: which pack runs, or why there is none. */
 export interface AgentStatus {
@@ -52,6 +87,10 @@ export interface AgentStatus {
   pack: string | null;
   provider?: string;
   model?: string;
+  /** Display name, how the pack runs and which panel it opens (engine v2). */
+  title?: string;
+  mode?: PackMode;
+  panel?: PackPanel;
   /** Why no agent (missing key, extra not installed, ...). */
   reason?: string;
   running: boolean;
@@ -138,6 +177,13 @@ export function parseAgentEvent(raw: unknown): AgentEvent | null {
       return parsePermission(o);
     case "usage":
       return parseUsage(o);
+    case "config":
+      return {
+        type: "config",
+        pack: str(o.pack) ?? null,
+        model: str(o.model) ?? null,
+        reset: o.reset === true,
+      };
     case "done":
       return { type: "done", stopReason: str(o.stop_reason) };
     case "error":
@@ -158,9 +204,74 @@ export function parseAgentStatus(raw: unknown): AgentStatus {
     pack: str(raw.pack) ?? null,
     provider: str(raw.provider),
     model: str(raw.model),
+    title: str(raw.title),
+    mode: packMode(raw.mode),
+    panel: packPanel(raw.panel),
     reason: str(raw.reason),
     running: raw.running === true,
     usage,
     maxTokens: typeof raw.max_tokens === "number" ? raw.max_tokens : undefined,
   };
+}
+
+function packMode(v: unknown): PackMode | undefined {
+  return v === "api" || v === "cli" || v === "test" ? v : undefined;
+}
+
+function packPanel(v: unknown): PackPanel | undefined {
+  return v === "chat" || v === "terminal" ? v : undefined;
+}
+
+function parseModel(raw: unknown): ModelOption | null {
+  if (!isObj(raw)) return null;
+  const id = str(raw.id);
+  if (!id) return null;
+  return {
+    id,
+    label: str(raw.label) ?? id,
+    description: str(raw.description),
+    resolved: str(raw.resolved),
+  };
+}
+
+function parsePack(raw: unknown): PackOption | null {
+  if (!isObj(raw)) return null;
+  const id = str(raw.id);
+  const mode = packMode(raw.mode);
+  const panel = packPanel(raw.panel);
+  if (!id || !mode || !panel) return null;
+  const models = Array.isArray(raw.models)
+    ? raw.models.flatMap((m) => parseModel(m) ?? [])
+    : [];
+  return {
+    id,
+    title: str(raw.title) ?? id,
+    mode,
+    panel,
+    available: raw.available === true,
+    reason: str(raw.reason),
+    provider: str(raw.provider),
+    defaultModel: str(raw.default_model) ?? null,
+    models,
+    modelFreeText: raw.model_free_text === true,
+    modelsError: str(raw.models_error),
+  };
+}
+
+/**
+ * `GET /api/ui/agent/options` body -> options. Unknown / malformed packs and
+ * models are dropped (a newer engine may send more); a body that is not an
+ * options object reads as "no options" (null: no selector).
+ */
+export function parseAgentOptions(raw: unknown): AgentOptions | null {
+  if (!isObj(raw) || !Array.isArray(raw.packs)) return null;
+  const def = isObj(raw.default) ? raw.default : {};
+  const seen = new Set<string>();
+  const packs = raw.packs.flatMap((p) => {
+    const pack = parsePack(p);
+    if (!pack || seen.has(pack.id)) return [];
+    seen.add(pack.id);
+    return [pack];
+  });
+  return { default: { pack: str(def.pack) ?? null, model: str(def.model) ?? null }, packs };
 }
