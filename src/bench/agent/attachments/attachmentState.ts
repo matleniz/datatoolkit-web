@@ -46,6 +46,12 @@ export function attachmentReducer(state: Attachment[], action: AttachmentAction)
   }
 }
 
+/** Session attachments not already shown as a chip of the message being written. */
+export function earlierAttachments<T extends { id: string }>(attached: T[], chips: Attachment[]): T[] {
+  const shown = new Set(chips.flatMap((a) => (a.serverId ? [a.serverId] : [])));
+  return attached.filter((a) => !shown.has(a.id));
+}
+
 export const readyAttachments = (items: Attachment[]): Attachment[] =>
   items.filter((a) => a.status === "ready");
 

@@ -182,3 +182,51 @@ describe("agent panel tool chips (#67)", () => {
     expect(chipJump({ kind: "steps", ops: [{ remove: { index: 0 } }] }, [])).toBeNull();
   });
 });
+
+describe("session attachments (#129)", () => {
+  const added = (id: string, name: string) =>
+    ev({ type: "attachment_added", turn: null, attachment: { id, name, kind: "table", path: "/x", columns: ["a"] } });
+
+  it("parses attachment events and the user_message echo, drops malformed ones", () => {
+    expect(parseAgentEvent({ type: "attachment_added", attachment: { id: "a1", name: "x.csv", kind: "table" } }))
+      .toEqual({ type: "attachment_added", attachment: { id: "a1", name: "x.csv", kind: "table" } });
+    expect(parseAgentEvent({ type: "attachment_added", attachment: { name: "x.csv" } })).toBeNull();
+    expect(parseAgentEvent({ type: "attachment_removed", id: "a1" })).toEqual({ type: "attachment_removed", id: "a1" });
+    expect(parseAgentEvent({ type: "attachment_removed" })).toBeNull();
+    expect(
+      parseAgentEvent({ type: "user_message", text: "hi", attachments: [{ id: "a1", name: "x.csv", kind: "table" }, 3] }),
+    ).toEqual({ type: "user_message", text: "hi", attachments: [{ id: "a1", name: "x.csv", kind: "table" }] });
+    expect(parseAgentEvent({ type: "user_message", text: "hi" })).toEqual({ type: "user_message", text: "hi" });
+  });
+
+  it("folds the session list: add, re-add, remove, seed", () => {
+    let t = run([added("a1", "x.csv"), added("a2", "y.txt"), added("a1", "x2.csv")]);
+    expect(t.attached.map((a) => [a.id, a.name])).toEqual([["a1", "x2.csv"], ["a2", "y.txt"]]);
+    t = run([ev({ type: "attachment_removed", id: "a1" })], t);
+    expect(t.attached.map((a) => a.id)).toEqual(["a2"]);
+    t = run([{ type: "attachments_seed", attached: [{ id: "a7", name: "z.csv" }] }], t);
+    expect(t.attached).toEqual([{ id: "a7", name: "z.csv" }]);
+  });
+
+  it("keeps the session list across Clear and a pack reset", () => {
+    const t = run([
+      added("a1", "x.csv"),
+      { type: "clear" },
+      ev({ type: "config", pack: "stub", model: null, reset: true }),
+    ]);
+    expect(t.items).toEqual([]);
+    expect(t.attached.map((a) => a.id)).toEqual(["a1"]);
+  });
+
+  it("records which files went with a message (local copy adopted)", () => {
+    const t = run([
+      { type: "sent", text: "look" },
+      ev({ type: "user_message", text: "look", attachments: [{ id: "a1", name: "x.csv", kind: "table" }] }),
+      ev({ type: "user_message", text: "again" }),
+    ]);
+    expect(t.items).toHaveLength(2);
+    expect(t.items[0]).toMatchObject({ kind: "user", local: false, files: ["x.csv"] });
+    expect(t.items[1]).toMatchObject({ kind: "user", text: "again" });
+    expect((t.items[1] as { files?: string[] }).files).toBeUndefined();
+  });
+});

@@ -1,4 +1,5 @@
 import { uiAuthHeaders } from "../../../api/client";
+import { parseSessionAttachment, type SessionAttachment } from "../panel/protocol";
 import type { Attachment } from "./attachmentState";
 import { readyAttachments } from "./attachmentState";
 
@@ -43,6 +44,14 @@ export async function registerAttachment(
   const body = (await res.json()) as { id?: unknown; kind?: unknown };
   if (typeof body.id !== "string") throw new Error("The engine returned no attachment id.");
   return { id: body.id, kind: typeof body.kind === "string" ? body.kind : undefined };
+}
+
+/** `GET /ui/agent/attachments?session=`: every file attached to the session's chat. */
+export async function listAttachments(token: string, session: string): Promise<SessionAttachment[]> {
+  const res = await fetch(url(`?session=${encodeURIComponent(session)}`), { headers: uiAuthHeaders(token) });
+  if (!res.ok) throw await failure(res, "GET /ui/agent/attachments");
+  const body = (await res.json()) as unknown;
+  return Array.isArray(body) ? body.flatMap((a) => parseSessionAttachment(a) ?? []) : [];
 }
 
 /** `DELETE /ui/agent/attachments/<id>`: detach; the uploaded file stays on disk. */

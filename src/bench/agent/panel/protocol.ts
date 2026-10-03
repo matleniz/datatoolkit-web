@@ -13,8 +13,15 @@ export interface UsageTotals {
   output: number;
 }
 
+/** A file attached to the session's chat (`{id, name, kind}`; names are untrusted text). */
+export interface SessionAttachment {
+  id: string;
+  name: string;
+  kind?: string;
+}
+
 export type AgentEvent =
-  | { type: "user_message"; text: string }
+  | { type: "user_message"; text: string; attachments?: SessionAttachment[] }
   | { type: "assistant_delta"; text: string }
   | { type: "tool_call"; id: string; name: string; input: Record<string, unknown> }
   | {
@@ -45,6 +52,9 @@ export type AgentEvent =
     }
   /** The session's pack / model changed (`POST /api/ui/agent/config`). */
   | { type: "config"; pack: string | null; model: string | null; reset: boolean }
+  /** The session's attachment set changed (datatoolkit-issues#121, #129). */
+  | { type: "attachment_added"; attachment: SessionAttachment }
+  | { type: "attachment_removed"; id: string }
   | { type: "done"; stopReason?: string }
   | { type: "error"; message: string; code?: string };
 
@@ -143,15 +153,43 @@ function parsePermission(o: Obj): AgentEvent | null {
   };
 }
 
+/** `{id, name, kind}` of an attachment, or null when malformed. */
+export function parseSessionAttachment(raw: unknown): SessionAttachment | null {
+  if (!isObj(raw)) return null;
+  const id = str(raw.id);
+  if (!id) return null;
+  return { id, name: str(raw.name) ?? id, kind: str(raw.kind) };
+}
+
+function parseUserMessage(o: Obj): AgentEvent | null {
+  const text = str(o.text);
+  if (text === undefined) return null;
+  const attachments = Array.isArray(o.attachments)
+    ? o.attachments.flatMap((a) => parseSessionAttachment(a) ?? [])
+    : [];
+  return attachments.length
+    ? { type: "user_message", text, attachments }
+    : { type: "user_message", text };
+}
+
 /** One SSE `agent` payload (already JSON-decoded) -> event, or null to drop. */
 export function parseAgentEvent(raw: unknown): AgentEvent | null {
   if (!isObj(raw)) return null;
   const o = raw;
   switch (o.type) {
     case "user_message":
+      return parseUserMessage(o);
     case "assistant_delta": {
       const text = str(o.text);
       return text === undefined ? null : { type: o.type, text };
+    }
+    case "attachment_added": {
+      const attachment = parseSessionAttachment(o.attachment);
+      return attachment ? { type: "attachment_added", attachment } : null;
+    }
+    case "attachment_removed": {
+      const id = str(o.id);
+      return id ? { type: "attachment_removed", id } : null;
     }
     case "tool_call": {
       const id = str(o.id);

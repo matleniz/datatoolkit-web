@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 
 import { uiToken } from "../../../api/client";
 import { toWire } from "../attachments/attachmentContract";
-import { canSend } from "../attachments/attachmentState";
-import { AttachmentBar } from "../attachments/AttachmentBar";
+import { canSend, earlierAttachments } from "../attachments/attachmentState";
+import { AttachmentBar, SessionAttachments } from "../attachments/AttachmentBar";
 import { dropProps } from "../attachments/dropProps";
 import { useAttachments } from "../attachments/useAttachments";
 import { AgentPicker } from "./AgentPicker";
@@ -140,7 +140,7 @@ function ChatPanel({ token, open }: { token: string; open: boolean }) {
 }
 
 function Conversation({ chat, status, token }: { chat: AgentChat; status: AgentStatus; token: string }) {
-  const { transcript, send, stop, reply, clear } = chat;
+  const { transcript, send, stop, reply, clear, detach } = chat;
   const [draft, setDraft] = useState("");
   const [session] = useState(uiSession);
   const attachments = useAttachments(token, session);
@@ -190,6 +190,11 @@ function Conversation({ chat, status, token }: { chat: AgentChat; status: AgentS
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKey}
+        />
+        <SessionAttachments
+          attached={earlierAttachments(transcript.attached, attachments.items)}
+          onDetach={detach}
+          disabled={transcript.running}
         />
         <AttachmentBar attachments={attachments} disabled={transcript.running} />
         <div className="agent-foot-row">

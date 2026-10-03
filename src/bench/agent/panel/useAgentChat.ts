@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useState } from "react";
 
 import { uiEventsUrl } from "../../../api/client";
+import { detachAttachment, listAttachments } from "../attachments/attachmentContract";
 import {
   AgentHttpError,
   cancelAgent,
@@ -45,6 +46,8 @@ export interface AgentChat {
   reply(id: string, allow: boolean): void;
   refresh(): void;
   clear(): void;
+  /** Detach one of the session's attachments (`transcript.attached`). */
+  detach(id: string): void;
   /** Pick this session's pack / model; the error text is in `configError`. */
   configure(pack: string, model: string | null): void;
   configError: string | null;
@@ -79,6 +82,10 @@ export function useAgentChat(token: string): AgentChat {
       .catch((err: unknown) => {
         if (live) setLink({ state: "unreachable", message: message(err) });
       });
+    // Attachments outlive the panel and earlier turns: start from the engine's list.
+    listAttachments(token, session)
+      .then((attached) => live && dispatch({ type: "attachments_seed", attached }))
+      .catch(() => undefined);
     return () => {
       live = false;
     };
@@ -156,5 +163,15 @@ export function useAgentChat(token: string): AgentChat {
 
   const clear = useCallback(() => dispatch({ type: "clear" }), []);
 
-  return { link, transcript, send, stop, reply, refresh, clear, configure, configError };
+  const detach = useCallback(
+    (id: string) => {
+      detachAttachment(token, session, id)
+        // The engine also emits `attachment_removed`; this covers a missed event.
+        .then(() => dispatch({ type: "event", event: { type: "attachment_removed", id } }))
+        .catch((err: unknown) => dispatch({ type: "local_error", message: message(err) }));
+    },
+    [token, session],
+  );
+
+  return { link, transcript, send, stop, reply, refresh, clear, detach, configure, configError };
 }
