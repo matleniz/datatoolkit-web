@@ -1,12 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import fileInspectParkinson from "./fixtures/file_inspect_parkinson.json";
 import type { Result } from "../src/api/types";
-import { E2E_FIXTURES_DIR } from "../src/e2eFixtures";
 import {
   buildWorkspaceJson,
-  defaultChurnSources,
   getCommonColumns,
   guessFileRole,
   mapFileInspect,
@@ -15,22 +11,6 @@ import {
   yLabelValueColumn,
   type SourceFileItem,
 } from "../src/screens/sources/sourcesLogic";
-
-describe("e2e fixtures path (MAT-190)", () => {
-  it("resolves to this checkout's e2e/fixtures, not a deleted worktree", () => {
-    expect(E2E_FIXTURES_DIR).toMatch(/e2e[/\\]fixtures$/);
-    expect(E2E_FIXTURES_DIR).not.toMatch(/fxa-sources/);
-    expect(E2E_FIXTURES_DIR).not.toMatch(/w1-sources-align/);
-    expect(existsSync(join(E2E_FIXTURES_DIR, "churn_train.csv"))).toBe(true);
-
-    const churn = defaultChurnSources(E2E_FIXTURES_DIR);
-    expect(churn.files[0]?.path).toBe(`${E2E_FIXTURES_DIR}/churn_train.csv`);
-    expect(churn.files[0]?.spec.path).toBe(
-      `${E2E_FIXTURES_DIR}/churn_train.csv`,
-    );
-    expect(churn.files[0]?.spec.path).not.toContain("fxa-sources");
-  });
-});
 
 describe("sourcesLogic pure mapping", () => {
   it("guesses roles correctly from filenames", () => {

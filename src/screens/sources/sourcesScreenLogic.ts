@@ -1,8 +1,6 @@
 import { apiClient } from "../../api/client";
 import type { FileSourceSpec, Result, Workspace } from "../../api/types";
-import { E2E_FIXTURES_DIR } from "../../e2eFixtures";
 import {
-  defaultChurnSources,
   emptyWorkspaceSources,
   engineMessage,
   extractFilesFromWorkspace,
@@ -15,9 +13,6 @@ import {
   type WorkspaceBuildResult,
   type WorkspaceSourcesState,
 } from "./sourcesLogic";
-
-/** Offline / empty-cache churn fallback — this checkout's e2e fixtures (MAT-190). */
-const FIXTURE_BASE = E2E_FIXTURES_DIR;
 
 /** Shown when train has 0 columns / empty file (MAT-154). */
 export const EMPTY_TRAIN_MESSAGE =
@@ -125,19 +120,32 @@ export function keyJoinText(r: KeyJoinReport): string {
   return text;
 }
 
-/** Sources to show for a workspace with no stored files (churn demo vs empty). */
-export function fallbackSources(name: string): WorkspaceSourcesState {
-  return name === "churn"
-    ? defaultChurnSources(FIXTURE_BASE)
-    : emptyWorkspaceSources();
-}
-
-/** Cached sources for a name, else the fallback — the initial `src` state. */
+/**
+ * Initial `src` state: the cached sources when they still describe the stored
+ * workspace, else the stored workspace's own files (enriched after mount by
+ * `storedSourcesToLoad`), else nothing. Never a built-in path: the demo churn
+ * workspace is seeded from uploads by `bootstrap.ts` (datatoolkit-issues#123).
+ */
 export function initialSourcesFor(
   name: string,
   cache: Record<string, WorkspaceSourcesState>,
+  ws: Workspace | null,
 ): WorkspaceSourcesState {
-  return cache[name] ?? fallbackSources(name);
+  const cached = cache[name];
+  const stored = ws?.name === name ? ws : null;
+  if (cacheMatchesWorkspace(cached, stored)) return cached;
+  if (stored?.datasets.train.x.path) return sourcesFromWorkspace(stored);
+  return cached ?? emptyWorkspaceSources();
+}
+
+/** The stored workspace whose files the Sources screen must (re)load on mount, or null. */
+export function storedSourcesToLoad(
+  name: string,
+  cache: Record<string, WorkspaceSourcesState>,
+  ws: Workspace | null,
+): Workspace | null {
+  if (ws?.name !== name || !ws.datasets.train.x.path) return null;
+  return cacheMatchesWorkspace(cache[name], ws) ? null : ws;
 }
 
 export function sourcesFromWorkspace(ws: Workspace): WorkspaceSourcesState {

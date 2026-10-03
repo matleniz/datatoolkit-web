@@ -6,7 +6,6 @@ import type {
   Step,
   Workspace,
 } from "../../api/types";
-import { E2E_FIXTURES_DIR } from "../../e2eFixtures";
 import { useAppDispatch, useAppState, markWorkspaceSaved } from "../../state/AppStore";
 import {
   alignRowNeedsDecision,
@@ -21,8 +20,8 @@ import {
 } from "./alignLogic";
 import "./align.css";
 
-/** Offline / null-workspace churn fallback — this checkout's e2e fixtures (MAT-201). */
-const FIXTURE_BASE = E2E_FIXTURES_DIR;
+/** Shown when the screen opens with no workspace (never a built-in path, #123). */
+const NO_WORKSPACE_MESSAGE = "No workspace open: pick or create one in Sources.";
 
 export function AlignScreen() {
   const { workspace } = useAppState();
@@ -34,40 +33,13 @@ export function AlignScreen() {
   const [alignReportError, setAlignReportError] = useState<string | null>(null);
 
   // Filter workspace to only its alignment steps for POST /workspace/align
-  const alignWorkspace: Workspace = useMemo(() => {
-    if (!workspace) {
-      return {
-        name: "churn",
-        datasets: {
-          train: {
-            x: {
-              kind: "csv",
-              path: `${FIXTURE_BASE}/churn_train.csv`,
-            },
-            y: {
-              kind: "csv",
-              path: `${FIXTURE_BASE}/churn_labels.csv`,
-            },
-          },
-          test: {
-            x: {
-              kind: "csv",
-              path: `${FIXTURE_BASE}/churn_test.csv`,
-            },
-          },
-        },
-        label: { mode: "order" },
-        merges: [],
-        variables: [],
-        steps: [],
-      };
-    }
-
-    return {
-      ...workspace,
-      steps: workspace.steps.filter((s) => s.align),
-    };
-  }, [workspace]);
+  const alignWorkspace: Workspace | null = useMemo(
+    () =>
+      workspace
+        ? { ...workspace, steps: workspace.steps.filter((s) => s.align) }
+        : null,
+    [workspace],
+  );
 
   /** JSON of the alignment workspace the shown report was computed for. */
   const alignKey = useMemo(() => JSON.stringify(alignWorkspace), [alignWorkspace]);
@@ -82,6 +54,7 @@ export function AlignScreen() {
     setLoading(true);
     setAlignReportError(null);
     try {
+      if (!alignWorkspace) throw new Error(NO_WORKSPACE_MESSAGE);
       const rep = await apiClient.alignReport(alignWorkspace);
       if (!latest()) return;
       const rows = rep.columns || [];
@@ -186,7 +159,7 @@ export function AlignScreen() {
     dispatch({ type: "SET_SCREEN", screen: "bench" });
   };
   // Inspect source option on test
-  const testSource = alignWorkspace.datasets.test?.x;
+  const testSource = alignWorkspace?.datasets.test?.x;
   const testDecimalOption =
     testSource && testSource.kind === "csv" && testSource.decimal === ","
       ? ","
