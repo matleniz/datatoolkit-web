@@ -30,6 +30,7 @@ function harness() {
     settle: async () => {
       await h.gate;
     },
+    gridSettled: async () => undefined,
     announce: () => undefined,
     touch: () => undefined,
     reviewPending: () => h.answers.size > 0,

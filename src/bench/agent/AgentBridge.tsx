@@ -14,6 +14,8 @@ const TOAST_MS = 12_000;
 const TOUCH_MS = 2_000;
 /** Longest wait for the render after a dispatch (a no-op never renders). */
 const RENDER_WAIT_MS = 2_000;
+/** Longest wait for the row count of a new grid view before acking anyway. */
+const GRID_WAIT_MS = 15_000;
 
 function newSessionId(): string {
   const key = "dtk-ui-session";
@@ -96,6 +98,21 @@ function ActiveBridge({ token }: { token: string }) {
           window.setTimeout(resolve, RENDER_WAIT_MS);
         });
         await ensureWorkspaceSaved(stateRef.current.workspace);
+      },
+      gridSettled: async () => {
+        const deadline = Date.now() + GRID_WAIT_MS;
+        do {
+          await new Promise<void>((resolve) => {
+            renderWaiters.current.push(resolve);
+            window.setTimeout(resolve, RENDER_WAIT_MS);
+          });
+        } while (
+          stateRef.current.screen === "bench" &&
+          stateRef.current.gridTotal === null &&
+          Date.now() < deadline
+        );
+        // Publish now, not after the debounce: the ack follows.
+        await putUiContext(token, contextRef.current).catch(() => undefined);
       },
       reviewPending: () => answers.current.size > 0,
       opSchema: (op) => apiClient.transformSchema(op),
