@@ -1,19 +1,39 @@
 # datatoolkit: engine (HTTP API) + Studio (web), one command:
 #   docker compose up -d   ->   http://localhost:8080
+# In-Studio agent chat, opt-in (off unless DTK_AGENT is set):
+#   DTK_AGENT=1 DTK_UI_TOKEN=$(openssl rand -hex 16) ANTHROPIC_API_KEY=... docker compose up -d
 services:
   engine:
     image: ghcr.io/matleniz/datatoolkit-engine:latest
     build: https://github.com/matleniz/datatoolkit.git#main
     volumes:
       - ${DTK_DATA:-./datatoolkit-data}:/data
+    # Bare names: passed through from the shell (or .env) only when set there,
+    # so a plain `docker compose up -d` runs the engine exactly as before.
+    environment:
+      - DTK_AGENT
+      - DTK_UI_TOKEN
+      - DTK_AGENT_PACK
+      - DTK_UI_ALLOWED_HOSTS
+      - DTK_CORS_ORIGINS
+      - ANTHROPIC_API_KEY
+      - DTK_ANTHROPIC_BASE_URL
+      - DTK_ANTHROPIC_MODEL
+      - DTK_OPENAI_BASE_URL
+      - DTK_OPENAI_API_KEY
+      - DTK_OPENAI_MODEL
     restart: unless-stopped
 
   web:
     image: ghcr.io/matleniz/datatoolkit-web:latest
     build: .
     ports:
-      # Localhost only on purpose: the engine reads files and SQL URLs.
+      # Localhost only on purpose: the engine reads files and SQL URLs, and with
+      # DTK_UI_TOKEN set the served index.html carries the agent bridge token.
       - "127.0.0.1:${DTK_PORT:-8080}:80"
+    environment:
+      # Written into index.html as <meta name="dtk-ui-token"> at start; unset = bridge off.
+      - DTK_UI_TOKEN
     depends_on:
       engine:
         condition: service_healthy

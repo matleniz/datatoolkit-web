@@ -65,6 +65,86 @@ jobs:
           f=$(ls datatoolkit-data/uploads/*/smoke.csv)
           stat -c '%u %n' "$f"
           [ "$(stat -c %u "$f")" = 1000 ]
+      # Agent off (the default above): no token meta, no agent env, bridge closed.
+      - name: Agent off - no meta, no agent env, bridge needs a token
+        run: |
+          if curl -fsS http://127.0.0.1:8080/ | grep -q dtk-ui-token; then echo 'meta served without DTK_UI_TOKEN'; exit 1; fi
+          for svc in engine web; do
+            if docker compose exec -T "$svc" env | grep -E '^(DTK_AGENT|DTK_UI_|ANTHROPIC_|DTK_OPENAI_)'; then echo "agent env set on $svc"; exit 1; fi
+          done
+          code=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/ui/agent/options)
+          echo "options without token: $code"; [ "$code" = 401 ]
+      - name: Agent off - /mcp and the terminal are not proxied
+        run: |
+          for path in /mcp /mcp/ /api/ui/terminal; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080$path")
+            echo "$path: $code"; [ "$code" = 404 ]
+          done
+      - name: Restart with the agent on (stub pack)
+        env:
+          DTK_AGENT: "1"
+          DTK_UI_TOKEN: ci-token
+          DTK_AGENT_PACK: stub
+        run: |
+          docker compose up -d
+          for _ in $(seq 1 60); do
+            engine=$(docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q engine)" 2>/dev/null || echo none)
+            web=$(docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q web)" 2>/dev/null || echo none)
+            echo "engine: $engine, web: $web"
+            if [ "$engine" = healthy ] && [ "$web" = healthy ] && curl -fsS -o /dev/null http://127.0.0.1:8080/; then exit 0; fi
+            sleep 2
+          done
+          docker compose ps
+          docker compose logs
+          exit 1
+      - name: Agent on - index carries the token meta
+        run: |
+          curl -fsS http://127.0.0.1:8080/ | tee index-agent.out | grep -q '<meta name="dtk-ui-token" content="ci-token" />'
+          curl -fsS http://127.0.0.1:8080/some/deep/route | grep -q 'content="ci-token"'
+      - name: Agent on - the token is not in the web image
+        run: |
+          docker image inspect --format '{{json .Config.Env}}' ghcr.io/matleniz/datatoolkit-web:latest | tee web-env.json
+          if grep -q DTK_UI_TOKEN web-env.json; then exit 1; fi
+          docker run --rm --entrypoint sh ghcr.io/matleniz/datatoolkit-web:latest -c '! grep -q dtk-ui-token /usr/share/nginx/html/index.html'
+      - name: Agent on - agent routes through nginx need the token
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/ui/agent/options)
+          echo "without token: $code"; [ "$code" = 401 ]
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer wrong' http://127.0.0.1:8080/api/ui/agent/options)
+          echo "wrong token: $code"; [ "$code" = 401 ]
+          curl -fsS -H 'Authorization: Bearer ci-token' http://127.0.0.1:8080/api/ui/agent/options | tee options.json; echo
+          curl -fsS 'http://127.0.0.1:8080/api/ui/agent/options?token=ci-token' -o /dev/null
+          curl -fsS -H 'Authorization: Bearer ci-token' 'http://127.0.0.1:8080/api/ui/agent?session=ci-smoke' | tee agent.json; echo
+          python3 -c "import json; s = json.load(open('agent.json')); assert s['available'] is True and s['pack'] == 'stub', s"
+      - name: Agent on - a stub chat answers over SSE through nginx
+        run: |
+          curl -sSN --max-time 30 'http://127.0.0.1:8080/api/ui/events?session=ci-smoke&token=ci-token' > events.out &
+          sse=$!
+          sleep 1
+          code=$(curl -sS -o send.json -w '%{http_code}' -X POST \
+            -H 'Authorization: Bearer ci-token' -H 'Content-Type: application/json' \
+            -d '{"session": "ci-smoke", "text": "hello from ci"}' \
+            http://127.0.0.1:8080/api/ui/agent/send)
+          cat send.json; echo
+          [ "$code" = 202 ]
+          for _ in $(seq 1 40); do
+            if grep -q ': hello from ci' events.out; then kill "$sse" || true; cat events.out; exit 0; fi
+            sleep 0.5
+          done
+          kill "$sse" || true
+          cat events.out
+          exit 1
+      - name: Agent on - /mcp and the terminal are still not proxied
+        run: |
+          for path in /mcp /mcp/ "/api/ui/terminal?token=ci-token"; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer ci-token' "http://127.0.0.1:8080$path")
+            echo "$path: $code"; [ "$code" = 404 ]
+          done
+      - name: Agent on - the token is not in the logs
+        run: |
+          docker compose logs > stack.log
+          grep -c 'token=\*\*\*' stack.log
+          if grep -n ci-token stack.log; then echo 'token leaked into the logs'; exit 1; fi
       - name: Logs on failure
         if: failure()
         run: docker compose logs
