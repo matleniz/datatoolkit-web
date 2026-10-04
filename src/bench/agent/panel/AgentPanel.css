@@ -1,7 +1,8 @@
 /* In-Studio agent panel (datatoolkit-issues#67): side panel left of the tool rail. */
+/* Shrinks (down to min-width) beside the terminal panel (datatoolkit-issues#146). */
 .agent-panel {
-  width: 340px;
-  flex-shrink: 0;
+  flex: 0 1 340px;
+  min-width: 220px;
   display: flex;
   flex-direction: column;
   min-height: 0;

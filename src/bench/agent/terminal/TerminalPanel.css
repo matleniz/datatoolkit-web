@@ -1,7 +1,7 @@
 /* Opt-in terminal panel (datatoolkit-issues#115); header/close reuse the agent panel's classes. */
 .terminal-panel {
-  width: 520px;
-  flex-shrink: 0;
+  flex: 0 1 520px;
+  min-width: 300px;
   display: flex;
   flex-direction: column;
   min-height: 0;
