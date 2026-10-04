@@ -146,6 +146,36 @@ paths are not visible inside the container: use upload instead.
 
 From a checkout, `docker compose up -d --build` builds both images locally.
 
+### Agent chat in Docker (opt-in)
+
+Off by default. Set `DTK_AGENT` and a `DTK_UI_TOKEN` in the shell (or in the
+`.env` next to the compose file) to turn on the in-Studio agent chat
+(datatoolkit-issues#148):
+
+```bash
+DTK_AGENT=1 DTK_UI_TOKEN=$(openssl rand -hex 16) ANTHROPIC_API_KEY=sk-... docker compose up -d
+```
+
+`compose.yml` passes these through to the containers only when they are set:
+
+| Env | Goes to | Role |
+|---|---|---|
+| `DTK_AGENT` | engine | `1` / `true` / `yes` / `on` turns the chat on |
+| `DTK_UI_TOKEN` | engine, web | Bridge token, required when `DTK_AGENT` is on (the engine exits 64 without it). The web container writes it into `index.html` as `<meta name="dtk-ui-token">` at start (`docker/40-dtk-ui-token.sh`), never at build; unset = no meta, bridge off. URL-safe characters only |
+| `DTK_AGENT_PACK` | engine | Default pack: `api-anthropic` (default), `api-openai` or `stub` |
+| `ANTHROPIC_API_KEY`, `DTK_ANTHROPIC_BASE_URL`, `DTK_ANTHROPIC_MODEL` | engine | `api-anthropic` |
+| `DTK_OPENAI_BASE_URL`, `DTK_OPENAI_API_KEY`, `DTK_OPENAI_MODEL` | engine | `api-openai`. A model on the host is `http://host.docker.internal:11434/v1` (on Linux add `extra_hosts: ["host.docker.internal:host-gateway"]` to `engine` in an override file) |
+| `DTK_UI_ALLOWED_HOSTS`, `DTK_CORS_ORIGINS` | engine | Not needed behind this nginx (same origin, `Host` forwarded); only when Studio is reached under another hostname or through TLS in front |
+
+The token is in the served page, so the port stays bound to `127.0.0.1`:
+loopback is the trust boundary, do not publish it on another interface. nginx
+streams `/api/ui/events` (SSE) unbuffered, masks `token=` in its access log,
+and does not proxy `/mcp` nor the agent terminal (`/api/ui/terminal`, no agent
+CLI in the engine image). The engine also keeps the token in
+`datatoolkit-data/agent/runtime.json` (0600). The `smoke` job in
+`.github/workflows/docker.yml` checks both modes (agent off, and on with the
+`stub` pack).
+
 ## Run without Docker (uv)
 
 `launcher/` is a small Python package (`dtk-studio`, hatchling) whose only
