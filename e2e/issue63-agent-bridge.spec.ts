@@ -79,6 +79,51 @@ const stepOps = (page: Page) =>
 
 const scale = { op: "scale", target: "both", params: { columns: ["age"] } };
 
+/**
+ * Record every element that carries `data-agent-touched="1"`, however briefly:
+ * the mark lasts TOUCH_MS (2 s) and a loaded machine can render it and drop it
+ * between two retries of a locator assertion (#144). Entries are the header's
+ * aria-label, `tool:<data-tool>` for a dock window, `step:<text>` for a pipeline
+ * card. Each call clears the log.
+ */
+async function recordTouched(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __touchLog?: Set<string>; __touchObserver?: MutationObserver };
+    w.__touchLog = new Set();
+    const snap = () => {
+      for (const el of document.querySelectorAll('[data-agent-touched="1"]')) {
+        const tool = el.getAttribute("data-tool");
+        const entry = tool
+          ? `tool:${tool}`
+          : el.closest('[aria-label="Pipeline"]')
+            ? `step:${el.textContent ?? ""}`
+            : el.getAttribute("aria-label") ?? el.textContent ?? "";
+        w.__touchLog?.add(entry);
+      }
+    };
+    w.__touchObserver?.disconnect();
+    w.__touchObserver = new MutationObserver(snap);
+    w.__touchObserver.observe(document.body, {
+      subtree: true, childList: true, attributes: true, attributeFilter: ["data-agent-touched"],
+    });
+    snap();
+  });
+}
+
+const touchLog = (page: Page) =>
+  page.evaluate(() => [...((window as unknown as { __touchLog?: Set<string> }).__touchLog ?? [])]);
+
+/** Wait until the log holds an entry matching each pattern. */
+async function expectTouched(page: Page, ...patterns: RegExp[]): Promise<string[]> {
+  await expect
+    .poll(async () => {
+      const log = await touchLog(page);
+      return patterns.every((p) => log.some((e) => p.test(e)));
+    }, { timeout: 15_000 })
+    .toBe(true);
+  return touchLog(page);
+}
+
 /** Grid and the Distribution window both show (and wait for) `identity`. */
 async function expectShowing(page: Page, identity: string) {
   const grid = page.getByLabel("Data grid");
@@ -332,39 +377,38 @@ test("issue 88: touched column / window / step carry data-agent-touched, toast U
   await openWorkbench(page, true);
   const ctx0 = await published(request, page);
   const touched = page.locator("[data-agent-touched]");
-  const header = (col: string) => page.getByRole("button", { name: new RegExp(`^${col}, `) });
   const toast = (text: string) => page.getByRole("status").filter({ hasText: text });
 
   // select_columns: the column headers are touched; Undo restores the selection.
+  await recordTouched(page);
   const sel = await send(request, page, { type: "select_columns", columns: ["age"] });
   expect(sel.ok).toBe(true);
-  await expect(header("age")).toHaveAttribute("data-agent-touched", "1");
-  await expect(header("sessions")).not.toHaveAttribute("data-agent-touched", /.*/);
+  const selLog = await expectTouched(page, /^age, /);
+  expect(selLog.filter((e) => /^sessions, /.test(e))).toEqual([]);
   await expect(toast("Agent: selected age")).toBeVisible();
   await expect(touched).toHaveCount(0, { timeout: 6_000 }); // transient
 
   // open_window: the dock window (and its column) are touched; Undo closes it.
+  await recordTouched(page);
   const win = await send(request, page, {
     type: "open_window", tool: "dist", params: { column: "sessions" },
   });
   expect(win.ok).toBe(true);
-  await expect(page.locator('[data-tool="dist"]')).toHaveAttribute("data-agent-touched", "1");
-  await expect(header("sessions")).toHaveAttribute("data-agent-touched", "1");
+  await expectTouched(page, /^tool:dist$/, /^sessions, /);
   const opened = toast("Agent: opened Distribution (sessions)");
   await expect(opened).toBeVisible();
   await opened.getByRole("button", { name: "Undo" }).click();
   await expect(page.locator('[data-tool="dist"]')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => window.__DTK_STATE__?.()?.selection.columns)).toEqual(["age"]);
 
-  // propose_steps: the new step card is touched; Undo = UNDO_STEPS.
+  // propose_steps: the new step card (and its column) are touched; Undo = UNDO_STEPS.
+  await recordTouched(page);
   const ack = await send(request, page, {
     type: "propose_steps", workspace: "churn", base_identity: ctx0.identity,
     ops: [{ add: { step: scale } }],
   });
   expect(ack.ok).toBe(true);
-  const card = page.getByLabel("Pipeline").locator('[data-agent-touched="1"]').filter({ hasText: "v1" });
-  await expect(card).toHaveCount(1);
-  await expect(header("age")).toHaveAttribute("data-agent-touched", "1");
+  await expectTouched(page, /^step:.*v1/, /^age, /);
   await toast("Agent: add scale (age)").getByRole("button", { name: "Undo" }).click();
   expect(await stepOps(page)).toEqual([]);
   await expect(touched).toHaveCount(0, { timeout: 6_000 });
