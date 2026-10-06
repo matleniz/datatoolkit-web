@@ -84,6 +84,11 @@ function harness(init: AppState, answer: (p: Proposal) => boolean | Promise<bool
     keySchema: async () => distSchema,
     // `fare` was renamed from `fare_raw` by a step (#152 origin keys).
     latestColumns: async () => ({ names: [...COLS, "fare"], keys: { fare: "fare_raw" } }),
+    attachmentFile: async (attId) =>
+      attId === "a1" ? { name: "dictionary.md", path: "/up/abc/dictionary.md" } : null,
+    describeDocument: async (path, name) => ({
+      name: name ?? "x", path, mime: "text/markdown", size: 12, kind: "text", added_at: "2026-10-06T12:00:00Z",
+    }),
   };
   return h;
 }
@@ -501,6 +506,75 @@ describe("notes (datatoolkit-issues#152)", () => {
       .toMatchObject({ ok: false, error: expect.stringMatching(/^stale: workspace "other"/) });
     expect(h.state.stepHistory.past).toHaveLength(0);
     expect(h.toasts).toEqual([]);
+  });
+});
+
+describe("workspace documents (datatoolkit-issues#178)", () => {
+  const keep = (extra: Record<string, unknown>) => ({
+    id: "k1", type: "keep_attachment", workspace: "demo", ...extra,
+  });
+  const doc = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, name: `${id}.md`, path: `/up/${id}.md`, mime: "text/markdown", size: 1,
+    kind: "text" as const, added_at: "2026-10-06T12:00:00Z", ...extra,
+  });
+
+  it("parses keep_attachment and refuses bad payloads", () => {
+    expect(parseCommand(keep({ attachment_id: "a1", note: "the codebook" }))).toEqual({
+      type: "keep_attachment", workspace: "demo", attachment_id: "a1", note: "the codebook",
+    });
+    expect(parseCommand(keep({}))).toHaveProperty("error");
+    expect(parseCommand(keep({ attachment_id: "a1", note: 3 }))).toHaveProperty("error");
+    expect(parseCommand(keep({ attachment_id: "a1", note: "x".repeat(4001) }))).toHaveProperty("error");
+  });
+
+  it("keep_attachment adds a document (next d<n>, note), acks its id, Undo removes it", async () => {
+    const h = harness({ ...start([impute]), workspace: { ...emptyWorkspace("demo"), steps: [impute], documents: [doc("d2")] } });
+    const identity = currentIdentityKey(h.state);
+    expect(await handleCommand(keep({ attachment_id: "a1", note: "codebook" }), h.deps))
+      .toEqual({ id: "k1", ok: true, identity, document_id: "d3" });
+    expect(h.state.workspace?.documents?.[1]).toEqual({
+      id: "d3", name: "dictionary.md", path: "/up/abc/dictionary.md", mime: "text/markdown", size: 12,
+      kind: "text", added_at: "2026-10-06T12:00:00Z", note: "codebook",
+    });
+    expect(h.toasts).toEqual(["kept dictionary.md in the workspace documents"]);
+    expect(h.settled).toBe(1);
+    // The same upload again: acked with the existing id, nothing added.
+    expect(await handleCommand(keep({ attachment_id: "a1" }), h.deps)).toMatchObject({ ok: true, document_id: "d3" });
+    expect(h.state.workspace?.documents).toHaveLength(2);
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.workspace?.documents?.map((d) => d.id)).toEqual(["d2"]);
+  });
+
+  it("keep_attachment refuses an unknown attachment, a full list and another workspace", async () => {
+    const full = Array.from({ length: 50 }, (_, i) => doc(`d${i + 1}`));
+    const h = harness({ ...start(), workspace: { ...emptyWorkspace("demo"), documents: full } });
+    expect(await handleCommand(keep({ attachment_id: "nope" }), h.deps))
+      .toEqual({ id: "k1", ok: false, error: "bad_command: unknown attachment" });
+    expect(await handleCommand(keep({ attachment_id: "a1" }), h.deps))
+      .toEqual({ id: "k1", ok: false, error: "bad_command: documents full (at most 50 per workspace)" });
+    expect(await handleCommand(keep({ attachment_id: "a1", workspace: "other" }), h.deps))
+      .toMatchObject({ ok: false, error: expect.stringMatching(/^stale: workspace "other"/) });
+    expect(h.state.stepHistory.past).toHaveLength(0);
+  });
+
+  it("document actions are one undo entry each and never change the data identity", () => {
+    let s = start([impute]);
+    const identity = currentIdentityKey(s);
+    s = appReducer(s, { type: "ADD_DOCUMENT", document: doc("d1") });
+    s = appReducer(s, { type: "SET_DOCUMENT_NOTE", id: "d1", text: "variables and units" });
+    expect(s.workspace?.documents?.[0]?.note).toBe("variables and units");
+    s = appReducer(s, { type: "SET_DOCUMENT_NOTE", id: "d1", text: " " });
+    expect(s.workspace?.documents?.[0]).not.toHaveProperty("note");
+    s = appReducer(s, { type: "REMOVE_DOCUMENT", id: "d1" });
+    expect(s.workspace?.documents).toEqual([]);
+    expect(s.stepHistory.past).toHaveLength(4);
+    expect(currentIdentityKey(s)).toBe(identity);
+    s = appReducer(s, { type: "UNDO_STEPS" });
+    expect(s.workspace?.documents?.map((d) => d.id)).toEqual(["d1"]);
+    // Unknown ids are no-ops, not history entries.
+    const past = s.stepHistory.past.length;
+    s = appReducer(s, { type: "REMOVE_DOCUMENT", id: "d9" });
+    expect(s.stepHistory.past).toHaveLength(past);
   });
 });
 

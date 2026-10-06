@@ -183,6 +183,7 @@ const VALID: Record<string, Record<string, unknown>> = {
   edit_step: { index: 0 },
   fill_editor: { op: "scale", params: { columns: ["age"] }, target: "train" },
   set_note: { workspace: "churn", kind: "column", column: "age", text: "years" },
+  keep_attachment: { workspace: "churn", attachment_id: "a1", note: "the codebook" },
 };
 
 // Samples both sides must refuse.
@@ -204,6 +205,7 @@ const INVALID: [string, Record<string, unknown>][] = [
   ["propose_steps", { ops: [] }],
   ["set_tool_params", { tool: "corr", params: {} }],
   ["set_note", { workspace: "churn", kind: "row", text: "x" }],
+  ["keep_attachment", { workspace: "churn" }],
   [
     "set_grid_view",
     {

@@ -1,14 +1,19 @@
-import type { Step, WorkspaceNotes } from "../api/types";
+import type { Step, WorkspaceDocument, WorkspaceNotes } from "../api/types";
 
-/** What one undo level restores: the steps and the notes (#152). */
+/**
+ * What one undo level restores: the steps, the notes (#152) and the documents
+ * (#178).
+ */
 export interface PipelineSnapshot {
   steps: Step[];
   notes: WorkspaceNotes | undefined;
+  documents: WorkspaceDocument[] | undefined;
 }
 
 /**
  * Undo / redo over the pipeline (datatoolkit-issues#16): snapshots of
- * `workspace.steps` and `workspace.notes`, in memory, per open workspace.
+ * `workspace.steps`, `.notes` and `.documents`, in memory, per open
+ * workspace.
  */
 export interface StepHistory<T = PipelineSnapshot> {
   past: T[];

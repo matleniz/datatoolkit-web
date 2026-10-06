@@ -8,6 +8,7 @@ import {
   type SourceFileItem,
 } from "./sourcesLogic";
 import { SourceOptionsEditor } from "./SourceOptionsEditor";
+import { SourcesDocuments } from "./SourcesDocuments";
 
 interface RoleChipsProps {
   file: SourceFileItem;
@@ -179,6 +180,8 @@ export function SourcesFilesCard({
           + Add a file (csv, parquet, excel, json)
         </label>
       </div>
+
+      <SourcesDocuments />
     </section>
   );
 }

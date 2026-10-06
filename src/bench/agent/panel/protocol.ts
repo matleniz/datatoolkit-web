@@ -27,6 +27,8 @@ export interface SessionAttachment {
   id: string;
   name: string;
   kind?: string;
+  /** Upload ref; in `GET /ui/agent/attachments`, used to keep it as a document (#178). */
+  path?: string;
 }
 
 export type AgentEvent =
@@ -170,12 +172,13 @@ function parsePermission(o: Obj): AgentEvent | null {
   };
 }
 
-/** `{id, name, kind}` of an attachment, or null when malformed. */
+/** `{id, name, kind, path?}` of an attachment, or null when malformed. */
 export function parseSessionAttachment(raw: unknown): SessionAttachment | null {
   if (!isObj(raw)) return null;
   const id = str(raw.id);
   if (!id) return null;
-  return { id, name: str(raw.name) ?? id, kind: str(raw.kind) };
+  const path = str(raw.path);
+  return { id, name: str(raw.name) ?? id, kind: str(raw.kind), ...(path ? { path } : {}) };
 }
 
 function parseUserMessage(o: Obj): AgentEvent | null {

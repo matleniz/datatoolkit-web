@@ -240,6 +240,29 @@ export interface Workspace {
   charts?: ChartSpec[];
   /** Absent on workspaces without notes (and engines before #152). */
   notes?: WorkspaceNotes;
+  /** Reference documents (#178); absent or [] when none. Not data. */
+  documents?: WorkspaceDocument[];
+}
+
+/** How a workspace document can be read: `text` / `pdf` as text, `table` with the data tools. */
+export type DocumentKind = "text" | "pdf" | "table" | "other";
+
+/**
+ * A reference document attached to the workspace (datatoolkit-issues#178):
+ * an uploaded file (`path` = the content-addressed upload ref, never copied)
+ * Studio and the agent can open in any session.
+ */
+export interface WorkspaceDocument {
+  /** `d<n>`; Studio assigns it (`newDocumentId`). */
+  id: string;
+  name: string;
+  path: string;
+  mime: string;
+  size: number;
+  kind: DocumentKind;
+  /** ISO 8601 UTC. */
+  added_at: string;
+  note?: string | null;
 }
 
 /** One role's file meta from GET /workspaces/summaries (MAT-171). */

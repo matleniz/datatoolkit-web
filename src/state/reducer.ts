@@ -4,6 +4,7 @@ import type {
   Step,
   VariableSpec,
   Workspace,
+  WorkspaceDocument,
 } from "../api/types";
 import { DEFAULT_CHART_DRAFT, type ChartDraft } from "./chartDraft";
 import { hydrateWorkspaceCharts } from "./chartStorage";
@@ -25,6 +26,7 @@ import {
   type StepHistory,
 } from "./stepHistory";
 import { withColumnNote, withNote, withWorkspaceNote } from "./notes";
+import { withDocumentNote } from "./documents";
 import { applyStepOps, orderSteps, type StepOp } from "./stepOps";
 import { fillStepIds, withNewId } from "./stepIds";
 import { EMPTY_GRID_VIEW, gridViewKey, type GridView } from "./gridView";
@@ -310,6 +312,10 @@ export type AppAction =
   /** `key` = the column's origin name (`columnNoteKey`). */
   | { type: "SET_COLUMN_NOTE"; key: string; text: string }
   | { type: "SET_WORKSPACE_NOTE"; text: string }
+  /** Documents (#178): add (with its id), remove, note; one undoable change each. */
+  | { type: "ADD_DOCUMENT"; document: WorkspaceDocument }
+  | { type: "REMOVE_DOCUMENT"; id: string }
+  | { type: "SET_DOCUMENT_NOTE"; id: string; text: string }
   | { type: "UNDO_STEPS" }
   | { type: "REDO_STEPS" };
 
@@ -736,6 +742,27 @@ function loadedWorkspace(raw: Workspace): Workspace {
   return steps === ws.steps ? ws : { ...ws, steps };
 }
 
+/** Workspace documents (#178); recorded in the pipeline history. */
+function reduceDocuments(state: AppState, action: AppAction): AppState | undefined {
+  if (!state.workspace) return undefined;
+  const documents = state.workspace.documents ?? [];
+  switch (action.type) {
+    case "ADD_DOCUMENT":
+      if (documents.some((d) => d.id === action.document.id)) return state;
+      return withWorkspace(state, { documents: [...documents, action.document] });
+    case "REMOVE_DOCUMENT":
+      if (!documents.some((d) => d.id === action.id)) return state;
+      return withWorkspace(state, { documents: documents.filter((d) => d.id !== action.id) });
+    case "SET_DOCUMENT_NOTE":
+      if (!documents.some((d) => d.id === action.id)) return state;
+      return withWorkspace(state, {
+        documents: documents.map((d) => (d.id === action.id ? withDocumentNote(d, action.text) : d)),
+      });
+    default:
+      return undefined;
+  }
+}
+
 /** Step / column / workspace notes (#152); recorded in the pipeline history. */
 function reduceNotes(state: AppState, action: AppAction): AppState | undefined {
   if (!state.workspace) return undefined;
@@ -757,7 +784,7 @@ function reduceNotes(state: AppState, action: AppAction): AppState | undefined {
         notes: withWorkspaceNote(state.workspace.notes, action.text),
       });
     default:
-      return undefined;
+      return reduceDocuments(state, action);
   }
 }
 
@@ -924,7 +951,11 @@ function reduceStepHistory(
   if (!moved) return state;
   return withWorkspace(
     state,
-    { steps: moved.steps.steps, notes: moved.steps.notes },
+    {
+      steps: moved.steps.steps,
+      notes: moved.steps.notes,
+      documents: moved.steps.documents,
+    },
     {
       stepHistory: moved.history,
       viewVersion: null,
@@ -939,7 +970,11 @@ function reduceStepHistory(
  * only when it is the same workspace with the same steps (e.g. a Sources
  * edit); otherwise it starts empty.
  */
-const snapshot = (ws: Workspace): PipelineSnapshot => ({ steps: ws.steps, notes: ws.notes });
+const snapshot = (ws: Workspace): PipelineSnapshot => ({
+  steps: ws.steps,
+  notes: ws.notes,
+  documents: ws.documents,
+});
 
 function trackStepHistory(
   prev: AppState,
@@ -960,7 +995,13 @@ function trackStepHistory(
       : { ...next, stepHistory: EMPTY_STEP_HISTORY };
   }
   if (!before || !after) return next;
-  if (sameSteps(before.steps, after.steps) && before.notes === after.notes) return next;
+  if (
+    sameSteps(before.steps, after.steps) &&
+    before.notes === after.notes &&
+    before.documents === after.documents
+  ) {
+    return next;
+  }
   return { ...next, stepHistory: recordSteps(next.stepHistory, snapshot(before)) };
 }
 
