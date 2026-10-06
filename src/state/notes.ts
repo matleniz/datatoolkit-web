@@ -8,7 +8,7 @@ import type { Step, WorkspaceNotes } from "../api/types";
 /** Longest note the engine stores. */
 export const NOTE_MAX = 4000;
 
-export const EMPTY_NOTES: WorkspaceNotes = { workspace: null, columns: {} };
+const EMPTY_NOTES: WorkspaceNotes = { workspace: null, columns: {} };
 
 /** The text to store, or null for "no note" (empty / blank). */
 export function noteText(text: string | null | undefined): string | null {
