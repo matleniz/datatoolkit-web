@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 
 import { NOTE_MAX } from "../../state/notes";
+import { usePopupPlacement } from "../placement";
 
 export interface NoteAnchor {
   x: number;
@@ -57,15 +58,19 @@ export function NotePopover({
     }
   };
 
-  // Keep the popover on screen (it is 280 px wide).
-  const left = Math.max(8, Math.min(anchor.x, window.innerWidth - 288));
+  const placed = usePopupPlacement(ref, anchor);
   return (
     <div
       ref={ref}
       role="dialog"
       aria-label={`Note on ${label}`}
       className="note-pop"
-      style={{ left, top: Math.round(anchor.y) }}
+      style={{
+        left: Math.round(placed?.left ?? anchor.x),
+        top: Math.round(placed?.top ?? anchor.y),
+        maxHeight: placed?.maxHeight,
+        overflowY: "auto",
+      }}
       onKeyDown={onKey}
     >
       <div className="note-pop-title">Note on {label}</div>

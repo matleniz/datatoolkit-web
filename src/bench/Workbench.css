@@ -1496,7 +1496,7 @@
 }
 
 .ctx-menu {
-  position: absolute;
+  position: fixed;
   z-index: 41;
   width: 240px;
   padding: 4px 0;
