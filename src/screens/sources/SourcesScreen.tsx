@@ -30,6 +30,7 @@ function useBuildResult(core: SourcesCore) {
   const steps = workspace?.steps;
   const charts = workspace?.charts;
   const notes = workspace?.notes;
+  const memory = workspace?.memory;
   const documents = workspace?.documents;
   return useMemo(
     () =>
@@ -45,7 +46,7 @@ function useBuildResult(core: SourcesCore) {
         mergeInTest,
         steps: steps ?? [],
         charts: charts ?? [],
-        carry: { notes, documents },
+        carry: { notes, memory, documents },
       }),
     [
       activeWsName,
@@ -60,6 +61,7 @@ function useBuildResult(core: SourcesCore) {
       steps,
       charts,
       notes,
+      memory,
       documents,
     ],
   );

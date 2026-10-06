@@ -367,3 +367,112 @@
   border-top: 1px dashed #d6d3ca;
   padding-top: 4px;
 }
+
+/* Agent memory view (datatoolkit-issues#179). */
+.agent-panel-memory {
+  margin-left: auto;
+  border: 1px solid var(--dtk-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dtk-muted);
+  font-size: 11px;
+  padding: 2px 8px;
+}
+.agent-panel-memory.on {
+  border-color: var(--dtk-accent-border);
+  background: var(--dtk-accent-soft);
+  color: var(--dtk-accent-deep);
+}
+.agent-panel-memory + .agent-panel-close {
+  margin-left: 0;
+}
+.agent-memory {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.agent-memory-hint,
+.agent-memory-empty {
+  margin: 0;
+  color: var(--dtk-muted);
+  line-height: 1.45;
+}
+.agent-memory-empty {
+  padding: 10px;
+}
+.agent-memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.agent-memory-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--dtk-border-soft);
+  border-radius: 6px;
+  background: var(--dtk-surface);
+}
+.agent-memory-item.editing {
+  flex-direction: column;
+  align-items: stretch;
+}
+.agent-memory-kind {
+  font-family: var(--dtk-font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--dtk-muted);
+}
+.agent-memory-kind.kind-decision {
+  color: var(--dtk-accent-deep);
+}
+.agent-memory-kind.kind-todo {
+  color: var(--dtk-warn-fg);
+}
+.agent-memory-text {
+  flex: 1 1 160px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.agent-memory-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.agent-memory-btn {
+  border: none;
+  background: transparent;
+  color: var(--dtk-muted);
+  font-size: 11px;
+  padding: 0 2px;
+  text-decoration: underline;
+}
+.agent-memory-input {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+}
+.agent-memory-error {
+  color: var(--dtk-error-fg);
+  font-size: 11px;
+}
+.agent-memory-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+}
+.agent-memory-usage {
+  font-family: var(--dtk-font-mono);
+  font-size: 11px;
+  color: var(--dtk-muted);
+}

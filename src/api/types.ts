@@ -240,6 +240,8 @@ export interface Workspace {
   charts?: ChartSpec[];
   /** Absent on workspaces without notes (and engines before #152). */
   notes?: WorkspaceNotes;
+  /** Agent memory (#179); absent or [] when empty. Not data. */
+  memory?: MemoryEntry[];
   /** Reference documents (#178); absent or [] when none. Not data. */
   documents?: WorkspaceDocument[];
 }
@@ -263,6 +265,22 @@ export interface WorkspaceDocument {
   /** ISO 8601 UTC. */
   added_at: string;
   note?: string | null;
+}
+
+export const MEMORY_KINDS = ["fact", "decision", "preference", "todo"] as const;
+export type MemoryKind = (typeof MEMORY_KINDS)[number];
+
+/**
+ * One agent memory entry (datatoolkit-issues#179): short session-spanning
+ * context the agent reads at the start of each chat. Stored in the workspace.
+ */
+export interface MemoryEntry {
+  /** `m<n>`; Studio assigns it (`newMemoryId`). */
+  id: string;
+  text: string;
+  kind: MemoryKind;
+  /** ISO 8601 UTC; null on entries saved without one. */
+  updated_at?: string | null;
 }
 
 /** One role's file meta from GET /workspaces/summaries (MAT-171). */

@@ -138,8 +138,9 @@ describe("buildWorkspaceJson carries the workspace's saved charts (#11)", () => 
   });
 });
 
-describe("buildWorkspaceJson carried fields (#152, #178)", () => {
-  it("keeps notes and documents; an unset field stays absent", () => {
+describe("buildWorkspaceJson carried fields (#152, #178, #179)", () => {
+  it("keeps notes, documents and agent memory; an unset field stays absent", () => {
+    const memory = [{ id: "m1", text: "ledd in mg/day", kind: "fact" as const }];
     const documents = [{
       id: "d1", name: "dictionary.md", path: "/up/dictionary.md", mime: "text/markdown", size: 1,
       kind: "text" as const, added_at: "2026-10-06T12:00:00Z",
@@ -147,15 +148,17 @@ describe("buildWorkspaceJson carried fields (#152, #178)", () => {
     const notes = { workspace: "dogfood", columns: {} };
     const r = build([file("a", ["k"])], { a: "trainX" }, {
       labelMode: "column",
-      carry: { notes, documents },
+      carry: { notes, documents, memory },
     });
     expect(r.workspace.documents).toEqual(documents);
+    expect(r.workspace.memory).toEqual(memory);
     expect(r.workspace.notes).toEqual(notes);
     const bare = build([file("a", ["k"])], { a: "trainX" }, {
       labelMode: "column",
-      carry: { notes: undefined, documents: undefined },
+      carry: { notes: undefined, documents: undefined, memory: undefined },
     });
     expect(bare.workspace).not.toHaveProperty("documents");
+    expect(bare.workspace).not.toHaveProperty("memory");
     expect(bare.workspace).not.toHaveProperty("notes");
   });
 });

@@ -8,6 +8,7 @@ import { dropProps } from "../attachments/dropProps";
 import { useAttachments } from "../attachments/useAttachments";
 import { useKeepAttachment } from "../attachments/useKeepAttachment";
 import { AgentPicker } from "./AgentPicker";
+import { MemoryView } from "./MemoryView";
 import { MessageItem } from "./MessageItem";
 import { setAgentPanelOpen, useAgentPanelOpen } from "./panelOpen";
 import { whoLine } from "./picker";
@@ -40,6 +41,8 @@ export function AgentPanel() {
 
 function PanelShell({ status, children }: { status?: AgentStatus; children: React.ReactNode }) {
   const who = status?.available ? whoLine(status) : "";
+  // The memory view (#179) covers the chat; the chat stays mounted (draft, attachments).
+  const [memory, setMemory] = useState(false);
   return (
     <aside className="agent-panel" aria-label="Agent">
       <header className="agent-panel-head">
@@ -51,6 +54,15 @@ function PanelShell({ status, children }: { status?: AgentStatus; children: Reac
         ) : null}
         <button
           type="button"
+          className={`agent-panel-memory${memory ? " on" : ""}`}
+          aria-pressed={memory}
+          title="What the agent remembers in this workspace"
+          onClick={() => setMemory((on) => !on)}
+        >
+          Memory
+        </button>
+        <button
+          type="button"
           className="agent-panel-close"
           aria-label="Close agent panel"
           onClick={() => setAgentPanelOpen(false)}
@@ -58,7 +70,10 @@ function PanelShell({ status, children }: { status?: AgentStatus; children: Reac
           ×
         </button>
       </header>
-      {children}
+      {memory ? <MemoryView /> : null}
+      <div className="agent-panel-body" style={{ display: memory ? "none" : "contents" }}>
+        {children}
+      </div>
     </aside>
   );
 }

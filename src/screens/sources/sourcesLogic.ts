@@ -158,12 +158,12 @@ export interface WorkspaceBuildInput {
   steps?: Step[];
   /** Saved charts carried over, like steps (MAT-185). */
   charts?: ChartSpec[];
-  /** Not built from the sources, carried over as is: notes (#152), documents (#178). */
+  /** Not built from the sources, carried over as is: notes (#152), agent memory (#179), documents (#178). */
   carry?: CarriedFields;
 }
 
 /** Workspace fields the Sources screen does not edit but must not drop on save. */
-export type CarriedFields = Partial<Pick<Workspace, "notes" | "documents">>;
+export type CarriedFields = Partial<Pick<Workspace, "notes" | "memory" | "documents">>;
 
 export interface WorkspaceBuildResult {
   workspace: Workspace;
