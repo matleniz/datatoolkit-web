@@ -39,7 +39,8 @@ test("issue 67: 'add a step' from the panel refreshes the grid, Undo restores", 
   expect(before).toBeTruthy();
 
   const panel = await openPanel(page);
-  await expect(panel.locator("[data-agent-usage]")).toHaveText(/in · .* out/);
+  await expect(panel.locator("[data-agent-usage]")).toHaveText(/in · cache .* write \/ .* read · .* out/);
+  await expect(panel.locator("[data-agent-usage-turn]")).toHaveCount(0);
   await say(page, "please add a step");
 
   // The user message, the tool chip (done), the reply, the usage line.
@@ -49,7 +50,11 @@ test("issue 67: 'add a step' from the panel refreshes the grid, Undo restores", 
   await expect(chip).toContainText("done", { timeout: 30_000 });
   await expect(panel.locator('[data-role="assistant"]').last()).not.toBeEmpty();
   await expect(panel.getByRole("button", { name: "Send" })).toBeVisible({ timeout: 30_000 });
-  await expect(panel.locator("[data-agent-usage]")).not.toHaveText("0 in · 0 out");
+  // #151: cumulative and last-turn usage, cache split apart (the stub reports no cache).
+  await expect(panel.locator("[data-agent-usage]")).not.toHaveText(/^0 in · cache 0 write \/ 0 read · 0 out/);
+  await expect(panel.locator("[data-agent-usage-turn]")).toHaveText(
+    /^last turn: \d+ in · cache 0 write \/ 0 read · \d+ out/,
+  );
 
   // The step is in, the grid moved to the new frame.
   expect(await stepOps(page)).toEqual(["scale"]);

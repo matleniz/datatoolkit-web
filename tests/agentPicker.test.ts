@@ -106,10 +106,10 @@ describe("agent options parser (#114)", () => {
     const ev = parseAgentEvent({ type: "config", pack: "api-anthropic", model: null, reset: true })!;
     expect(ev).toEqual({ type: "config", pack: "api-anthropic", model: null, reset: true });
     const t = transcriptReducer(
-      { ...EMPTY_TRANSCRIPT, usage: { input: 5, output: 6 }, items: [{ kind: "user", key: "m1", text: "hi" }] },
+      { ...EMPTY_TRANSCRIPT, usage: { input: 5, output: 6, cacheWrite: 0, cacheRead: 0 }, items: [{ kind: "user", key: "m1", text: "hi" }] },
       { type: "event", event: ev },
     );
     expect(t.items).toEqual([]);
-    expect(t.usage).toEqual({ input: 5, output: 6 });
+    expect(t.usage).toEqual({ input: 5, output: 6, cacheWrite: 0, cacheRead: 0 });
   });
 });

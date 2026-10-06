@@ -1,4 +1,4 @@
-import type { AgentEvent, SessionAttachment, UsageTotals } from "./protocol";
+import type { AgentEvent, SessionAttachment, TurnUsage, UsageTotals } from "./protocol";
 
 /**
  * The panel's message list, folded from the chat events (pure, unit-tested).
@@ -44,13 +44,18 @@ export type TranscriptItem =
       lines: string[];
       status: PermissionStatus;
     }
-  | { kind: "error"; key: string; message: string; code?: string };
+  | { kind: "error"; key: string; message: string; code?: string }
+  /** The conversation's older turns were summarised (#151). */
+  | { kind: "compacted"; key: string; preTokens?: number };
 
 export interface Transcript {
   items: TranscriptItem[];
   /** A turn is in flight (Stop is offered). */
   running: boolean;
+  /** Cumulative for the session. */
   usage: UsageTotals;
+  /** The last finished turn's usage (null before the first one). */
+  lastTurn: TurnUsage | null;
   seq: number;
   /**
    * Files attached to the session's chat, in attach order. The engine keeps
@@ -62,7 +67,8 @@ export interface Transcript {
 export const EMPTY_TRANSCRIPT: Transcript = {
   items: [],
   running: false,
-  usage: { input: 0, output: 0 },
+  usage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+  lastTurn: null,
   seq: 0,
   attached: [],
 };
@@ -132,11 +138,14 @@ function onDelta(t: Transcript, text: string): Transcript {
 }
 
 function onUsage(t: Transcript, ev: Extract<AgentEvent, { type: "usage" }>): Transcript {
+  const { turn } = ev;
   const usage = ev.total ?? {
-    input: t.usage.input + ev.inputTokens,
-    output: t.usage.output + ev.outputTokens,
+    input: t.usage.input + turn.input,
+    output: t.usage.output + turn.output,
+    cacheWrite: t.usage.cacheWrite + turn.cacheWrite,
+    cacheRead: t.usage.cacheRead + turn.cacheRead,
   };
-  return { ...t, usage };
+  return { ...t, usage, lastTurn: turn };
 }
 
 /** Pending tools / permissions of a finished turn will never resolve. */
@@ -216,6 +225,8 @@ function applyEvent(t: Transcript, ev: AgentEvent): Transcript {
       return settle(t);
     case "error":
       return settle(push(t, { kind: "error", message: ev.message, code: ev.code }));
+    case "compacted":
+      return push(t, { kind: "compacted", preTokens: ev.preTokens });
   }
 }
 
@@ -243,14 +254,31 @@ export function transcriptReducer(t: Transcript, action: TranscriptAction): Tran
   }
 }
 
-/** 340, 1.2k, 12k */
+/** 340, 1.2k, 12k, 3.0M */
 export function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 10_000) return `${Math.round(n / 1000)}k`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return `${n}`;
 }
 
-/** "1.2k in · 340 out" */
+/** Input tokens that neither wrote nor read the prompt cache. */
+const uncached = (u: UsageTotals) => Math.max(u.input - u.cacheWrite - u.cacheRead, 0);
+
+/**
+ * "108 in · cache 99k write / 3.0M read · 38k out": cache reads bill ~0.1x,
+ * so they are never summed into "in" (datatoolkit-issues#151).
+ */
 export function formatUsage(u: UsageTotals): string {
-  return `${formatTokens(u.input)} in · ${formatTokens(u.output)} out`;
+  return (
+    `${formatTokens(uncached(u))} in · ` +
+    `cache ${formatTokens(u.cacheWrite)} write / ${formatTokens(u.cacheRead)} read · ` +
+    `${formatTokens(u.output)} out`
+  );
+}
+
+/** "last turn: 10 in · cache 0 write / 13k read · 5 out · context 13k" */
+export function formatTurnUsage(u: TurnUsage): string {
+  const context = u.context > 0 ? ` · context ${formatTokens(u.context)}` : "";
+  return `last turn: ${formatUsage(u)}${context}`;
 }

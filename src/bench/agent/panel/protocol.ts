@@ -9,8 +9,17 @@
  */
 
 export interface UsageTotals {
+  /** Every input token: uncached + cache writes + cache reads. */
   input: number;
   output: number;
+  /** Of `input`: written to / read from the prompt cache (#151; 0 when not reported). */
+  cacheWrite: number;
+  cacheRead: number;
+}
+
+/** One turn's usage, plus the context size (input of its last API call; 0 when not reported). */
+export interface TurnUsage extends UsageTotals {
+  context: number;
 }
 
 /** A file attached to the session's chat (`{id, name, kind}`; names are untrusted text). */
@@ -45,8 +54,7 @@ export type AgentEvent =
     }
   | {
       type: "usage";
-      inputTokens: number;
-      outputTokens: number;
+      turn: TurnUsage;
       /** Cumulative per session, when the engine keeps it. */
       total?: UsageTotals;
     }
@@ -55,6 +63,8 @@ export type AgentEvent =
   /** The session's attachment set changed (datatoolkit-issues#121, #129). */
   | { type: "attachment_added"; attachment: SessionAttachment }
   | { type: "attachment_removed"; id: string }
+  /** The pack summarised older turns (#151); `preTokens` = context size before. */
+  | { type: "compacted"; preTokens?: number }
   | { type: "done"; stopReason?: string }
   | { type: "error"; message: string; code?: string };
 
@@ -124,17 +134,24 @@ const str = (v: unknown): string | undefined =>
 const num = (v: unknown): number =>
   typeof v === "number" && Number.isFinite(v) ? v : 0;
 
+/** Token counts under `prefix` (`""` = the turn, `"total_"` = cumulative). */
+function parseTokens(o: Obj, prefix = ""): UsageTotals {
+  return {
+    input: num(o[`${prefix}input_tokens`]),
+    output: num(o[`${prefix}output_tokens`]),
+    cacheWrite: num(o[`${prefix}cache_creation_input_tokens`]),
+    cacheRead: num(o[`${prefix}cache_read_input_tokens`]),
+  };
+}
+
 function parseUsage(o: Obj): AgentEvent {
   const hasTotal =
     typeof o.total_input_tokens === "number" ||
     typeof o.total_output_tokens === "number";
   return {
     type: "usage",
-    inputTokens: num(o.input_tokens),
-    outputTokens: num(o.output_tokens),
-    total: hasTotal
-      ? { input: num(o.total_input_tokens), output: num(o.total_output_tokens) }
-      : undefined,
+    turn: { ...parseTokens(o), context: num(o.context_tokens) },
+    total: hasTotal ? parseTokens(o, "total_") : undefined,
   };
 }
 
@@ -222,6 +239,11 @@ export function parseAgentEvent(raw: unknown): AgentEvent | null {
         model: str(o.model) ?? null,
         reset: o.reset === true,
       };
+    case "compacted":
+      return {
+        type: "compacted",
+        ...(typeof o.pre_tokens === "number" ? { preTokens: o.pre_tokens } : {}),
+      };
     case "done":
       return { type: "done", stopReason: str(o.stop_reason) };
     case "error":
@@ -234,9 +256,7 @@ export function parseAgentEvent(raw: unknown): AgentEvent | null {
 /** `GET /api/ui/agent` body -> status; anything unexpected reads as "no agent". */
 export function parseAgentStatus(raw: unknown): AgentStatus {
   if (!isObj(raw)) return { available: false, pack: null, running: false };
-  const usage = isObj(raw.usage)
-    ? { input: num(raw.usage.input_tokens), output: num(raw.usage.output_tokens) }
-    : undefined;
+  const usage = isObj(raw.usage) ? parseTokens(raw.usage) : undefined;
   return {
     available: raw.available === true,
     pack: str(raw.pack) ?? null,

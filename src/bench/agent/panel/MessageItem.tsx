@@ -5,7 +5,7 @@ import { chipJump, chipLabel, chipTarget } from "./chips";
 import { renderMarkdown } from "./markdown";
 import { createThrottle } from "./throttle";
 import { LINES_MAX, summaryLines } from "./toolSummary";
-import type { TranscriptItem } from "./transcript";
+import { formatTokens, type TranscriptItem } from "./transcript";
 
 /** How long a chip click highlights what it points at (same as AgentBridge). */
 const TOUCH_MS = 2_000;
@@ -217,6 +217,13 @@ export const MessageItem = memo(function MessageItem({
       return (
         <div className="agent-msg error" role="alert">
           {item.message}
+        </div>
+      );
+    case "compacted":
+      return (
+        <div className="agent-compacted" data-agent-compacted>
+          Context compacted: older turns summarised
+          {item.preTokens ? ` (was ${formatTokens(item.preTokens)} tokens)` : ""}
         </div>
       );
   }

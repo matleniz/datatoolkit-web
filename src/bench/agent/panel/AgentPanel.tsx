@@ -11,7 +11,7 @@ import { MessageItem } from "./MessageItem";
 import { setAgentPanelOpen, useAgentPanelOpen } from "./panelOpen";
 import { whoLine } from "./picker";
 import type { AgentStatus } from "./protocol";
-import { formatTokens, formatUsage } from "./transcript";
+import { formatTokens, formatTurnUsage, formatUsage } from "./transcript";
 import { useAgentChat, type AgentChat } from "./useAgentChat";
 import "./AgentPanel.css";
 
@@ -139,6 +139,11 @@ function ChatPanel({ token, open }: { token: string; open: boolean }) {
   );
 }
 
+const USAGE_TITLE =
+  "Tokens this session (and the last turn). in = input that missed the prompt cache; " +
+  "cache write / read = input written to / read from it (reads bill ~0.1x); " +
+  "context = what the last call re-read.";
+
 function Conversation({ chat, status, token }: { chat: AgentChat; status: AgentStatus; token: string }) {
   const { transcript, send, stop, reply, clear, detach } = chat;
   const [draft, setDraft] = useState("");
@@ -198,9 +203,14 @@ function Conversation({ chat, status, token }: { chat: AgentChat; status: AgentS
         />
         <AttachmentBar attachments={attachments} disabled={transcript.running} />
         <div className="agent-foot-row">
-          <span className="agent-usage" data-agent-usage title="Tokens used this session">
-            {formatUsage(transcript.usage)}
-            {cap}
+          <span className="agent-usage" title={USAGE_TITLE}>
+            <span data-agent-usage>
+              {formatUsage(transcript.usage)}
+              {cap}
+            </span>
+            {transcript.lastTurn ? (
+              <span data-agent-usage-turn>{formatTurnUsage(transcript.lastTurn)}</span>
+            ) : null}
           </span>
           {transcript.items.length > 0 && !transcript.running ? (
             <button type="button" className="btn-secondary" onClick={clear}>
