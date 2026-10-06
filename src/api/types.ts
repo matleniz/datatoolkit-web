@@ -194,6 +194,11 @@ export interface ChartSpec {
 export type StepTarget = "train" | "test" | "both";
 
 export interface Step {
+  /**
+   * Stable id (datatoolkit-issues#153), e.g. `s7f3a09c1`; filled on load and
+   * on create (`stepIds.ts`), kept by a replace. Opaque.
+   */
+  id?: string;
   op: string;
   target: StepTarget;
   params: Record<string, unknown>;

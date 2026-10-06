@@ -24,6 +24,7 @@ import {
   type StepHistory,
 } from "./stepHistory";
 import { applyStepOps, orderSteps, type StepOp } from "./stepOps";
+import { fillStepIds, withNewId } from "./stepIds";
 import { EMPTY_GRID_VIEW, gridViewKey, type GridView } from "./gridView";
 import type { ToolViewState } from "./toolViews";
 import type { WorkspaceSourcesState } from "./sourcesState";
@@ -721,6 +722,13 @@ function reduceToolState(
   }
 }
 
+/** A workspace as Studio holds it: charts hydrated, every step with an id (#153). */
+function loadedWorkspace(raw: Workspace): Workspace {
+  const ws = hydrateWorkspaceCharts(raw);
+  const steps = fillStepIds(ws.steps);
+  return steps === ws.steps ? ws : { ...ws, steps };
+}
+
 /** The open workspace: steps, variables, charts, test options. */
 function reduceWorkspace(
   state: AppState,
@@ -728,8 +736,7 @@ function reduceWorkspace(
 ): AppState | undefined {
   switch (action.type) {
     case "SET_WORKSPACE": {
-      const raw = action.workspace;
-      const ws = raw ? hydrateWorkspaceCharts(raw) : null;
+      const ws = action.workspace ? loadedWorkspace(action.workspace) : null;
       return {
         ...state,
         workspace: ws,
@@ -743,11 +750,12 @@ function reduceWorkspace(
       };
     }
     case "SET_STEPS":
-      return withWorkspace(state, { steps: orderSteps(action.steps) });
-    case "ADD_STEP":
+      return withWorkspace(state, { steps: orderSteps(fillStepIds(action.steps)) });
+    case "ADD_STEP": {
+      const current = state.workspace?.steps ?? [];
       return withWorkspace(
         state,
-        { steps: orderSteps([...(state.workspace?.steps ?? []), action.step]) },
+        { steps: orderSteps([...current, withNewId(action.step, current)]) },
         {
           editor: null,
           viewVersion: null,
@@ -755,12 +763,16 @@ function reduceWorkspace(
           benchError: null,
         },
       );
+    }
     case "REPLACE_STEP": {
-      const steps = (state.workspace?.steps ?? []).slice();
-      const old = steps[action.index];
+      const old = state.workspace?.steps[action.index];
       if (!old) return state;
-      const { align: _drop, ...step } = action.step;
-      steps[action.index] = old.align ? { ...step, align: true } : step;
+      // Same rule as a `replace` op: the slot keeps its id and `align` flag.
+      const out = applyStepOps(state.workspace?.steps ?? [], [
+        { replace: { index: action.index, step: action.step } },
+      ]);
+      if ("error" in out) return state;
+      const steps = out.steps;
       return withWorkspace(
         state,
         { steps },
@@ -803,8 +815,8 @@ function reduceWorkspace(
     }
     case "ADD_ALIGN_STEP": {
       if (!state.workspace) return state;
-      const s = { ...action.step, align: true };
       const current = state.workspace.steps;
+      const s = { ...withNewId(action.step, current), align: true };
       const alignCount = current.filter((x) => x.align).length;
       const steps = [...current];
       steps.splice(alignCount, 0, s);

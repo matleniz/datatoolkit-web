@@ -1,13 +1,37 @@
 import type { Step } from "../api/types";
+import { withNewId } from "./stepIds";
+
+/**
+ * Which step an op targets: its stable id (datatoolkit-issues#153), or its
+ * index in the list as the previous ops left it (older form).
+ */
+export type StepRef = { index: number } | { id: string };
 
 /**
  * One edit of a step batch (agent bridge, datatoolkit-issues#63). Ops apply
- * in order: an index refers to the list as the previous ops left it.
+ * in order.
  */
 export type StepOp =
   | { add: { step: Step } }
-  | { replace: { index: number; step: Step } }
-  | { remove: { index: number } };
+  | { replace: StepRef & { step: Step } }
+  | { remove: StepRef };
+
+/** The step ref of a replace / remove op (null for an add). */
+export function opRef(op: StepOp): StepRef | null {
+  if ("add" in op) return null;
+  return "replace" in op ? op.replace : op.remove;
+}
+
+/** Index of `ref` in `steps`, -1 when no step matches. */
+export function refIndex(steps: Step[], ref: StepRef): number {
+  if ("id" in ref) return steps.findIndex((s) => s.id === ref.id);
+  return Number.isInteger(ref.index) && ref.index >= 0 && ref.index < steps.length
+    ? ref.index
+    : -1;
+}
+
+/** "s3" / "at index 2", for error lines. */
+const refText = (ref: StepRef) => ("id" in ref ? ref.id : `at index ${ref.index}`);
 
 /** Keep `align: true` steps first (prototype / FRONT-WEB alignment rule). */
 export function orderSteps(steps: Step[]): Step[] {
@@ -17,9 +41,10 @@ export function orderSteps(steps: Step[]): Step[] {
 }
 
 /**
- * Steps after applying `ops`, or `{ error }` when one op is invalid (index out
- * of range). Same rules as ADD_STEP / REPLACE_STEP (keeps the `align` flag) /
- * REMOVE_STEP; `orderSteps` runs once at the end.
+ * Steps after applying `ops`, or `{ error }` when one op is invalid (no such
+ * step). Same rules as ADD_STEP (a new step gets a fresh id unless it carries
+ * one) / REPLACE_STEP (keeps the `align` flag and the id) / REMOVE_STEP;
+ * `orderSteps` runs once at the end.
  */
 export function applyStepOps(
   steps: Step[],
@@ -28,19 +53,22 @@ export function applyStepOps(
   const next = steps.slice();
   for (const [n, op] of ops.entries()) {
     if ("add" in op) {
-      next.push(op.add.step);
-    } else if ("replace" in op) {
-      const { index, step } = op.replace;
-      const old = next[index];
-      if (!old) return { error: `op ${n}: no step at index ${index}` };
-      const { align: _drop, ...rest } = step;
-      next[index] = old.align ? { ...rest, align: true } : rest;
+      next.push(withNewId(op.add.step, next));
+      continue;
+    }
+    const ref = opRef(op)!;
+    const at = refIndex(next, ref);
+    if (at < 0) return { error: `op ${n}: no step ${refText(ref)}` };
+    if ("replace" in op) {
+      const old = next[at]!;
+      const { align: _drop, id: _id, ...rest } = op.replace.step;
+      next[at] = {
+        ...(old.id ? { id: old.id } : {}),
+        ...rest,
+        ...(old.align ? { align: true } : {}),
+      };
     } else {
-      const { index } = op.remove;
-      if (!Number.isInteger(index) || index < 0 || index >= next.length) {
-        return { error: `op ${n}: no step at index ${index}` };
-      }
-      next.splice(index, 1);
+      next.splice(at, 1);
     }
   }
   return { steps: orderSteps(next) };

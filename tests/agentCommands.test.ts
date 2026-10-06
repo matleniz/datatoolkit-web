@@ -12,11 +12,16 @@ import {
 } from "../src/state/agentCommands";
 import { appReducer, emptyWorkspace, initialState, type AppAction, type AppState } from "../src/state/reducer";
 import { applyStepOps } from "../src/state/stepOps";
+import { fillStepIds, withNewId } from "../src/state/stepIds";
 import { currentIdentityKey } from "../src/state/uiContext";
 
 const impute: Step = { op: "impute", target: "both", params: { columns: ["age"] } };
 const scale: Step = { op: "scale", target: "both", params: { columns: ["age"] } };
 const drop: Step = { op: "drop_columns", target: "both", params: { columns: ["id"] } };
+
+/** Steps without their stable ids (minted at random on create, #153). */
+const withoutIds = (steps: Step[]) => steps.map(({ id: _id, ...s }) => s);
+const MINTED = /^s[0-9a-f]{8}$/;
 
 const start = (steps: Step[] = []): AppState => ({
   ...initialState,
@@ -98,8 +103,23 @@ describe("applyStepOps", () => {
       { add: { step: drop } },
       { remove: { index: 1 } },
     ]);
-    expect(out).toEqual({
-      steps: [{ ...scale, op: "x", align: true }, drop],
+    if ("error" in out) throw new Error(out.error);
+    expect(withoutIds(out.steps)).toEqual([{ ...scale, op: "x", align: true }, drop]);
+    expect(out.steps[1]!.id).toMatch(MINTED);
+  });
+
+  it("targets steps by id: a replace keeps the id, a remove drops it (#153)", () => {
+    const steps = [
+      { ...impute, id: "s1", align: true },
+      { ...scale, id: "s2" },
+    ];
+    const out = applyStepOps(steps, [
+      { replace: { id: "s1", step: { ...drop, id: "sother" } } },
+      { remove: { id: "s2" } },
+    ]);
+    expect(out).toEqual({ steps: [{ ...drop, id: "s1", align: true }] });
+    expect(applyStepOps(steps, [{ remove: { id: "s9" } }])).toEqual({
+      error: "op 0: no step s9",
     });
   });
 
@@ -159,7 +179,14 @@ describe("propose_steps", () => {
     const h = harness(start([impute]));
     const before = currentIdentityKey(h.state);
     const ack = await handleCommand(propose(h.state, [{ add: { step: scale } }]), h.deps);
-    expect(ack).toEqual({ id: "c1", ok: true, identity: currentIdentityKey(h.state) });
+    const added = h.state.workspace?.steps[1]?.id;
+    expect(added).toMatch(MINTED);
+    expect(ack).toEqual({
+      id: "c1",
+      ok: true,
+      identity: currentIdentityKey(h.state),
+      added_ids: [added],
+    });
     expect(ack?.identity).not.toBe(before);
     expect(h.state.workspace?.steps.map((s) => s.op)).toEqual(["impute", "scale"]);
     expect(h.settled).toBe(1);
@@ -179,19 +206,21 @@ describe("propose_steps", () => {
     );
     expect(h.state.stepHistory.past).toHaveLength(1);
     h.deps.dispatch({ type: "UNDO_STEPS" });
-    expect(h.state.workspace?.steps).toEqual([impute]);
+    expect(withoutIds(h.state.workspace?.steps ?? [])).toEqual([impute]);
     expect(currentIdentityKey(h.state)).toBe(before);
   });
 
-  it("acks stale for another identity or workspace and changes nothing", async () => {
+  it("index ops: acks stale for another identity; any op: for another workspace", async () => {
     const h = harness(start([impute]));
     const steps = h.state.workspace?.steps;
-    const old = propose(h.state, [{ add: { step: scale } }]);
+    const old = propose(h.state, [{ replace: { index: 0, step: scale } }]);
     h.deps.dispatch({ type: "ADD_STEP", step: scale });
     expect(await handleCommand(old, h.deps)).toEqual({ id: "c1", ok: false, error: "stale" });
     const other = propose(h.state, [{ add: { step: scale } }], { workspace: "elsewhere" });
-    expect(await handleCommand(other, h.deps)).toMatchObject({ error: "stale" });
-    expect(h.state.workspace?.steps).toEqual([...(steps ?? []), scale]);
+    expect(await handleCommand(other, h.deps)).toMatchObject({
+      error: 'stale: workspace "elsewhere" is not open in Studio (open: "demo")',
+    });
+    expect(withoutIds(h.state.workspace?.steps ?? [])).toEqual([...(steps ?? []), scale]);
     expect(h.toasts).toEqual([]);
   });
 
@@ -231,7 +260,7 @@ describe("propose_steps", () => {
       h.deps.dispatch({ type: "ADD_STEP", step: scale });
       return true;
     });
-    const ack = await handleCommand(propose(h.state, [{ add: { step: drop } }]), h.deps);
+    const ack = await handleCommand(propose(h.state, [{ replace: { index: 0, step: drop } }]), h.deps);
     expect(ack).toMatchObject({ ok: false, error: "stale" });
     expect(h.state.workspace?.steps.map((s) => s.op)).toEqual(["impute", "scale"]);
   });
@@ -244,6 +273,147 @@ describe("propose_steps", () => {
     const ack = await handleCommand(propose(h.state, [{ add: { step: scale } }]), h.deps);
     expect(ack).toEqual({ id: "c1", ok: false, error: "save_failed: boom" });
     expect(h.state.stepHistory.past).toHaveLength(1);
+  });
+});
+
+describe("stable step ids (datatoolkit-issues#153)", () => {
+  const ided = (steps: Step[]) => steps.map((s, i) => ({ ...s, id: `s${i + 1}` }));
+  const base = (steps: Step[]) =>
+    Object.fromEntries(steps.map(({ id, op, target, params }) => [id!, { op, target, params }]));
+
+  it("fills missing ids with the engine's migration rule", () => {
+    expect(fillStepIds([impute, { ...scale, id: "s1" }, drop]).map((s) => s.id)).toEqual([
+      "s1-2",
+      "s1",
+      "s3",
+    ]);
+    const done = ided([impute]);
+    expect(fillStepIds(done)).toBe(done);
+  });
+
+  it("mints a fresh id for a new step, also for a copy of an existing one", () => {
+    expect(withNewId(impute, []).id).toMatch(MINTED);
+    expect(withNewId({ ...scale, id: "sfree" }, ided([impute])).id).toBe("sfree");
+    expect(withNewId({ ...impute, id: "s1" }, ided([impute])).id).toMatch(MINTED);
+  });
+
+  it("the reducer fills ids on load, mints on ADD_STEP, keeps them on edit and undo", () => {
+    let s = appReducer(initialState, {
+      type: "SET_WORKSPACE",
+      workspace: { ...emptyWorkspace("demo"), steps: [impute, scale] },
+    });
+    expect(s.workspace?.steps.map((x) => x.id)).toEqual(["s1", "s2"]);
+    s = appReducer(s, { type: "ADD_STEP", step: drop });
+    expect(s.workspace?.steps[2]?.id).toMatch(MINTED);
+    s = appReducer(s, { type: "REPLACE_STEP", index: 0, step: { ...scale, id: "zz" } });
+    expect(s.workspace?.steps[0]).toEqual({ ...scale, id: "s1" });
+    s = appReducer(s, { type: "UNDO_STEPS" });
+    expect(s.workspace?.steps[0]).toEqual({ ...impute, id: "s1" });
+  });
+
+  it("parses id forms and base_steps; refuses id + index together", () => {
+    const ok = parseCommand({
+      type: "propose_steps",
+      workspace: "demo",
+      base_identity: "x",
+      ops: [{ remove: { id: "s1" } }, { replace: { id: "s2", step: { op: "scale" } } }],
+      base_steps: { s1: { op: "impute", params: { columns: ["age"] } } },
+    });
+    expect(ok).toMatchObject({
+      ops: [{ remove: { id: "s1" } }, { replace: { id: "s2", step: { op: "scale", target: "both" } } }],
+      base_steps: { s1: { op: "impute", target: "both", params: { columns: ["age"] } } },
+    });
+    const bad = (ops: unknown[], extra = {}) =>
+      parseCommand({ type: "propose_steps", workspace: "d", base_identity: "x", ops, ...extra });
+    expect(bad([{ remove: { id: "s1", index: 0 } }])).toEqual({
+      error: "ops[0]: remove needs exactly one of id / index",
+    });
+    expect(bad([{ remove: { id: "" } }])).toHaveProperty("error");
+    expect(bad([{ remove: { id: "s1" } }], { base_steps: { s1: 3 } })).toHaveProperty("error");
+  });
+
+  it("rebases: applies while the targeted ids are unchanged, whatever else the user did", async () => {
+    const steps = ided([impute, scale]);
+    const h = harness(start(steps));
+    const cmd = propose(
+      h.state,
+      [{ replace: { id: "s2", step: { ...scale, params: { columns: ["fare"] } } } }, { add: { step: drop } }],
+      { base_steps: base(steps) },
+    );
+    // The user edits s1 and adds a step: the frame moved, s2 did not.
+    h.deps.dispatch({ type: "REPLACE_STEP", index: 0, step: { ...impute, params: { columns: ["x"] } } });
+    h.deps.dispatch({ type: "ADD_STEP", step: impute });
+    const ack = await handleCommand(cmd, h.deps);
+    const now = h.state.workspace?.steps ?? [];
+    expect(ack).toMatchObject({ ok: true, added_ids: [now[3]!.id] });
+    expect(now.map((s) => s.id).slice(0, 2)).toEqual(["s1", "s2"]);
+    expect(now[1]!.params).toEqual({ columns: ["fare"] });
+    expect(now.map((s) => s.op)).toEqual(["impute", "scale", "impute", "drop_columns"]);
+  });
+
+  it("acks stale with which ids were removed or changed, and applies nothing", async () => {
+    const steps = ided([impute, scale, drop]);
+    const h = harness(start(steps));
+    const cmd = propose(
+      h.state,
+      [
+        { replace: { id: "s1", step: scale } },
+        { replace: { id: "s2", step: impute } },
+        { remove: { id: "s9" } },
+      ],
+      { base_steps: base(steps) },
+    );
+    h.deps.dispatch({ type: "REPLACE_STEP", index: 0, step: { ...impute, params: { columns: ["x"] } } });
+    h.deps.dispatch({ type: "REMOVE_STEP", index: 1 });
+    const before = h.state.workspace?.steps;
+    expect(await handleCommand(cmd, h.deps)).toEqual({
+      id: "c1",
+      ok: false,
+      error:
+        "stale: step s1 (impute) changed by the user; step s2 (scale) removed; step s9 removed",
+      stale: [
+        { id: "s1", reason: "changed", step: { ...impute, id: "s1", params: { columns: ["x"] } } },
+        { id: "s2", reason: "removed" },
+        { id: "s9", reason: "removed" },
+      ],
+    });
+    expect(h.state.workspace?.steps).toBe(before);
+    expect(h.reviews).toEqual([]);
+  });
+
+  it("a step equal to its base (JSON value, key order aside) is unchanged", async () => {
+    const steps = ided([{ op: "impute", target: "both", params: { columns: ["age"], value: 1 } }]);
+    const h = harness(start(steps));
+    const ack = await handleCommand(
+      propose(h.state, [{ replace: { id: "s1", step: scale } }], {
+        base_identity: "elsewhere",
+        base_steps: { s1: { params: { value: 1.0, columns: ["age"] }, target: "both", op: "impute" } },
+      }),
+      h.deps,
+    );
+    expect(ack).toMatchObject({ ok: true });
+  });
+
+  it("re-checks ids after the review; describes ops by position", async () => {
+    const steps = ided([impute, scale]);
+    const h = harness(start(steps), () => {
+      h.deps.dispatch({ type: "REPLACE_STEP", index: 1, step: { ...scale, target: "train" } });
+      return true;
+    });
+    const ack = await handleCommand(
+      propose(h.state, [{ remove: { id: "s2" } }], { base_steps: base(steps) }),
+      h.deps,
+    );
+    expect(h.reviews[0]?.lines).toEqual(["remove step 2 (scale)"]);
+    expect(ack).toMatchObject({ ok: false, error: "stale: step s2 (scale) changed by the user" });
+    expect(h.state.workspace?.steps).toHaveLength(2);
+  });
+
+  it("a command mixing id and index ops keeps the index rule", async () => {
+    const h = harness(start(ided([impute, scale])));
+    const cmd = propose(h.state, [{ remove: { id: "s2" } }, { remove: { index: 0 } }]);
+    h.deps.dispatch({ type: "ADD_STEP", step: drop });
+    expect(await handleCommand(cmd, h.deps)).toEqual({ id: "c1", ok: false, error: "stale" });
   });
 });
 
@@ -321,7 +491,10 @@ describe("touch and undo plumbing (#88)", () => {
 
   it("a refused command touches and announces nothing", async () => {
     const h = harness(start([impute]));
-    await handleCommand(propose(h.state, [{ add: { step: scale } }], { base_identity: "nope" }), h.deps);
+    await handleCommand(
+      propose(h.state, [{ remove: { index: 0 } }], { base_identity: "nope" }),
+      h.deps,
+    );
     await handleCommand({ id: "x", type: "open_window", tool: "bogus" }, h.deps);
     expect(h.touches).toEqual([]);
     expect(h.toasts).toEqual([]);
