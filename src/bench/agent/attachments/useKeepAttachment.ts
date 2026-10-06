@@ -17,6 +17,7 @@ export function useKeepAttachment(token: string, session: string) {
   const [error, setError] = useState<string | null>(null);
   const canKeep = saveable(workspace);
   const documents = workspace?.documents;
+  const idCounters = workspace?.id_counters;
 
   const keep = useCallback(
     async (attachmentId: string) => {
@@ -24,8 +25,12 @@ export function useKeepAttachment(token: string, session: string) {
       try {
         const att = (await listAttachments(token, session)).find((a) => a.id === attachmentId);
         if (!att?.path) throw new Error("This attachment is gone from the chat.");
-        const doc = await keptDocument(documents ?? [], { name: att.name, path: att.path }, (p, n) =>
-          apiClient.describeDocument(p, n),
+        const doc = await keptDocument(
+          documents ?? [],
+          { name: att.name, path: att.path },
+          (p, n) => apiClient.describeDocument(p, n),
+          undefined,
+          idCounters,
         );
         if (typeof doc === "string") throw new Error(doc.replace(/^bad_command: /, ""));
         if (!("existing" in doc)) dispatch({ type: "ADD_DOCUMENT", document: doc });
@@ -34,7 +39,7 @@ export function useKeepAttachment(token: string, session: string) {
         setError(e instanceof Error ? e.message : String(e));
       }
     },
-    [token, session, documents, dispatch],
+    [token, session, documents, idCounters, dispatch],
   );
 
   // Kept = its document is still in the workspace (an Undo brings the button back).

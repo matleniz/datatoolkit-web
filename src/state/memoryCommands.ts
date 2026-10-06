@@ -1,4 +1,4 @@
-import { MEMORY_KINDS, type MemoryEntry, type MemoryKind } from "../api/types";
+import { MEMORY_KINDS, type IdCounters, type MemoryEntry, type MemoryKind } from "../api/types";
 import type { Ack, BridgeDeps } from "./agentCommands";
 import { MEMORY_TEXT_MAX, memoryCapError, newMemoryId, withMemoryEntry } from "./memory";
 import { currentIdentityKey } from "./uiContext";
@@ -62,9 +62,10 @@ const fail = (id: string, error: string): Ack => ({ id, ok: false, error });
 function rememberedEntry(
   cmd: Extract<MemoryCommand, { type: "remember" }>,
   entries: readonly MemoryEntry[],
+  counters: IdCounters | undefined,
 ): MemoryEntry | string {
   if (cmd.memory_id === undefined) {
-    return { id: newMemoryId(entries), text: cmd.text, kind: cmd.kind ?? "fact", updated_at: nowIso() };
+    return { id: newMemoryId(entries, counters), text: cmd.text, kind: cmd.kind ?? "fact", updated_at: nowIso() };
   }
   const old = entries.find((e) => e.id === cmd.memory_id);
   if (!old) return `bad_command: unknown memory id ${cmd.memory_id}`;
@@ -87,7 +88,7 @@ export async function runMemoryCommand(
   let memoryId: string;
   let summary: string;
   if (cmd.type === "remember") {
-    const entry = rememberedEntry(cmd, entries);
+    const entry = rememberedEntry(cmd, entries, ws.id_counters);
     if (typeof entry === "string") return fail(id, entry);
     const full = memoryCapError(withMemoryEntry(entries, entry));
     if (full) return fail(id, `bad_command: memory full (${full})`);

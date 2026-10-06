@@ -582,6 +582,19 @@ describe("agent memory (datatoolkit-issues#179)", () => {
     expect(h.toasts).toEqual([]);
   });
 
+  it("never reuses a forgotten id: the counter survives forget and is restored by Undo (#180)", async () => {
+    const h = harness(start([impute]));
+    await handleCommand(remember({ text: "a" }), h.deps);
+    expect(h.state.workspace?.id_counters).toEqual({ m: 1 });
+    await handleCommand(forget({ memory_id: "m1" }), h.deps);
+    expect(await handleCommand(remember({ text: "b" }), h.deps)).toMatchObject({ ok: true, memory_id: "m2" });
+    // A counter above every entry (older ids forgotten elsewhere) is honoured.
+    const ahead = harness({ ...start(), workspace: { ...emptyWorkspace("demo"), id_counters: { m: 7 } } });
+    expect(await handleCommand(remember({ text: "c" }), ahead.deps)).toMatchObject({ memory_id: "m8" });
+    ahead.undos[0]!.forEach(ahead.deps.dispatch);
+    expect(ahead.state.workspace?.id_counters).toEqual({ m: 7 });
+  });
+
   it("CLEAR_MEMORY is one undo entry; a no-op on an empty memory", () => {
     let s = start();
     s = appReducer(s, { type: "CLEAR_MEMORY" });
@@ -641,6 +654,14 @@ describe("workspace documents (datatoolkit-issues#178)", () => {
     expect(await handleCommand(keep({ attachment_id: "a1", workspace: "other" }), h.deps))
       .toMatchObject({ ok: false, error: expect.stringMatching(/^stale: workspace "other"/) });
     expect(h.state.stepHistory.past).toHaveLength(0);
+  });
+
+  it("keep_attachment never reuses a removed document id (#180)", async () => {
+    const h = harness({ ...start(), workspace: { ...emptyWorkspace("demo"), documents: [doc("d1")], id_counters: { d: 3 } } });
+    expect(await handleCommand(keep({ attachment_id: "a1" }), h.deps)).toMatchObject({ ok: true, document_id: "d4" });
+    expect(h.state.workspace?.id_counters).toEqual({ d: 4 });
+    h.undos[0]!.forEach(h.deps.dispatch);
+    expect(h.state.workspace?.id_counters).toEqual({ d: 3 });
   });
 
   it("document actions are one undo entry each and never change the data identity", () => {

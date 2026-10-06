@@ -244,6 +244,14 @@ export interface Workspace {
   memory?: MemoryEntry[];
   /** Reference documents (#178); absent or [] when none. Not data. */
   documents?: WorkspaceDocument[];
+  /** Highest memory / document number ever handed out (#180); sent on PUT, never on frame calls. */
+  id_counters?: IdCounters;
+}
+
+/** Highest `m<n>` / `d<n>` number ever minted in a workspace; an id is never reused. */
+export interface IdCounters {
+  m?: number;
+  d?: number;
 }
 
 /** How a workspace document can be read: `text` / `pdf` as text, `table` with the data tools. */

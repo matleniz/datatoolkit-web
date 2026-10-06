@@ -1,4 +1,4 @@
-import type { WorkspaceDocument } from "../api/types";
+import type { IdCounters, WorkspaceDocument } from "../api/types";
 import type { Ack, BridgeDeps } from "./agentCommands";
 import { DOCUMENTS_MAX, newDocumentId, withDocumentNote } from "./documents";
 import { NOTE_MAX } from "./notes";
@@ -51,6 +51,7 @@ export async function keptDocument(
   file: UploadedFile,
   describe: (path: string, name?: string) => Promise<Omit<WorkspaceDocument, "id">>,
   note?: string,
+  counters?: IdCounters,
 ): Promise<WorkspaceDocument | { existing: WorkspaceDocument } | string> {
   const existing = documents.find((d) => d.path === file.path);
   if (existing) return { existing };
@@ -58,7 +59,7 @@ export async function keptDocument(
     return `bad_command: documents full (at most ${DOCUMENTS_MAX} per workspace)`;
   }
   const described = await describe(file.path, file.name);
-  return withDocumentNote({ ...described, id: newDocumentId(documents) }, note ?? "");
+  return withDocumentNote({ ...described, id: newDocumentId(documents, counters) }, note ?? "");
 }
 
 const fail = (id: string, error: string): Ack => ({ id, ok: false, error });
@@ -78,8 +79,8 @@ export async function runKeepAttachment(
   try {
     file = await deps.attachmentFile(cmd.attachment_id);
     if (!file) return fail(id, "bad_command: unknown attachment");
-    const documents = deps.getState().workspace?.documents ?? [];
-    doc = await keptDocument(documents, file, deps.describeDocument, cmd.note);
+    const ws = deps.getState().workspace;
+    doc = await keptDocument(ws?.documents ?? [], file, deps.describeDocument, cmd.note, ws?.id_counters);
   } catch (e) {
     return fail(id, `save_failed: ${message(e)}`);
   }

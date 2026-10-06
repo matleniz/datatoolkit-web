@@ -1,4 +1,5 @@
-import type { MemoryEntry } from "../api/types";
+import type { IdCounters, MemoryEntry } from "../api/types";
+import { mintId } from "./idCounters";
 
 /**
  * Agent memory per workspace (datatoolkit-issues#179): short entries the agent
@@ -14,16 +15,9 @@ const MEMORY_MAX_ENTRIES = 100;
 /** Total text of all entries (~2k tokens). */
 export const MEMORY_MAX_CHARS = 8000;
 
-const ID_RE = /^m(\d+)$/;
-
-/** `m<n>`, n the smallest above every existing `m<k>`. */
-export function newMemoryId(entries: readonly MemoryEntry[]): string {
-  let top = 0;
-  for (const e of entries) {
-    const n = ID_RE.exec(e.id)?.[1];
-    if (n !== undefined) top = Math.max(top, Number(n));
-  }
-  return `m${top + 1}`;
+/** `m<n>`, n above every existing `m<k>` and the workspace's counter (an id is never reused). */
+export function newMemoryId(entries: readonly MemoryEntry[], counters?: IdCounters): string {
+  return mintId("m", entries.map((e) => e.id), counters);
 }
 
 /** Entries with `entry` replacing the one with its id, or appended. */

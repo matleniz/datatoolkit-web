@@ -1,4 +1,5 @@
-import type { WorkspaceDocument } from "../api/types";
+import type { IdCounters, WorkspaceDocument } from "../api/types";
+import { mintId } from "./idCounters";
 import { noteText } from "./notes";
 
 /**
@@ -10,16 +11,9 @@ import { noteText } from "./notes";
 /** Most documents per workspace (the engine refuses more). */
 export const DOCUMENTS_MAX = 50;
 
-const ID_RE = /^d(\d+)$/;
-
-/** `d<n>`, n the smallest above every existing `d<k>`. */
-export function newDocumentId(documents: readonly WorkspaceDocument[]): string {
-  let top = 0;
-  for (const d of documents) {
-    const n = ID_RE.exec(d.id)?.[1];
-    if (n !== undefined) top = Math.max(top, Number(n));
-  }
-  return `d${top + 1}`;
+/** `d<n>`, n above every existing `d<k>` and the workspace's counter (an id is never reused). */
+export function newDocumentId(documents: readonly WorkspaceDocument[], counters?: IdCounters): string {
+  return mintId("d", documents.map((d) => d.id), counters);
 }
 
 /** The document with `text` as its note (a blank text removes it). */

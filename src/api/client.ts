@@ -101,13 +101,14 @@ export function serializeWorkspace(ws: Workspace): string {
   return JSON.stringify(workspaceBody(ws));
 }
 
-/** PUT body: the stored workspace, saved charts, notes, agent memory and documents included (MAT-185, #152, #179, #178). */
+/** PUT body: the stored workspace, saved charts, notes, agent memory, documents and id counters included (MAT-185, #152, #179, #178, #180). */
 function workspaceBody(ws: Workspace): Record<string, unknown> {
   return {
     ...notesBody(ws),
     charts: ws.charts ?? [],
     ...(ws.memory?.length ? { memory: ws.memory } : {}),
     ...(ws.documents?.length ? { documents: ws.documents } : {}),
+    ...(ws.id_counters ? { id_counters: ws.id_counters } : {}),
   };
 }
 
@@ -118,7 +119,7 @@ function workspaceBody(ws: Workspace): Record<string, unknown> {
  * front-only pipeline ordering.
  */
 function frameBody(ws: Workspace): Record<string, unknown> {
-  const { charts: _charts, notes: _notes, memory: _memory, documents: _documents, ...rest } = ws;
+  const { charts: _charts, notes: _notes, memory: _memory, documents: _documents, id_counters: _ids, ...rest } = ws;
   return {
     ...rest,
     steps: ws.steps.map((step) => {
