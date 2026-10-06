@@ -1,4 +1,4 @@
-import type { JsonSchema, Role, Step } from "../api/types";
+import type { JsonSchema, Role, Step, WorkspaceDocument } from "../api/types";
 import { toolDef } from "../bench/toolrail/tools";
 import {
   CHART_AGGS,
@@ -21,6 +21,12 @@ import { appReducer, type AppAction, type AppState } from "./reducer";
 import { applyStepOps, opRef, refIndex, type StepOp, type StepRef } from "./stepOps";
 import { newStepId } from "./stepIds";
 import { NOTE_MAX, columnNoteKey, noteText } from "./notes";
+import {
+  parseKeepAttachment,
+  runKeepAttachment,
+  type KeepAttachmentCommand,
+  type UploadedFile,
+} from "./documentCommands";
 import { currentIdentityKey } from "./uiContext";
 import { chartDraftToParams } from "../bench/dock/chartPrefill";
 import { missingChartField } from "../bench/dock/chartDockModel";
@@ -76,7 +82,8 @@ export type AgentCommand =
       column?: string;
       /** "" deletes the note. */
       text: string;
-    };
+    }
+  | KeepAttachmentCommand;
 
 const NOTE_KINDS = ["step", "column", "workspace"] as const;
 type NoteKind = (typeof NOTE_KINDS)[number];
@@ -97,6 +104,8 @@ export interface Ack {
   added_ids?: string[];
   /** `propose_steps` acked stale by the id rule: which targeted steps moved. */
   stale?: StaleStep[];
+  /** `keep_attachment`: id of the workspace document (#178). */
+  document_id?: string;
 }
 
 /** A step an id-based `propose_steps` targets that the user removed or changed. */
@@ -159,6 +168,10 @@ export interface BridgeDeps {
    * of those a rename moved (`set_note` on a column, #152).
    */
   latestColumns(): Promise<{ names: string[]; keys: Record<string, string> }>;
+  /** Name and upload ref of a chat attachment of this session; null when unknown (#178). */
+  attachmentFile(attachmentId: string): Promise<UploadedFile | null>;
+  /** `POST /documents/describe` (#178). */
+  describeDocument(path: string, name?: string): Promise<Omit<WorkspaceDocument, "id">>;
 }
 
 /** What a command touched; every field optional, later commands declare only theirs. */
@@ -587,6 +600,8 @@ export function parseCommand(raw: Record<string, unknown>): Parsed<AgentCommand>
       return parseSetGridView(raw);
     case "set_note":
       return parseSetNote(raw);
+    case "keep_attachment":
+      return parseKeepAttachment(raw);
     default:
       return { error: `unknown type ${JSON.stringify(raw.type)}` };
   }
@@ -1109,6 +1124,7 @@ export async function handleCommand(
   }
   if (cmd.type === "set_grid_view") return setGridView(id, cmd, deps);
   if (cmd.type === "set_note") return setNote(id, cmd, deps);
+  if (cmd.type === "keep_attachment") return runKeepAttachment(id, cmd, deps);
   if (cmd.type === "pick_row" || cmd.type === "pick_cell" || cmd.type === "clear_selection") {
     return pick(id, cmd, deps);
   }

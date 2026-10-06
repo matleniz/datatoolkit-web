@@ -158,7 +158,12 @@ export interface WorkspaceBuildInput {
   steps?: Step[];
   /** Saved charts carried over, like steps (MAT-185). */
   charts?: ChartSpec[];
+  /** Not built from the sources, carried over as is: notes (#152), documents (#178). */
+  carry?: CarriedFields;
 }
+
+/** Workspace fields the Sources screen does not edit but must not drop on save. */
+export type CarriedFields = Partial<Pick<Workspace, "notes" | "documents">>;
 
 export interface WorkspaceBuildResult {
   workspace: Workspace;
@@ -366,6 +371,11 @@ function buildMerge(
 /**
  * Pure mapping from user choices on Sources screen to a valid Workspace JSON object.
  */
+/** `fields` without its undefined values (a carried field stays absent when unset). */
+function definedFields(fields: CarriedFields): CarriedFields {
+  return Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
+}
+
 export function buildWorkspaceJson(
   input: WorkspaceBuildInput,
 ): WorkspaceBuildResult {
@@ -427,6 +437,7 @@ export function buildWorkspaceJson(
     variables: [],
     steps: input.steps ?? [],
     charts: input.charts ?? [],
+    ...definedFields(input.carry ?? {}),
   };
 
   return { workspace, errors, info, targetLabel, originMap };

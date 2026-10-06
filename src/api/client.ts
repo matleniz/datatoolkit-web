@@ -17,6 +17,7 @@ import {
   TransformInfo,
   UploadResponse,
   Workspace,
+  WorkspaceDocument,
   WorkspacePreview,
   WorkspaceRows,
   WorkspaceSummary,
@@ -75,6 +76,8 @@ interface ApiClient {
   columnNotes(workspace: Workspace, role: Role, version?: number | null): Promise<ColumnNotes>;
 
   upload(filename: string, body: BodyInit): Promise<UploadResponse>;
+  /** `POST /documents/describe`: a document entry (no id) for an uploaded file (#178). */
+  describeDocument(path: string, name?: string): Promise<Omit<WorkspaceDocument, "id">>;
 }
 
 function isErrorBody(value: unknown): value is ErrorBody {
@@ -98,18 +101,22 @@ export function serializeWorkspace(ws: Workspace): string {
   return JSON.stringify(workspaceBody(ws));
 }
 
-/** PUT body: the stored workspace, saved charts and notes included (MAT-185, #152). */
+/** PUT body: the stored workspace, saved charts, notes and documents included (MAT-185, #152, #178). */
 function workspaceBody(ws: Workspace): Record<string, unknown> {
-  return { ...notesBody(ws), charts: ws.charts ?? [] };
+  return {
+    ...notesBody(ws),
+    charts: ws.charts ?? [],
+    ...(ws.documents?.length ? { documents: ws.documents } : {}),
+  };
 }
 
 /**
- * Workspace sent to frame / analysis calls: saved charts and notes never feed
- * a frame, so saving one does not change those request bodies (MAT-175
- * identity, #152). Step.align is front-only pipeline ordering.
+ * Workspace sent to frame / analysis calls: saved charts, notes and documents
+ * never feed a frame, so saving one does not change those request bodies
+ * (MAT-175 identity, #152, #178). Step.align is front-only pipeline ordering.
  */
 function frameBody(ws: Workspace): Record<string, unknown> {
-  const { charts: _charts, notes: _notes, ...rest } = ws;
+  const { charts: _charts, notes: _notes, documents: _documents, ...rest } = ws;
   return {
     ...rest,
     steps: ws.steps.map((step) => {
@@ -500,6 +507,15 @@ class HttpApiClient implements ApiClient {
       body,
     );
   }
+
+  describeDocument(path: string, name?: string): Promise<Omit<WorkspaceDocument, "id">> {
+    return this.request("POST", "/documents/describe", name ? { path, name } : { path });
+  }
+}
+
+/** The stored file of a workspace document (open / download, #178). */
+export function documentFileUrl(workspace: string, id: string, base: string = API_BASE): string {
+  return `${base.replace(/\/$/, "")}/workspaces/${encodeURIComponent(workspace)}/documents/${encodeURIComponent(id)}/file`;
 }
 
 export const apiClient: ApiClient = new HttpApiClient();

@@ -6,6 +6,7 @@ import { canSend, earlierAttachments } from "../attachments/attachmentState";
 import { AttachmentBar, SessionAttachments } from "../attachments/AttachmentBar";
 import { dropProps } from "../attachments/dropProps";
 import { useAttachments } from "../attachments/useAttachments";
+import { useKeepAttachment } from "../attachments/useKeepAttachment";
 import { AgentPicker } from "./AgentPicker";
 import { MessageItem } from "./MessageItem";
 import { setAgentPanelOpen, useAgentPanelOpen } from "./panelOpen";
@@ -149,6 +150,7 @@ function Conversation({ chat, status, token }: { chat: AgentChat; status: AgentS
   const [draft, setDraft] = useState("");
   const [session] = useState(uiSession);
   const attachments = useAttachments(token, session);
+  const keeper = useKeepAttachment(token, session);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -200,6 +202,7 @@ function Conversation({ chat, status, token }: { chat: AgentChat; status: AgentS
           attached={earlierAttachments(transcript.attached, attachments.items)}
           onDetach={detach}
           disabled={transcript.running}
+          keeper={keeper}
         />
         <AttachmentBar attachments={attachments} disabled={transcript.running} />
         <div className="agent-foot-row">

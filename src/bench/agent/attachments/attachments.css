@@ -38,3 +38,17 @@
   cursor: pointer;
   padding: 0 2px;
 }
+
+/* Keep a chat attachment in the workspace documents (datatoolkit-issues#178). */
+.agent-attach-chip .agent-attach-keep {
+  font-size: 11px;
+  text-decoration: underline;
+  opacity: 0.75;
+}
+.agent-attach-kept {
+  font-size: 11px;
+  opacity: 0.6;
+}
+.agent-attach-error {
+  color: var(--dtk-error-fg);
+}

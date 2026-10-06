@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { apiClient, postUiAck, putUiContext, uiEventsUrl, uiSession, uiToken } from "../../api/client";
 import type { BridgeDeps, Proposal } from "../../state/agentCommands";
+import { listAttachments } from "./attachments/attachmentContract";
 import { commandRunner } from "../../state/agentQueue";
 import { ensureWorkspaceSaved, useAppDispatch, useAppState } from "../../state/AppStore";
 import type { AppAction } from "../../state/reducer";
@@ -124,6 +125,11 @@ function ActiveBridge({ token }: { token: string }) {
         ]);
         return { names: page.columns.map((c) => c.name), keys: notes.keys };
       },
+      attachmentFile: async (attachmentId) => {
+        const att = (await listAttachments(token, session)).find((a) => a.id === attachmentId);
+        return att?.path ? { name: att.name, path: att.path } : null;
+      },
+      describeDocument: (path, name) => apiClient.describeDocument(path, name),
       touch: (touched) => {
         const { columns = [], tools = [], steps = [], rows = [], cells = [] } = touched;
         if (columns.length + tools.length + steps.length + rows.length + cells.length === 0) return;

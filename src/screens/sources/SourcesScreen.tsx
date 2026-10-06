@@ -29,6 +29,8 @@ function useBuildResult(core: SourcesCore) {
   const { files, roles, labelMode, yJoin, yKey, targetCol, mergeKey, mergeInTest } = src;
   const steps = workspace?.steps;
   const charts = workspace?.charts;
+  const notes = workspace?.notes;
+  const documents = workspace?.documents;
   return useMemo(
     () =>
       buildWorkspaceJson({
@@ -43,6 +45,7 @@ function useBuildResult(core: SourcesCore) {
         mergeInTest,
         steps: steps ?? [],
         charts: charts ?? [],
+        carry: { notes, documents },
       }),
     [
       activeWsName,
@@ -56,6 +59,8 @@ function useBuildResult(core: SourcesCore) {
       mergeInTest,
       steps,
       charts,
+      notes,
+      documents,
     ],
   );
 }

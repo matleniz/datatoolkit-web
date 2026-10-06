@@ -715,3 +715,91 @@
   cursor: pointer;
   color: var(--dtk-ink);
 }
+
+/* Documents section of the Sources card (datatoolkit-issues#178). */
+.sources-documents {
+  border-top: 1px solid var(--dtk-border-soft);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sources-documents.drop-over {
+  background: var(--dtk-accent-soft);
+  outline: 1px dashed var(--dtk-accent-border);
+  outline-offset: -4px;
+}
+.sources-documents-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.sources-documents-title {
+  font-weight: 600;
+  font-size: 12px;
+}
+.sources-documents-sub,
+.sources-documents-hint {
+  color: var(--dtk-muted);
+  font-size: 12px;
+}
+.sources-documents-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sources-document {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.sources-document-name {
+  color: var(--dtk-ink);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+}
+.sources-document-meta {
+  font-family: var(--dtk-font-mono);
+  font-size: 11px;
+  color: var(--dtk-muted);
+}
+.sources-document-note {
+  border: none;
+  background: transparent;
+  padding: 2px;
+  display: inline-flex;
+  cursor: pointer;
+}
+.sources-document-btn {
+  border: none;
+  background: transparent;
+  color: var(--dtk-muted);
+  font-size: 11px;
+  padding: 0 2px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.sources-document-note + .sources-document-btn {
+  margin-left: auto;
+}
+.sources-documents-error {
+  color: var(--dtk-error-fg);
+  font-size: 12px;
+}
+.sources-documents-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.btn-add-file.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

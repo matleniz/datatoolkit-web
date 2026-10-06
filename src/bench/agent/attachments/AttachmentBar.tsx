@@ -61,10 +61,16 @@ function Chip({ item, onRemove }: { item: Attachment; onRemove: () => void }) {
  * the panel was closed (#129): the agent can read them all, so they stay
  * listed until detached.
  */
-export function SessionAttachments({ attached, onDetach, disabled }: {
+export function SessionAttachments({ attached, onDetach, disabled, keeper }: {
   attached: SessionAttachment[];
   onDetach: (id: string) => void;
   disabled?: boolean;
+  /** "Keep in workspace" (#178); absent or `keep: null` = no button. */
+  keeper?: {
+    keep: ((id: string) => Promise<void>) | null;
+    isKept: (id: string) => boolean;
+    error: string | null;
+  };
 }) {
   if (attached.length === 0) return null;
   return (
@@ -73,11 +79,31 @@ export function SessionAttachments({ attached, onDetach, disabled }: {
       {attached.map((a) => (
         <span key={a.id} className="agent-attach-chip" data-session-attachment={a.id} title={a.name}>
           <span className="agent-attach-name">{a.name}</span>
+          {keeper?.keep ? (
+            keeper.isKept(a.id) ? (
+              <span className="agent-attach-kept">kept</span>
+            ) : (
+              <button
+                type="button"
+                className="agent-attach-keep"
+                aria-label={`Keep ${a.name} in the workspace`}
+                title="Keep in the workspace documents (outlives this chat)"
+                onClick={() => void keeper.keep?.(a.id)}
+              >
+                keep
+              </button>
+            )
+          ) : null}
           <button type="button" aria-label={`Detach ${a.name}`} disabled={disabled} onClick={() => onDetach(a.id)}>
             ×
           </button>
         </span>
       ))}
+      {keeper?.error ? (
+        <span className="agent-attach-error" role="alert">
+          {keeper.error}
+        </span>
+      ) : null}
     </div>
   );
 }

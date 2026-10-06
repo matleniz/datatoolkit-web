@@ -41,6 +41,10 @@ function harness() {
     frameColumns: async () => ["age", "id"],
     latestColumns: async () => ({ names: [], keys: {} }),
     keySchema: async () => ({ type: "object" }),
+    attachmentFile: async () => null,
+    describeDocument: async () => {
+      throw new Error("no documents here");
+    },
   };
   const show = (p: Proposal) =>
     new Promise<boolean>((resolve) => h.answers.set(p.id, resolve));
