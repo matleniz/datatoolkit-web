@@ -274,8 +274,13 @@ function DataCell({
   );
 }
 
+/** `missing_ok`: a drag orders what exists in each split (the target or a train-only column is absent from the test frame). */
 function reorderStep(p: ReorderParams): Step {
-  return { op: "reorder_columns", target: "both", params: { ...p } };
+  return {
+    op: "reorder_columns",
+    target: "both",
+    params: { ...p, missing_ok: true },
+  };
 }
 
 function rowNumClass(selected: boolean, removed: boolean): string {
