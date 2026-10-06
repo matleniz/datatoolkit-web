@@ -1019,10 +1019,16 @@ async function proposeSteps(
 async function noteChange(
   cmd: Extract<AgentCommand, { type: "set_note" }>,
   deps: BridgeDeps,
-): Promise<{ action: AppAction; touched: Touched; what: string } | string> {
+): Promise<{ action: AppAction; touched: Touched; what: string; before: string | null } | string> {
   const text = cmd.text;
+  const notes = deps.getState().workspace?.notes;
   if (cmd.kind === "workspace") {
-    return { action: { type: "SET_WORKSPACE_NOTE", text }, touched: {}, what: "the workspace" };
+    return {
+      action: { type: "SET_WORKSPACE_NOTE", text },
+      touched: {},
+      what: "the workspace",
+      before: notes?.workspace ?? null,
+    };
   }
   if (cmd.kind === "step") {
     const steps = deps.getState().workspace?.steps ?? [];
@@ -1032,6 +1038,7 @@ async function noteChange(
       action: { type: "SET_STEP_NOTE", id: cmd.step_id!, text },
       touched: { steps: [at] },
       what: `step ${at + 1} (${steps[at]!.op})`,
+      before: steps[at]!.note ?? null,
     };
   }
   const column = cmd.column!;
@@ -1042,10 +1049,12 @@ async function noteChange(
     return `frame_unavailable: ${e instanceof Error ? e.message : String(e)}`;
   }
   if (!latest.names.includes(column)) return `bad_command: no column ${column}`;
+  const key = columnNoteKey(column, latest.keys);
   return {
-    action: { type: "SET_COLUMN_NOTE", key: columnNoteKey(column, latest.keys), text },
+    action: { type: "SET_COLUMN_NOTE", key, text },
     touched: { columns: [column] },
     what: `column ${column}`,
+    before: notes?.columns[key] ?? null,
   };
 }
 
@@ -1064,9 +1073,9 @@ async function setNote(
   }
   const change = await noteChange(cmd, deps);
   if (typeof change === "string") return fail(id, change);
-  const before = deps.getState().stepHistory;
+  // Same text: nothing recorded in the history, so nothing to undo.
+  const changed = noteText(cmd.text) !== change.before;
   deps.dispatch(change.action);
-  const recorded = deps.getState().stepHistory !== before;
   try {
     await deps.settle();
   } catch (e) {
@@ -1074,7 +1083,7 @@ async function setNote(
   }
   deps.touch(change.touched);
   const verb = noteText(cmd.text) === null ? "removed the note on" : "note on";
-  deps.announce(`${verb} ${change.what}`, recorded ? [{ type: "UNDO_STEPS" }] : undefined);
+  deps.announce(`${verb} ${change.what}`, changed ? [{ type: "UNDO_STEPS" }] : undefined);
   return { id, ok: true, identity: currentIdentityKey(deps.getState()) };
 }
 
