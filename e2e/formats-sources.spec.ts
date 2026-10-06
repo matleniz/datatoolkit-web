@@ -4,6 +4,7 @@ import {
   clearFlowScreenshots,
   fixturesDir,
   waitForGridReady,
+  sourceFileInput,
 } from "./helpers";
 
 const EVENTS_PARQUET = join(fixturesDir, "events.parquet");
@@ -36,7 +37,7 @@ async function uploadAsTrainX(
   filePath: string,
   fileName: string,
 ): Promise<void> {
-  const fileInput = page.locator('input[type="file"]');
+  const fileInput = sourceFileInput(page);
   await fileInput.setInputFiles(filePath);
   const filesList = page.getByRole("region", { name: "Files list" });
   const row = filesList.locator(".files-table-block, .files-table-row", {

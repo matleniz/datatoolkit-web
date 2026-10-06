@@ -476,3 +476,8 @@ export async function openParams(win: Locator): Promise<void> {
   }
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
 }
+
+/** The source-file input (not the documents one): both live on the Sources screen. */
+export function sourceFileInput(page: Page): Locator {
+  return page.getByLabel(/Add a file/);
+}

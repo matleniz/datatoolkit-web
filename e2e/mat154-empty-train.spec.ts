@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { join } from "node:path";
-import { fixturesDir } from "./helpers";
+import { fixturesDir, sourceFileInput } from "./helpers";
 
 const EMPTY_MSG =
   /This train file has no columns \(empty or unreadable\)/;
@@ -28,7 +28,7 @@ test("MAT-154: empty train file disables workbench and alignment", async ({
   });
 
   const emptyPath = join(fixturesDir, "adv_empty.csv");
-  await page.locator('input[type="file"]').setInputFiles(emptyPath);
+  await sourceFileInput(page).setInputFiles(emptyPath);
 
   const filesList = page.getByRole("region", { name: "Files list" });
   await expect(filesList.getByText("adv_empty.csv")).toBeVisible({

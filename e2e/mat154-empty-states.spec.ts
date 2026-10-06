@@ -6,7 +6,7 @@ import {
   EMPTY_DATA_ROWS_MSG,
   TEXT_PREVIEW_CHARS,
 } from "../src/bench/format";
-import { fixturesDir } from "./helpers";
+import { fixturesDir, sourceFileInput } from "./helpers";
 
 const HEADER_ONLY = join(fixturesDir, "adv_header_only.csv");
 const VERY_LONG = join(fixturesDir, "adv_very_long_strings.csv");
@@ -29,7 +29,7 @@ async function uploadAsTrainX(
   filePath: string,
   fileName: string,
 ): Promise<void> {
-  await page.locator('input[type="file"]').setInputFiles(filePath);
+  await sourceFileInput(page).setInputFiles(filePath);
   const filesList = page.getByRole("region", { name: "Files list" });
   const row = filesList.locator(".files-table-block, .files-table-row", {
     hasText: fileName,

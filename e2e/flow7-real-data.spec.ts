@@ -7,6 +7,7 @@ import {
   waitForAlignReady,
   waitForGridReady,
   waitForSuggestionsReady,
+  sourceFileInput,
 } from "./helpers";
 
 const REAL_DATA_DIR = "/mnt/c/Users/mat24/Downloads";
@@ -52,7 +53,7 @@ test("Flow 7: real dataset (parkinson upload through Sources screen, alignment, 
   });
 
   // 3. Upload real Parkinson files via file input
-  const fileInput = page.locator('input[type="file"]');
+  const fileInput = sourceFileInput(page);
 
   await fileInput.setInputFiles(X_TRAIN);
   const filesList = page.getByRole("region", { name: "Files list" });
