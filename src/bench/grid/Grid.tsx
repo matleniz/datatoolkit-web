@@ -23,6 +23,7 @@ import { stepSummary } from "../stages";
 import { useWorkbenchData } from "../WorkbenchData";
 import { columnWindow } from "./columnWindow";
 import { dropOrder, planReorder, type ReorderParams } from "./reorderDrag";
+import { NoteIcon } from "../notes/NotePopover";
 import { GridViewBar } from "./GridViewBar";
 
 type Dispatch = ReturnType<typeof useAppDispatch>;
@@ -93,6 +94,7 @@ function ColumnHeader({
   isTarget,
   touched,
   profile: pr,
+  note,
   dispatch,
   reorder,
 }: {
@@ -101,6 +103,8 @@ function ColumnHeader({
   isTarget: boolean;
   touched: boolean;
   profile: ColumnProfile | undefined;
+  /** Column note (#152), shown on hover; edited from the column menu. */
+  note: string | undefined;
   dispatch: Dispatch;
   reorder: ReorderDrag;
 }) {
@@ -180,6 +184,11 @@ function ColumnHeader({
             />
             <circle cx="7" cy="7" r="2" fill="#1d5b86" />
           </svg>
+        ) : null}
+        {note ? (
+          <span className="th-note" role="img" aria-label="Column note" title={note}>
+            <NoteIcon filled />
+          </span>
         ) : null}
       </span>
       <span className="th-meta">
@@ -294,6 +303,7 @@ export function Grid() {
     reportVisibleColumns,
     identity,
     rowsIdentity,
+    columnNotes,
   } = useWorkbenchData();
 
   const { workspace } = useAppState();
@@ -651,6 +661,7 @@ export function Grid() {
                 isTarget={c.name === targetColumn}
                 touched={!!agentTouch?.columns.includes(c.name)}
                 profile={profiles.get(c.name)}
+                note={columnNotes.notes[c.name]}
                 dispatch={dispatch}
                 reorder={reorder}
               />

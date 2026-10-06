@@ -15,6 +15,7 @@ import {
 import { useWorkbenchData, type PipelineShape } from "../WorkbenchData";
 import { PipelineHistory } from "./PipelineHistory";
 import { rawNodeSubLabel } from "./rawNodeSubLabel";
+import { NoteButton } from "../notes/NotePopover";
 import { StepMenu, type StepMenuState } from "./StepMenu";
 
 function Arrow({ dashed = false, accent = false }: { dashed?: boolean; accent?: boolean }) {
@@ -131,6 +132,21 @@ function stepNode(
   };
 }
 
+/** Note button of a step card (#152): the note follows the step id. */
+function StepNoteButton({ step, index }: { step: Step; index: number }) {
+  const dispatch = useAppDispatch();
+  const { id } = step;
+  if (!id) return null;
+  return (
+    <NoteButton
+      className="pipeline-note"
+      label={`step ${index + 1} (${opTitle(step.op)})`}
+      text={step.note ?? null}
+      onSave={(text) => dispatch({ type: "SET_STEP_NOTE", id, text })}
+    />
+  );
+}
+
 function nodeClass(n: PipelineNodeData): string {
   if (n.error) return "pipeline-node error";
   return n.on ? "pipeline-node on" : "pipeline-node";
@@ -236,6 +252,16 @@ export function PipelineBar() {
                   <span className="pipeline-badge">{n.badge}</span>
                 </span>
               </button>
+              {n.stepIndex === null ? (
+                <NoteButton
+                  className="pipeline-note"
+                  label="the workspace"
+                  text={workspace?.notes?.workspace ?? null}
+                  onSave={(text) => dispatch({ type: "SET_WORKSPACE_NOTE", text })}
+                />
+              ) : (
+                <StepNoteButton step={steps[n.stepIndex]!} index={n.stepIndex} />
+              )}
               {canEdit && n.stepIndex !== null ? (
                 <button
                   type="button"

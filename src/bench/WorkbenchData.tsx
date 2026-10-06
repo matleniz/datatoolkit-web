@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import type {
+  ColumnNotes,
   ColumnProfile,
   PreviewStep,
   Step,
@@ -27,6 +28,7 @@ import { useBenchFrame, type PipelineShape } from "./useBenchFrame";
 import { editorBaseVersion } from "./version";
 import { useEditorSchema } from "./useEditorSchema";
 import { usePreview } from "./usePreview";
+import { useColumnNotes } from "./notes/useColumnNotes";
 
 export type { PipelineShape };
 
@@ -80,6 +82,8 @@ export interface WorkbenchDataValue {
    * them first when the engine supports a `columns` filter (MAT-152).
    */
   reportVisibleColumns: (names: string[]) => void;
+  /** Column notes by the names at the viewed version (#152). */
+  columnNotes: ColumnNotes;
 }
 
 const WorkbenchDataContext = createContext<WorkbenchDataValue | null>(null);
@@ -89,6 +93,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
   const dispatch = useAppDispatch();
 
   const frame = useBenchFrame(workspace, role, viewVersion, dispatch, gridView);
+  const columnNotes = useColumnNotes(workspace, role, viewVersion);
   // The agent reads the row count of the grid shown through the UI context.
   const rowsShown = frame.shownTotal;
   useEffect(() => {
@@ -166,6 +171,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       reload: frame.reload,
       applyPending,
       reportVisibleColumns: frame.reportVisibleColumns,
+      columnNotes,
     }),
     [
       frame,
@@ -179,6 +185,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       pendingStep,
       display,
       applyPending,
+      columnNotes,
     ],
   );
 

@@ -736,6 +736,31 @@ function loadedWorkspace(raw: Workspace): Workspace {
   return steps === ws.steps ? ws : { ...ws, steps };
 }
 
+/** Step / column / workspace notes (#152); recorded in the pipeline history. */
+function reduceNotes(state: AppState, action: AppAction): AppState | undefined {
+  if (!state.workspace) return undefined;
+  switch (action.type) {
+    case "SET_STEP_NOTE": {
+      const steps = state.workspace.steps;
+      const at = steps.findIndex((s) => s.id === action.id);
+      if (at < 0) return state;
+      const next = steps.slice();
+      next[at] = withNote(steps[at]!, action.text);
+      return withWorkspace(state, { steps: next });
+    }
+    case "SET_COLUMN_NOTE":
+      return withWorkspace(state, {
+        notes: withColumnNote(state.workspace.notes, action.key, action.text),
+      });
+    case "SET_WORKSPACE_NOTE":
+      return withWorkspace(state, {
+        notes: withWorkspaceNote(state.workspace.notes, action.text),
+      });
+    default:
+      return undefined;
+  }
+}
+
 /** The open workspace: steps, variables, charts, test options. */
 function reduceWorkspace(
   state: AppState,
@@ -834,24 +859,6 @@ function reduceWorkspace(
         steps: (state.workspace?.steps ?? []).filter(
           (_, i) => i !== action.index,
         ),
-      });
-    case "SET_STEP_NOTE": {
-      const steps = state.workspace?.steps ?? [];
-      const at = steps.findIndex((s) => s.id === action.id);
-      if (at < 0) return state;
-      const next = steps.slice();
-      next[at] = withNote(steps[at]!, action.text);
-      return withWorkspace(state, { steps: next });
-    }
-    case "SET_COLUMN_NOTE":
-      if (!state.workspace) return state;
-      return withWorkspace(state, {
-        notes: withColumnNote(state.workspace.notes, action.key, action.text),
-      });
-    case "SET_WORKSPACE_NOTE":
-      if (!state.workspace) return state;
-      return withWorkspace(state, {
-        notes: withWorkspaceNote(state.workspace.notes, action.text),
       });
     case "SET_TEST_DECIMAL": {
       if (!state.workspace || !state.workspace.datasets.test) return state;
@@ -966,6 +973,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     reduceDock(state, action) ??
     reduceToolState(state, action) ??
     reduceWorkspace(state, action) ??
+    reduceNotes(state, action) ??
     state;
   return trackStepHistory(state, next, action);
 }
