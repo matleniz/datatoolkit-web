@@ -11,6 +11,9 @@ import {
   type AppState,
 } from "../src/state/reducer";
 
+/** Steps without their stable ids (minted at random on create, #153). */
+const withoutIds = (steps: Step[]) => steps.map(({ id: _id, ...s }) => s);
+
 const impute: Step = {
   op: "impute",
   target: "both",
@@ -52,7 +55,7 @@ describe("edit an applied step (datatoolkit-issues#10)", () => {
       { type: "EDIT_STEP", index: 1 },
       { type: "REPLACE_STEP", index: 1, step: edited },
     );
-    expect(s.workspace!.steps).toEqual([impute, edited, onehot]);
+    expect(withoutIds(s.workspace!.steps)).toEqual([impute, edited, onehot]);
     expect(s.editor).toBeNull();
     expect(s.viewVersion).toBeNull();
   });
@@ -64,7 +67,7 @@ describe("edit an applied step (datatoolkit-issues#10)", () => {
       { type: "ADD_ALIGN_STEP", step: align },
       { type: "REPLACE_STEP", index: 0, step: { ...impute, params: { columns: ["x"] } } },
     );
-    expect(s.workspace!.steps[0]).toEqual({ ...impute, params: { columns: ["x"] }, align: true });
+    expect(withoutIds([s.workspace!.steps[0]!])[0]).toEqual({ ...impute, params: { columns: ["x"] }, align: true });
   });
 
   it("an edit is undoable and redoable", () => {
@@ -75,9 +78,9 @@ describe("edit an applied step (datatoolkit-issues#10)", () => {
       { type: "REPLACE_STEP", index: 0, step: edited },
     );
     s = run(s, { type: "UNDO_STEPS" });
-    expect(s.workspace!.steps).toEqual([impute, scale, onehot]);
+    expect(withoutIds(s.workspace!.steps)).toEqual([impute, scale, onehot]);
     s = run(s, { type: "REDO_STEPS" });
-    expect(s.workspace!.steps).toEqual([edited, scale, onehot]);
+    expect(withoutIds(s.workspace!.steps)).toEqual([edited, scale, onehot]);
   });
 
   it("Discard or a new step leaves the edit and goes back to latest", () => {

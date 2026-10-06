@@ -1,7 +1,7 @@
 import type { Step } from "../../../api/types";
 import { TOOL_IDS, type ToolId } from "../../../state/dockTypes";
 import type { AppAction } from "../../../state/reducer";
-import type { StepOp } from "../../../state/stepOps";
+import { refIndex, type StepOp, type StepRef } from "../../../state/stepOps";
 import { toolDef } from "../../toolrail/tools";
 
 /**
@@ -44,10 +44,13 @@ export function chipTarget(name: string, input: Obj): ChipTarget {
   return columns.length ? { kind: "columns", columns } : null;
 }
 
+/** A step id as is, an index 1-based (as on the step cards). */
+const refName = (ref: StepRef) => ("id" in ref ? ref.id : String(ref.index + 1));
+
 function opLabel(op: StepOp): string {
   if ("add" in op) return `add ${op.add.step?.op ?? "step"}`;
-  if ("replace" in op) return `edit step ${op.replace.index + 1}`;
-  if ("remove" in op) return `remove step ${op.remove.index + 1}`;
+  if ("replace" in op) return `edit step ${refName(op.replace)}`;
+  if ("remove" in op) return `remove step ${refName(op.remove)}`;
   return "step";
 }
 
@@ -74,13 +77,17 @@ const sameStep = (a: Step, b: Partial<Step>) =>
 
 /**
  * Index of the steps a `propose_steps` call left in `steps` (now): a replaced
- * index as is, an added step = its last match (op + params, else op alone).
+ * step where its index / id points now, an added step = its last match (op +
+ * params, else op alone).
  * Removed steps have no card left to point at.
  */
 export function stepIndices(ops: StepOp[], steps: Step[]): number[] {
   const found = new Set<number>();
   for (const op of ops) {
-    if ("replace" in op && op.replace.index < steps.length) found.add(op.replace.index);
+    if ("replace" in op) {
+      const at = refIndex(steps, op.replace);
+      if (at >= 0) found.add(at);
+    }
     if (!("add" in op) || !op.add.step) continue;
     const step = op.add.step;
     let at = lastIndex(steps, (s) => sameStep(s, step));

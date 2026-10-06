@@ -6,6 +6,9 @@ import { commandRunner } from "../src/state/agentQueue";
 import { appReducer, emptyWorkspace, initialState, type AppState } from "../src/state/reducer";
 import { currentIdentityKey } from "../src/state/uiContext";
 
+/** Steps without their stable ids (minted at random on create, #153). */
+const withoutIds = (steps: Step[]) => steps.map(({ id: _id, ...s }) => s);
+
 const impute: Step = { op: "impute", target: "both", params: { columns: ["age"] } };
 const drop: Step = { op: "drop_columns", target: "both", params: { columns: ["id"] } };
 
@@ -74,12 +77,17 @@ describe("commandRunner (datatoolkit-issues#97)", () => {
       expect.objectContaining({ id: "c2", ok: true }),
       { id: "c3", ok: false, error: "busy" },
     ]);
-    expect(h.state.workspace?.steps).toEqual([impute]);
+    expect(withoutIds(h.state.workspace?.steps ?? [])).toEqual([impute]);
 
     decide("c1", true);
     await reviewed;
-    expect(h.state.workspace?.steps).toEqual([impute, drop]);
-    expect(h.posted[3]).toEqual({ id: "c1", ok: true, identity: currentIdentityKey(h.state) });
+    expect(withoutIds(h.state.workspace?.steps ?? [])).toEqual([impute, drop]);
+    expect(h.posted[3]).toEqual({
+      id: "c1",
+      ok: true,
+      identity: currentIdentityKey(h.state),
+      added_ids: [h.state.workspace?.steps[1]?.id],
+    });
   });
 
   it("sends rejected on Dismiss and frees the queue for the next proposal", async () => {
@@ -106,11 +114,11 @@ describe("commandRunner (datatoolkit-issues#97)", () => {
     await flush();
     decide("c1", true);
     await flush();
-    expect(h.state.workspace?.steps).toEqual([impute]);
+    expect(withoutIds(h.state.workspace?.steps ?? [])).toEqual([impute]);
     h.gate = null;
     release();
     await Promise.all([slow, reviewed]);
     expect(h.posted.map((a) => a.id)).toEqual(["c1", "c2", "c1"]);
-    expect(h.state.workspace?.steps).toEqual([impute, drop]);
+    expect(withoutIds(h.state.workspace?.steps ?? [])).toEqual([impute, drop]);
   });
 });

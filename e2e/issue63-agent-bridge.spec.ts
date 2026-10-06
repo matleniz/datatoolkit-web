@@ -209,7 +209,8 @@ test("issue 63: a batch is one undo entry; a stale base_identity is refused", as
   await page.getByRole("button", { name: "Undo pipeline change" }).click();
   expect(await stepOps(page)).toEqual([]);
 
-  // The frame moved on (a step applied by the user): the old identity is stale.
+  // The frame moved on (a step applied by the user): an index-based command on
+  // the old identity is stale (id-based ones rebase, #153).
   await page.evaluate(() => {
     window.__DTK_DISPATCH__!({
       type: "ADD_STEP",
@@ -218,7 +219,7 @@ test("issue 63: a batch is one undo entry; a stale base_identity is refused", as
   });
   const stale = await send(request, page, {
     type: "propose_steps", workspace: "churn", base_identity: ctx0.identity,
-    ops: [{ add: { step: scale } }],
+    ops: [{ replace: { index: 0, step: scale } }],
   });
   expect(stale).toMatchObject({ ok: false, error: "stale" });
   expect(await stepOps(page)).toEqual(["scale"]);

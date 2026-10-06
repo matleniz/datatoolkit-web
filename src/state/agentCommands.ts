@@ -18,7 +18,8 @@ import {
 } from "./gridView";
 import { TOOL_IDS, type ToolId } from "./dockTypes";
 import { appReducer, type AppAction, type AppState } from "./reducer";
-import { applyStepOps, type StepOp } from "./stepOps";
+import { applyStepOps, opRef, refIndex, type StepOp, type StepRef } from "./stepOps";
+import { newStepId } from "./stepIds";
 import { currentIdentityKey } from "./uiContext";
 import { chartDraftToParams } from "../bench/dock/chartPrefill";
 import { missingChartField } from "../bench/dock/chartDockModel";
@@ -37,6 +38,12 @@ export type AgentCommand =
       workspace: string;
       base_identity: string;
       ops: StepOp[];
+      /**
+       * Content the agent last saw for each step id it targets (#153); the
+       * engine fills it. A targeted step that differs now makes the command
+       * stale.
+       */
+      base_steps?: Record<string, Step>;
     }
   | { type: "open_window"; tool: ToolId; params: Record<string, unknown> }
   | { type: "select_columns"; columns: string[] }
@@ -71,6 +78,18 @@ export interface Ack {
   ok: boolean;
   error?: string;
   identity?: string;
+  /** `propose_steps`: ids of the `add` ops' new steps, in op order (#153). */
+  added_ids?: string[];
+  /** `propose_steps` acked stale by the id rule: which targeted steps moved. */
+  stale?: StaleStep[];
+}
+
+/** A step an id-based `propose_steps` targets that the user removed or changed. */
+export interface StaleStep {
+  id: string;
+  reason: "removed" | "changed";
+  /** The step as it is now (`changed` only). */
+  step?: Step;
 }
 
 /**
@@ -166,22 +185,51 @@ function parseStep(raw: unknown): Step | string {
   return { op: raw.op, target, params };
 }
 
+/** `{id}` (#153) or `{index}` (older form) of a replace / remove op. */
+function parseRef(body: Record<string, unknown>, kind: string): StepRef | string {
+  const hasId = "id" in body;
+  if (hasId === "index" in body) return `${kind} needs exactly one of id / index`;
+  if (hasId) {
+    return typeof body.id === "string" && body.id !== ""
+      ? { id: body.id }
+      : `${kind}.id must be a non-empty string`;
+  }
+  return Number.isInteger(body.index)
+    ? { index: body.index as number }
+    : `${kind}.index must be an integer`;
+}
+
 function parseOp(raw: unknown, n: number): StepOp | string {
   const bad = (why: string) => `ops[${n}]: ${why}`;
   if (!isRecord(raw)) return bad("must be an object");
   const kinds = ["add", "replace", "remove"].filter((k) => k in raw);
   if (kinds.length !== 1) return bad("expected exactly one of add / replace / remove");
-  const body = raw[kinds[0]!];
-  if (!isRecord(body)) return bad(`${kinds[0]} must be an object`);
-  if (kinds[0] === "remove") {
-    if (!Number.isInteger(body.index)) return bad("remove.index must be an integer");
-    return { remove: { index: body.index as number } };
+  const kind = kinds[0]!;
+  const body = raw[kind];
+  if (!isRecord(body)) return bad(`${kind} must be an object`);
+  if (kind === "add") {
+    const step = parseStep(body.step);
+    if (typeof step === "string") return bad(step);
+    // Studio mints the id of a step it creates: an id sent with it is ignored.
+    return { add: { step } };
   }
+  const ref = parseRef(body, kind);
+  if (typeof ref === "string") return bad(ref);
+  if (kind === "remove") return { remove: ref };
   const step = parseStep(body.step);
   if (typeof step === "string") return bad(step);
-  if (kinds[0] === "add") return { add: { step } };
-  if (!Number.isInteger(body.index)) return bad("replace.index must be an integer");
-  return { replace: { index: body.index as number, step } };
+  return { replace: { ...ref, step } };
+}
+
+function parseBaseSteps(raw: unknown): Record<string, Step> | string {
+  if (!isRecord(raw)) return "base_steps must be an object";
+  const out: Record<string, Step> = {};
+  for (const [id, body] of Object.entries(raw)) {
+    const step = parseStep(body);
+    if (typeof step === "string") return `base_steps.${id}: ${step}`;
+    out[id] = step;
+  }
+  return out;
 }
 
 type Parsed<T> = T | { error: string };
@@ -200,11 +248,14 @@ function parseProposeSteps(raw: Record<string, unknown>): Parsed<AgentCommand> {
     if (typeof op === "string") return { error: op };
     ops.push(op);
   }
+  const base = raw.base_steps === undefined ? undefined : parseBaseSteps(raw.base_steps);
+  if (typeof base === "string") return { error: base };
   return {
     type: "propose_steps",
     workspace: raw.workspace,
     base_identity: raw.base_identity,
     ops,
+    ...(base ? { base_steps: base } : {}),
   };
 }
 
@@ -514,12 +565,13 @@ function stepLabel(step: Step): string {
 export function describeOps(ops: StepOp[], steps: Step[]): string[] {
   return ops.map((op) => {
     if ("add" in op) return `add ${stepLabel(op.add.step)}`;
-    if ("replace" in op) {
-      const old = steps[op.replace.index];
-      return `replace step ${op.replace.index + 1}${old ? ` (${old.op})` : ""} with ${stepLabel(op.replace.step)}`;
-    }
-    const old = steps[op.remove.index];
-    return `remove step ${op.remove.index + 1}${old ? ` (${old.op})` : ""}`;
+    const ref = opRef(op)!;
+    const at = refIndex(steps, ref);
+    const old = at < 0 ? undefined : steps[at];
+    const name = `step ${at < 0 ? ("id" in ref ? ref.id : ref.index + 1) : at + 1}${old ? ` (${old.op})` : ""}`;
+    return "replace" in op
+      ? `replace ${name} with ${stepLabel(op.replace.step)}`
+      : `remove ${name}`;
   });
 }
 
@@ -774,15 +826,84 @@ function reduceAll(state: AppState, actions: AppAction[]): AppState {
 const fail = (id: string, error: string): Ack => ({ id, ok: false, error });
 const busy = (id: string): Ack => fail(id, "busy");
 
-/** Why `cmd` cannot apply on the frame Studio shows now (null = it can). */
+/** JSON value equality, key order ignored (`1` and `1.0` are one number in JS). */
+function jsonEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((x, i) => jsonEqual(x, b[i]))
+    );
+  }
+  if (!isRecord(a) || !isRecord(b)) return false;
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((k) => k in b && jsonEqual(a[k], b[k]))
+  );
+}
+
+/** Same `{op, target, params}` (ids and the front-only `align` flag aside). */
+const sameContent = (a: Step, b: Step) =>
+  a.op === b.op && a.target === b.target && jsonEqual(a.params, b.params);
+
+/** The stored form of a step, as the agent reads it (no front-only `align`). */
+function plainStep(step: Step): Step {
+  const { align: _align, ...rest } = step;
+  return rest;
+}
+
+type Stale = { error: string; stale?: StaleStep[] };
+
+/**
+ * Why `cmd` cannot apply on what Studio holds now (null = it can).
+ * Id-based ops (#153) rebase: they apply while every targeted id still exists
+ * with the content the agent saw (`base_steps`), whatever else changed.
+ * A command with an index op keeps the older rule: same frame as the agent's.
+ */
 function staleReason(
   state: AppState,
   cmd: Extract<AgentCommand, { type: "propose_steps" }>,
-): string | null {
-  return state.workspace?.name === cmd.workspace &&
-    currentIdentityKey(state) === cmd.base_identity
-    ? null
-    : "stale";
+): Stale | null {
+  const open = state.workspace?.name;
+  if (open !== cmd.workspace) {
+    return { error: `stale: workspace ${JSON.stringify(cmd.workspace)} is not open in Studio (open: ${JSON.stringify(open ?? null)})` };
+  }
+  const refs = cmd.ops.map(opRef).filter((r): r is StepRef => r !== null);
+  if (refs.some((r) => !("id" in r))) {
+    return currentIdentityKey(state) === cmd.base_identity ? null : { error: "stale" };
+  }
+  const steps = state.workspace?.steps ?? [];
+  const stale: StaleStep[] = [];
+  const lines: string[] = [];
+  for (const id of new Set(refs.map((r) => (r as { id: string }).id))) {
+    const now = steps.find((s) => s.id === id);
+    const base = cmd.base_steps?.[id];
+    const name = `step ${id}${(now ?? base) ? ` (${(now ?? base)!.op})` : ""}`;
+    if (!now) {
+      stale.push({ id, reason: "removed" });
+      lines.push(`${name} removed`);
+    } else if (base && !sameContent(now, base)) {
+      stale.push({ id, reason: "changed", step: plainStep(now) });
+      lines.push(`${name} changed by the user`);
+    }
+  }
+  return stale.length ? { error: `stale: ${lines.join("; ")}`, stale } : null;
+}
+
+/** `ops` with a fresh id on every added step; the ids in op order. */
+function mintAddedIds(ops: StepOp[], steps: Step[]): { ops: StepOp[]; ids: string[] } {
+  const taken = steps.flatMap((s) => (s.id ? [s.id] : []));
+  const ids: string[] = [];
+  const minted = ops.map((op): StepOp => {
+    if (!("add" in op)) return op;
+    const id = newStepId([...taken, ...ids]);
+    ids.push(id);
+    return { add: { step: { ...op.add.step, id } } };
+  });
+  return { ops: minted, ids };
 }
 
 /** Step cards that are new or changed after a batch, plus the columns they act on. */
@@ -806,7 +927,7 @@ async function proposeSteps(
   const check = (): Ack | null => {
     const state = deps.getState();
     const stale = staleReason(state, cmd);
-    if (stale) return fail(id, stale);
+    if (stale) return { id, ok: false, ...stale };
     const out = applyStepOps(state.workspace?.steps ?? [], cmd.ops);
     return "error" in out ? fail(id, `bad_command: ${out.error}`) : null;
   };
@@ -831,7 +952,8 @@ async function proposeSteps(
   }
 
   const before = deps.getState().workspace?.steps ?? [];
-  deps.dispatch({ type: "APPLY_STEP_BATCH", ops: cmd.ops });
+  const { ops, ids } = mintAddedIds(cmd.ops, before);
+  deps.dispatch({ type: "APPLY_STEP_BATCH", ops });
   try {
     await deps.settle();
   } catch (e) {
@@ -839,7 +961,12 @@ async function proposeSteps(
   }
   deps.touch(stepsTouched(before, deps.getState().workspace?.steps ?? []));
   deps.announce(summary, [{ type: "UNDO_STEPS" }]);
-  return { id, ok: true, identity: currentIdentityKey(deps.getState()) };
+  return {
+    id,
+    ok: true,
+    identity: currentIdentityKey(deps.getState()),
+    ...(ids.length ? { added_ids: ids } : {}),
+  };
 }
 
 /**
