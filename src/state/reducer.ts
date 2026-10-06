@@ -1,6 +1,7 @@
 import type {
   ChartSpec,
   CsvSource,
+  MemoryEntry,
   Step,
   VariableSpec,
   Workspace,
@@ -26,6 +27,7 @@ import {
   type StepHistory,
 } from "./stepHistory";
 import { withColumnNote, withNote, withWorkspaceNote } from "./notes";
+import { withMemoryEntry } from "./memory";
 import { withDocumentNote } from "./documents";
 import { applyStepOps, orderSteps, type StepOp } from "./stepOps";
 import { fillStepIds, withNewId } from "./stepIds";
@@ -312,6 +314,10 @@ export type AppAction =
   /** `key` = the column's origin name (`columnNoteKey`). */
   | { type: "SET_COLUMN_NOTE"; key: string; text: string }
   | { type: "SET_WORKSPACE_NOTE"; text: string }
+  /** Agent memory (#179): add or replace by id, remove, clear; one undoable change each. */
+  | { type: "SET_MEMORY_ENTRY"; entry: MemoryEntry }
+  | { type: "REMOVE_MEMORY_ENTRY"; id: string }
+  | { type: "CLEAR_MEMORY" }
   /** Documents (#178): add (with its id), remove, note; one undoable change each. */
   | { type: "ADD_DOCUMENT"; document: WorkspaceDocument }
   | { type: "REMOVE_DOCUMENT"; id: string }
@@ -763,7 +769,7 @@ function reduceDocuments(state: AppState, action: AppAction): AppState | undefin
   }
 }
 
-/** Step / column / workspace notes (#152); recorded in the pipeline history. */
+/** Notes (#152) and agent memory (#179); recorded in the pipeline history. */
 function reduceNotes(state: AppState, action: AppAction): AppState | undefined {
   if (!state.workspace) return undefined;
   switch (action.type) {
@@ -783,6 +789,17 @@ function reduceNotes(state: AppState, action: AppAction): AppState | undefined {
       return withWorkspace(state, {
         notes: withWorkspaceNote(state.workspace.notes, action.text),
       });
+    case "SET_MEMORY_ENTRY":
+      return withWorkspace(state, {
+        memory: withMemoryEntry(state.workspace.memory, action.entry),
+      });
+    case "REMOVE_MEMORY_ENTRY": {
+      const memory = state.workspace.memory ?? [];
+      if (!memory.some((e) => e.id === action.id)) return state;
+      return withWorkspace(state, { memory: memory.filter((e) => e.id !== action.id) });
+    }
+    case "CLEAR_MEMORY":
+      return state.workspace.memory?.length ? withWorkspace(state, { memory: [] }) : state;
     default:
       return reduceDocuments(state, action);
   }
@@ -954,6 +971,7 @@ function reduceStepHistory(
     {
       steps: moved.steps.steps,
       notes: moved.steps.notes,
+      memory: moved.steps.memory,
       documents: moved.steps.documents,
     },
     {
@@ -973,6 +991,7 @@ function reduceStepHistory(
 const snapshot = (ws: Workspace): PipelineSnapshot => ({
   steps: ws.steps,
   notes: ws.notes,
+  memory: ws.memory,
   documents: ws.documents,
 });
 
@@ -998,6 +1017,7 @@ function trackStepHistory(
   if (
     sameSteps(before.steps, after.steps) &&
     before.notes === after.notes &&
+    before.memory === after.memory &&
     before.documents === after.documents
   ) {
     return next;

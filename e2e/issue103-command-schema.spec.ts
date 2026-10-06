@@ -183,6 +183,8 @@ const VALID: Record<string, Record<string, unknown>> = {
   edit_step: { index: 0 },
   fill_editor: { op: "scale", params: { columns: ["age"] }, target: "train" },
   set_note: { workspace: "churn", kind: "column", column: "age", text: "years" },
+  remember: { workspace: "churn", text: "ledd is in mg/day", kind: "fact" },
+  forget: { workspace: "churn", memory_id: "m1" },
   keep_attachment: { workspace: "churn", attachment_id: "a1", note: "the codebook" },
 };
 
@@ -205,6 +207,9 @@ const INVALID: [string, Record<string, unknown>][] = [
   ["propose_steps", { ops: [] }],
   ["set_tool_params", { tool: "corr", params: {} }],
   ["set_note", { workspace: "churn", kind: "row", text: "x" }],
+  ["remember", { workspace: "churn", text: "x".repeat(501) }],
+  ["remember", { workspace: "churn", text: "x", kind: "rumour" }],
+  ["forget", { workspace: "churn" }],
   ["keep_attachment", { workspace: "churn" }],
   [
     "set_grid_view",
@@ -287,9 +292,10 @@ test("#103: parseCommand agrees with /api/ui/commands/schema", async ({
        const c = await import("/src/state/chartDraft.ts");
        const g = await import("/src/state/gridView.ts");
        const d = await import("/src/state/dockTypes.ts");
+       const t = await import("/src/api/types.ts");
        return {
          windows: [...d.TOOL_IDS], chart: [...c.CHART_TYPES], agg: [...c.CHART_AGGS],
-         filterOps: g.FILTER_OPS.map((o) => o.op),
+         filterOps: g.FILTER_OPS.map((o) => o.op), memoryKinds: [...t.MEMORY_KINDS],
        };
      })()`,
   )) as Record<string, string[]>;
@@ -325,6 +331,7 @@ test("#103: parseCommand agrees with /api/ui/commands/schema", async ({
     sorted(at("set_grid_view", "filter", "conditions", "[]", "op").enum),
   ).toEqual(sorted(studio.filterOps));
   expect(at("add_chart", "name").maxLength).toBe(nameMax);
+  expect(sorted(at("remember", "kind").enum)).toEqual(sorted(studio.memoryKinds));
 
   // Each enum value is accepted by the parser (catches a narrowed parser too).
   const enumCases: Record<string, unknown>[] = [

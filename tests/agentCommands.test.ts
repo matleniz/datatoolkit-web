@@ -509,6 +509,92 @@ describe("notes (datatoolkit-issues#152)", () => {
   });
 });
 
+describe("agent memory (datatoolkit-issues#179)", () => {
+  const remember = (extra: Record<string, unknown>) => ({
+    id: "r1", type: "remember", workspace: "demo", ...extra,
+  });
+  const forget = (extra: Record<string, unknown>) => ({
+    id: "f1", type: "forget", workspace: "demo", ...extra,
+  });
+
+  it("parses remember / forget and refuses bad payloads", () => {
+    expect(parseCommand(remember({ text: "ledd in mg/day", kind: "fact" }))).toEqual({
+      type: "remember", workspace: "demo", text: "ledd in mg/day", kind: "fact",
+    });
+    expect(parseCommand(remember({ text: "x", memory_id: "m2" }))).toEqual({
+      type: "remember", workspace: "demo", text: "x", memory_id: "m2",
+    });
+    expect(parseCommand(remember({ text: "  " }))).toHaveProperty("error");
+    expect(parseCommand(remember({ text: "x", kind: "rumour" }))).toHaveProperty("error");
+    expect(parseCommand(remember({ text: "x".repeat(501) }))).toEqual({
+      error: "text longer than 500 characters",
+    });
+    expect(parseCommand(forget({}))).toHaveProperty("error");
+    expect(parseCommand(forget({ memory_id: "m1" }))).toEqual({ type: "forget", workspace: "demo", memory_id: "m1" });
+  });
+
+  it("remember adds (next m<n>), replaces by id; forget removes; each one Undo", async () => {
+    const h = harness(start([impute]));
+    const identity = currentIdentityKey(h.state);
+    expect(await handleCommand(remember({ text: "ledd is in mg/day" }), h.deps))
+      .toEqual({ id: "r1", ok: true, identity, memory_id: "m1" });
+    expect(await handleCommand(remember({ text: "use the median", kind: "decision" }), h.deps))
+      .toMatchObject({ ok: true, memory_id: "m2" });
+    expect(h.state.workspace?.memory).toMatchObject([
+      { id: "m1", text: "ledd is in mg/day", kind: "fact" },
+      { id: "m2", text: "use the median", kind: "decision" },
+    ]);
+    expect(h.state.workspace?.memory?.[0]?.updated_at).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
+    // Replace keeps the kind unless given.
+    await handleCommand(remember({ text: "ledd in mg/day, 0 = untreated", memory_id: "m1" }), h.deps);
+    expect(h.state.workspace?.memory?.[0]).toMatchObject({ id: "m1", text: "ledd in mg/day, 0 = untreated", kind: "fact" });
+    expect(await handleCommand(forget({ memory_id: "m2" }), h.deps)).toEqual({ id: "f1", ok: true, identity });
+    expect(h.state.workspace?.memory?.map((e) => e.id)).toEqual(["m1"]);
+    expect(h.toasts).toEqual([
+      "remembered “ledd is in mg/day”",
+      "remembered “use the median”",
+      "updated m1: “ledd in mg/day, 0 = untreated”",
+      "forgot “use the median”",
+    ]);
+    expect(h.settled).toBe(4);
+    // The toast's Undo restores the forgotten entry; memory never changes the data identity.
+    h.undos.at(-1)!.forEach(h.deps.dispatch);
+    expect(h.state.workspace?.memory?.map((e) => e.id)).toEqual(["m1", "m2"]);
+    expect(currentIdentityKey(h.state)).toBe(identity);
+    // A new id is above every existing one, even after a gap.
+    h.deps.dispatch({ type: "REMOVE_MEMORY_ENTRY", id: "m1" });
+    expect(await handleCommand(remember({ text: "z" }), h.deps)).toMatchObject({ memory_id: "m3" });
+  });
+
+  it("refuses unknown ids, a full memory and another workspace", async () => {
+    const big = Array.from({ length: 16 }, (_, i) => ({ id: `m${i + 1}`, text: "x".repeat(500), kind: "fact" as const }));
+    const h = harness({ ...start(), workspace: { ...emptyWorkspace("demo"), memory: big } });
+    expect(await handleCommand(remember({ text: "y", memory_id: "m99" }), h.deps))
+      .toEqual({ id: "r1", ok: false, error: "bad_command: unknown memory id m99" });
+    expect(await handleCommand(forget({ memory_id: "m99" }), h.deps))
+      .toEqual({ id: "f1", ok: false, error: "bad_command: unknown memory id m99" });
+    expect(await handleCommand(remember({ text: "y" }), h.deps)).toEqual({
+      id: "r1", ok: false, error: "bad_command: memory full (8001 characters, the cap is 8000)",
+    });
+    expect(await handleCommand(remember({ text: "y", workspace: "other" }), h.deps))
+      .toMatchObject({ ok: false, error: expect.stringMatching(/^stale: workspace "other"/) });
+    expect(h.state.stepHistory.past).toHaveLength(0);
+    expect(h.toasts).toEqual([]);
+  });
+
+  it("CLEAR_MEMORY is one undo entry; a no-op on an empty memory", () => {
+    let s = start();
+    s = appReducer(s, { type: "CLEAR_MEMORY" });
+    expect(s.stepHistory.past).toHaveLength(0);
+    s = appReducer(s, { type: "SET_MEMORY_ENTRY", entry: { id: "m1", text: "a", kind: "todo" } });
+    s = appReducer(s, { type: "SET_MEMORY_ENTRY", entry: { id: "m2", text: "b", kind: "fact" } });
+    s = appReducer(s, { type: "CLEAR_MEMORY" });
+    expect(s.workspace?.memory).toEqual([]);
+    s = appReducer(s, { type: "UNDO_STEPS" });
+    expect(s.workspace?.memory?.map((e) => e.id)).toEqual(["m1", "m2"]);
+  });
+});
+
 describe("workspace documents (datatoolkit-issues#178)", () => {
   const keep = (extra: Record<string, unknown>) => ({
     id: "k1", type: "keep_attachment", workspace: "demo", ...extra,

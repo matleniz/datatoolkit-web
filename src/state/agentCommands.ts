@@ -21,6 +21,7 @@ import { appReducer, type AppAction, type AppState } from "./reducer";
 import { applyStepOps, opRef, refIndex, type StepOp, type StepRef } from "./stepOps";
 import { newStepId } from "./stepIds";
 import { NOTE_MAX, columnNoteKey, noteText } from "./notes";
+import { parseForget, parseRemember, runMemoryCommand, type MemoryCommand } from "./memoryCommands";
 import {
   parseKeepAttachment,
   runKeepAttachment,
@@ -83,6 +84,7 @@ export type AgentCommand =
       /** "" deletes the note. */
       text: string;
     }
+  | MemoryCommand
   | KeepAttachmentCommand;
 
 const NOTE_KINDS = ["step", "column", "workspace"] as const;
@@ -104,6 +106,8 @@ export interface Ack {
   added_ids?: string[];
   /** `propose_steps` acked stale by the id rule: which targeted steps moved. */
   stale?: StaleStep[];
+  /** `remember`: id of the entry written (#179). */
+  memory_id?: string;
   /** `keep_attachment`: id of the workspace document (#178). */
   document_id?: string;
 }
@@ -600,6 +604,10 @@ export function parseCommand(raw: Record<string, unknown>): Parsed<AgentCommand>
       return parseSetGridView(raw);
     case "set_note":
       return parseSetNote(raw);
+    case "remember":
+      return parseRemember(raw);
+    case "forget":
+      return parseForget(raw);
     case "keep_attachment":
       return parseKeepAttachment(raw);
     default:
@@ -1124,6 +1132,7 @@ export async function handleCommand(
   }
   if (cmd.type === "set_grid_view") return setGridView(id, cmd, deps);
   if (cmd.type === "set_note") return setNote(id, cmd, deps);
+  if (cmd.type === "remember" || cmd.type === "forget") return runMemoryCommand(id, cmd, deps);
   if (cmd.type === "keep_attachment") return runKeepAttachment(id, cmd, deps);
   if (cmd.type === "pick_row" || cmd.type === "pick_cell" || cmd.type === "clear_selection") {
     return pick(id, cmd, deps);
