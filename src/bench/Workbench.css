@@ -593,6 +593,12 @@
 .grid-th.removed {
   background: #f7e1e2;
 }
+.grid-th.drop-before {
+  box-shadow: inset 3px 0 0 #1d5b86;
+}
+.grid-th.drop-after {
+  box-shadow: inset -3px 0 0 #1d5b86;
+}
 .grid-th.accent-top {
   border-top-color: #1d5b86;
 }

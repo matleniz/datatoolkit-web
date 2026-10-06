@@ -7,7 +7,8 @@ import {
   useState,
 } from "react";
 
-import type { ColumnProfile } from "../../api/types";
+import { apiClient } from "../../api/client";
+import type { ColumnProfile, Step } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { colAlerts, isOutlierValue, missPct, profileBars } from "../alerts";
 import { cellTone, type DisplayCol, type DisplayRow } from "../diff";
@@ -21,6 +22,7 @@ import { colWidth, isNumericKind, KIND_BAR, KIND_LABEL } from "../kinds";
 import { stepSummary } from "../stages";
 import { useWorkbenchData } from "../WorkbenchData";
 import { columnWindow } from "./columnWindow";
+import { dropOrder, planReorder, type ReorderParams } from "./reorderDrag";
 import { GridViewBar } from "./GridViewBar";
 
 type Dispatch = ReturnType<typeof useAppDispatch>;
@@ -70,6 +72,21 @@ function cellTip(
   return outlier ? `${tip} (IQR outlier)` : tip;
 }
 
+type DropSide = "before" | "after";
+interface ReorderDrag {
+  enabled: boolean;
+  hint: { col: string; side: DropSide } | null;
+  start: (name: string) => void;
+  over: (name: string, side: DropSide) => void;
+  end: () => void;
+  drop: (target: string, side: DropSide) => void;
+}
+
+function dropSide(e: React.DragEvent<HTMLElement>): DropSide {
+  const r = e.currentTarget.getBoundingClientRect();
+  return e.clientX < r.left + r.width / 2 ? "before" : "after";
+}
+
 function ColumnHeader({
   c,
   sel,
@@ -77,6 +94,7 @@ function ColumnHeader({
   touched,
   profile: pr,
   dispatch,
+  reorder,
 }: {
   c: DisplayCol;
   sel: boolean;
@@ -84,11 +102,13 @@ function ColumnHeader({
   touched: boolean;
   profile: ColumnProfile | undefined;
   dispatch: Dispatch;
+  reorder: ReorderDrag;
 }) {
   const bars = pr ? profileBars(pr, 22) : [];
   const alerts = headerAlerts(c, pr);
   const miss = missPct(pr);
   const barColor = sel ? "#1d5b86" : KIND_BAR[c.kind] ?? "#c9c5ba";
+  const hint = reorder.hint?.col === c.name ? reorder.hint.side : null;
   return (
     <button
       type="button"
@@ -98,13 +118,32 @@ function ColumnHeader({
         c.status === "added" ? "added" : "",
         c.status === "removed" ? "removed" : "",
         isTarget || sel ? "accent-top" : "",
+        hint ? `drop-${hint}` : "",
       ]
         .filter(Boolean)
         .join(" ")}
       style={{ width: colWidth(c.kind) }}
       aria-label={`${c.name}, ${KIND_LABEL[c.kind] ?? c.kind}`}
       data-agent-touched={touched ? "1" : undefined}
-      title={`${c.name} · ${KIND_LABEL[c.kind]} · ${pr?.distinct ?? "?"} distinct · ${pr?.missing ?? "?"} missing · right-click for actions`}
+      draggable={reorder.enabled && c.status !== "removed"}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", c.name);
+        reorder.start(c.name);
+      }}
+      onDragOver={(e) => {
+        if (!reorder.enabled || c.status === "removed") return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        reorder.over(c.name, dropSide(e));
+      }}
+      onDrop={(e) => {
+        if (!reorder.enabled || c.status === "removed") return;
+        e.preventDefault();
+        reorder.drop(c.name, dropSide(e));
+      }}
+      onDragEnd={reorder.end}
+      title={`${c.name} · ${KIND_LABEL[c.kind]} · ${pr?.distinct ?? "?"} distinct · ${pr?.missing ?? "?"} missing · right-click for actions · drag to reorder`}
       onClick={(e) =>
         dispatch({
           type: "PICK_COL",
@@ -226,6 +265,10 @@ function DataCell({
   );
 }
 
+function reorderStep(p: ReorderParams): Step {
+  return { op: "reorder_columns", target: "both", params: { ...p } };
+}
+
 function rowNumClass(selected: boolean, removed: boolean): string {
   if (selected) return "grid-rn on";
   return removed ? "grid-rn removed" : "grid-rn";
@@ -233,7 +276,7 @@ function rowNumClass(selected: boolean, removed: boolean): string {
 
 /** W2 — data grid with horizontally windowed columns (MAT-152). */
 export function Grid() {
-  const { selection, targetColumn, benchError, editor, agentTouch } = useAppState();
+  const { selection, targetColumn, benchError, editor, agentTouch, role } = useAppState();
   const dispatch = useAppDispatch();
   const {
     display,
@@ -271,6 +314,98 @@ export function Grid() {
     44 + display.cols.reduce((w, c) => w + colWidth(c.kind), 0);
 
   const selText = selectionText(selection);
+
+  const dragRef = useRef<string | null>(null);
+  const [hint, setHint] = useState<ReorderDrag["hint"]>(null);
+  const busyRef = useRef(false);
+  const latest = useRef({ workspace, role, display, dispatch });
+  latest.current = { workspace, role, display, dispatch };
+  const reorderOn =
+    isLatest &&
+    editIndex === undefined &&
+    !pendingStep &&
+    !loading &&
+    !!workspace;
+
+  const commitReorder = useCallback(
+    async (name: string, target: string, side: DropSide) => {
+      if (busyRef.current) return;
+      busyRef.current = true;
+      try {
+        const {
+          workspace: ws,
+          role: r,
+          display: d,
+          dispatch: dp,
+        } = latest.current;
+        if (!ws) return;
+        // A "removed" column (diff of the last step) is not in the frame.
+        const order = d.cols.filter((c) => c.status !== "removed").map((c) => c.name);
+        const wanted = dropOrder(order, name, target, side);
+        if (!wanted) return;
+        const n = ws.steps.length;
+        const last = ws.steps[n - 1];
+        if (
+          last?.op === "reorder_columns" &&
+          last.target === "both" &&
+          !last.align
+        ) {
+          // Fold into the last step: plan from the frame that step received.
+          const before = await apiClient.workspaceRows(ws, r, n - 1, 0, 1);
+          if (latest.current.workspace !== ws) return;
+          const plan = planReorder(
+            before.columns.map((c) => c.name),
+            wanted,
+          );
+          if (plan === "identity") {
+            dp({ type: "REMOVE_STEP", index: n - 1 });
+            return;
+          }
+          if (plan) {
+            dp({ type: "REPLACE_STEP", index: n - 1, step: reorderStep(plan) });
+            return;
+          }
+        }
+        const plan = planReorder(order, wanted);
+        if (plan && plan !== "identity") {
+          dp({ type: "ADD_STEP", step: reorderStep(plan) });
+        }
+      } catch (e) {
+        latest.current.dispatch({
+          type: "SET_BENCH_ERROR",
+          message: e instanceof Error ? e.message : String(e),
+        });
+      } finally {
+        busyRef.current = false;
+      }
+    },
+    [],
+  );
+
+  const reorder: ReorderDrag = {
+    enabled: reorderOn,
+    hint,
+    start: (name) => {
+      dragRef.current = name;
+    },
+    over: (col, side) => {
+      if (!dragRef.current || dragRef.current === col) {
+        if (hint) setHint(null);
+        return;
+      }
+      if (hint?.col !== col || hint.side !== side) setHint({ col, side });
+    },
+    end: () => {
+      dragRef.current = null;
+      setHint(null);
+    },
+    drop: (col, side) => {
+      const name = dragRef.current;
+      dragRef.current = null;
+      setHint(null);
+      if (name) void commitReorder(name, col, side);
+    },
+  };
 
   const rowNum = new Map<number, number>();
   display.rows.forEach((r, i) => rowNum.set(r.rid, i + 1));
@@ -517,6 +652,7 @@ export function Grid() {
                 touched={!!agentTouch?.columns.includes(c.name)}
                 profile={profiles.get(c.name)}
                 dispatch={dispatch}
+                reorder={reorder}
               />
             ))}
             <ColSpacer width={windowed.rightPad} />
@@ -529,7 +665,9 @@ export function Grid() {
                 key={row.rid}
                 className="grid-row"
                 data-rid={row.rid}
-                data-agent-touched={agentTouch?.rows.includes(row.rid) ? "1" : undefined}
+                data-agent-touched={
+                  agentTouch?.rows.includes(row.rid) ? "1" : undefined
+                }
               >
                 <button
                   type="button"
@@ -550,7 +688,11 @@ export function Grid() {
                     c={c}
                     profile={profiles.get(c.name)}
                     selection={selection}
-                    touched={!!agentTouch?.cells.some((t) => t.rid === row.rid && t.column === c.name)}
+                    touched={
+                      !!agentTouch?.cells.some(
+                        (t) => t.rid === row.rid && t.column === c.name,
+                      )
+                    }
                     dispatch={dispatch}
                   />
                 ))}
