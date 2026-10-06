@@ -43,8 +43,12 @@ export function SourcesDocuments() {
     try {
       for (const file of files) {
         const { path } = await apiClient.upload(file.name, file);
-        const doc = await keptDocument(current, { name: file.name, path }, (p, n) =>
-          apiClient.describeDocument(p, n),
+        const doc = await keptDocument(
+          current,
+          { name: file.name, path },
+          (p, n) => apiClient.describeDocument(p, n),
+          undefined,
+          workspace.id_counters,
         );
         if (typeof doc === "string") throw new Error(doc.replace(/^bad_command: /, ""));
         if ("existing" in doc) continue;

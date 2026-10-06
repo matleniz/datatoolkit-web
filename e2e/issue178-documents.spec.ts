@@ -46,6 +46,8 @@ async function saved(page: Page) {
 
 /** A clean churn workspace in the store, then the Sources screen. */
 async function openSources(page: Page, request: APIRequestContext) {
+  // A fresh workspace: the engine never reuses a document id (#180), so ids of earlier tests would carry over.
+  await request.delete(`${API}/workspaces/churn`);
   const put = await request.put(`${API}/workspaces/churn`, { data: churnWorkspace() });
   expect(put.ok()).toBe(true);
   await page.goto("/");

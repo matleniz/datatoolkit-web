@@ -27,6 +27,7 @@ import {
   type StepHistory,
 } from "./stepHistory";
 import { withColumnNote, withNote, withWorkspaceNote } from "./notes";
+import { withIdCounter } from "./idCounters";
 import { withMemoryEntry } from "./memory";
 import { withDocumentNote } from "./documents";
 import { applyStepOps, orderSteps, type StepOp } from "./stepOps";
@@ -755,7 +756,10 @@ function reduceDocuments(state: AppState, action: AppAction): AppState | undefin
   switch (action.type) {
     case "ADD_DOCUMENT":
       if (documents.some((d) => d.id === action.document.id)) return state;
-      return withWorkspace(state, { documents: [...documents, action.document] });
+      return withWorkspace(state, {
+        documents: [...documents, action.document],
+        id_counters: withIdCounter(state.workspace.id_counters, "d", action.document.id),
+      });
     case "REMOVE_DOCUMENT":
       if (!documents.some((d) => d.id === action.id)) return state;
       return withWorkspace(state, { documents: documents.filter((d) => d.id !== action.id) });
@@ -792,6 +796,7 @@ function reduceNotes(state: AppState, action: AppAction): AppState | undefined {
     case "SET_MEMORY_ENTRY":
       return withWorkspace(state, {
         memory: withMemoryEntry(state.workspace.memory, action.entry),
+        id_counters: withIdCounter(state.workspace.id_counters, "m", action.entry.id),
       });
     case "REMOVE_MEMORY_ENTRY": {
       const memory = state.workspace.memory ?? [];
@@ -973,6 +978,7 @@ function reduceStepHistory(
       notes: moved.steps.notes,
       memory: moved.steps.memory,
       documents: moved.steps.documents,
+      id_counters: moved.steps.id_counters,
     },
     {
       stepHistory: moved.history,
@@ -993,6 +999,7 @@ const snapshot = (ws: Workspace): PipelineSnapshot => ({
   notes: ws.notes,
   memory: ws.memory,
   documents: ws.documents,
+  id_counters: ws.id_counters,
 });
 
 function trackStepHistory(
@@ -1018,7 +1025,8 @@ function trackStepHistory(
     sameSteps(before.steps, after.steps) &&
     before.notes === after.notes &&
     before.memory === after.memory &&
-    before.documents === after.documents
+    before.documents === after.documents &&
+    before.id_counters === after.id_counters
   ) {
     return next;
   }

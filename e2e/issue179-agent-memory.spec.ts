@@ -189,3 +189,24 @@ test("issue 179: the agent (stub pack, real MCP tools) remembers through Studio 
   await expect(view.locator('[data-memory-id="m1"]')).toHaveCount(0);
   await expect(view.locator('[data-memory-id="m2"]')).toContainText("report medians");
 });
+
+test("issue 180: a forgotten memory id never comes back", async ({ page, request }) => {
+  test.setTimeout(180_000);
+  await openWithSteps(page, [impute], { memory: [] });
+  const sid = await page.evaluate(() => window.sessionStorage.getItem("dtk-ui-session")!);
+  const send = async (type: string, cmd: Record<string, unknown>) => {
+    const res = await request.post(`${API}/ui/commands`, {
+      headers: AUTH,
+      data: { type, workspace: "churn", ...cmd, session: sid, timeout: 30 },
+    });
+    expect(res.ok()).toBe(true);
+    return (await res.json()) as Record<string, unknown>;
+  };
+  expect(await send("remember", { text: "first" })).toMatchObject({ ok: true, memory_id: "m1" });
+  expect(await send("forget", { memory_id: "m1" })).toMatchObject({ ok: true });
+  expect(await send("remember", { text: "second" })).toMatchObject({ ok: true, memory_id: "m2" });
+  await saved(page);
+  const ws = await stored(request);
+  expect(ws.memory).toMatchObject([{ id: "m2", text: "second" }]);
+  expect(ws.id_counters).toMatchObject({ m: 2 });
+});

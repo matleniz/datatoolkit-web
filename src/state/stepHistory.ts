@@ -1,4 +1,4 @@
-import type { MemoryEntry, Step, WorkspaceDocument, WorkspaceNotes } from "../api/types";
+import type { IdCounters, MemoryEntry, Step, WorkspaceDocument, WorkspaceNotes } from "../api/types";
 
 /**
  * What one undo level restores: the steps, the notes (#152), the agent memory
@@ -9,6 +9,8 @@ export interface PipelineSnapshot {
   notes: WorkspaceNotes | undefined;
   memory: MemoryEntry[] | undefined;
   documents: WorkspaceDocument[] | undefined;
+  /** Undo gives the counters back with the entries (#180). */
+  id_counters: IdCounters | undefined;
 }
 
 /**

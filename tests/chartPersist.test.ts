@@ -77,6 +77,23 @@ describe("Workspace.charts persistence (datatoolkit-issues#11)", () => {
     expect(JSON.parse(serializeWorkspace(ws())).charts).toEqual([]);
   });
 
+  it("id counters ride the PUT but never a frame body (#180)", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        bodies.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+        return jsonResponse(200, {});
+      }),
+    );
+    const w = { ...ws([ageFare]), id_counters: { m: 2, d: 1 } };
+    await apiClient.saveWorkspace(w);
+    await apiClient.columnProfiles(w, "train");
+
+    expect(bodies[0]?.id_counters).toEqual({ m: 2, d: 1 });
+    expect(bodies[1]?.workspace).not.toHaveProperty("id_counters");
+  });
+
   it("engine charts win; legacy browser charts migrate when the engine has none", () => {
     localStorage.setItem(LEGACY_KEY, JSON.stringify([ageFare, { bad: 1 }]));
     const other = { name: "kept", params: {} };
