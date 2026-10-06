@@ -263,9 +263,14 @@ export interface WorkspaceSummary {
   test: WorkspaceRoleSummary | null;
 }
 
+/** What an export writes besides the manifest (datatoolkit-issues#156). */
+export type ExportFormat = "parquet" | "csv" | "ipynb" | "py";
+
 export interface ExportRequest {
   out_dir: string;
   overwrite?: boolean;
+  /** Default (engine) `["parquet"]`; unknown -> 422. */
+  formats?: ExportFormat[];
 }
 
 export interface ExportOutputEntry {
