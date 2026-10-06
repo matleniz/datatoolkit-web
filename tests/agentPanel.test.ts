@@ -10,6 +10,7 @@ import {
 } from "../src/bench/agent/panel/protocol";
 import {
   EMPTY_TRANSCRIPT,
+  formatTurnUsage,
   formatUsage,
   reviewCommands,
   transcriptReducer,
@@ -33,7 +34,24 @@ describe("agent panel protocol (#67)", () => {
     expect(parseAgentEvent({ type: "tool_result", id: "t1", ok: true, pending: "review", command: "c3" }))
       .toMatchObject({ ok: true, pending: "review", command: "c3" });
     expect(parseAgentEvent({ type: "usage", input_tokens: 10, output_tokens: 2, total_input_tokens: 30, total_output_tokens: 5 }))
-      .toEqual({ type: "usage", inputTokens: 10, outputTokens: 2, total: { input: 30, output: 5 } });
+      .toEqual({
+        type: "usage",
+        turn: { input: 10, output: 2, cacheWrite: 0, cacheRead: 0, context: 0 },
+        total: { input: 30, output: 5, cacheWrite: 0, cacheRead: 0 },
+      });
+    // #151: the cache split and the context size, per turn and cumulative.
+    expect(
+      parseAgentEvent({
+        type: "usage", input_tokens: 1300, output_tokens: 40, uncached_input_tokens: 100,
+        cache_creation_input_tokens: 200, cache_read_input_tokens: 1000, context_tokens: 900,
+        total_input_tokens: 5000, total_output_tokens: 90, total_uncached_input_tokens: 300,
+        total_cache_creation_input_tokens: 700, total_cache_read_input_tokens: 4000,
+      }),
+    ).toEqual({
+      type: "usage",
+      turn: { input: 1300, output: 40, cacheWrite: 200, cacheRead: 1000, context: 900 },
+      total: { input: 5000, output: 90, cacheWrite: 700, cacheRead: 4000 },
+    });
     expect(parseAgentEvent({ type: "permission_request", id: "p1", tool: "propose_steps", input: {}, summary: "remove step 2" }))
       .toMatchObject({ lines: [], summary: "remove step 2" });
     expect(parseAgentEvent({ type: "done", stop_reason: "cancelled" })).toEqual({ type: "done", stopReason: "cancelled" });
@@ -51,9 +69,14 @@ describe("agent panel protocol (#67)", () => {
     expect(
       parseAgentStatus({
         available: true, pack: "stub", running: false, max_tokens: null,
-        usage: { input_tokens: 3, output_tokens: 4 },
+        usage: { input_tokens: 9, output_tokens: 4, cache_creation_input_tokens: 2, cache_read_input_tokens: 5 },
       }),
-    ).toMatchObject({ available: true, pack: "stub", usage: { input: 3, output: 4 }, maxTokens: undefined });
+    ).toMatchObject({
+      available: true,
+      pack: "stub",
+      usage: { input: 9, output: 4, cacheWrite: 2, cacheRead: 5 },
+      maxTokens: undefined,
+    });
   });
 });
 
@@ -85,17 +108,32 @@ describe("agent panel transcript (#67)", () => {
     ]);
     const tools = t.items.filter((i) => i.kind === "tool");
     expect(tools.map((i) => i.kind === "tool" && i.status)).toEqual(["ok", "review"]);
-    expect(t.usage).toEqual({ input: 150, output: 25 });
+    expect(t.usage).toEqual({ input: 150, output: 25, cacheWrite: 0, cacheRead: 0 });
+    expect(t.lastTurn).toEqual({ input: 50, output: 5, cacheWrite: 0, cacheRead: 0, context: 0 });
     expect(t.running).toBe(false);
-    expect(formatUsage({ input: 1234, output: 25_600 })).toBe("1.2k in · 26k out");
+  });
+
+  it("formats the cache split: cache reads are never counted as 'in' (#151)", () => {
+    // The parkison session: 108 uncached, 98.8k cache writes, 3,015k cache reads.
+    const u = { input: 108 + 98_800 + 3_015_000, output: 37_700, cacheWrite: 98_800, cacheRead: 3_015_000 };
+    expect(formatUsage(u)).toBe("108 in · cache 99k write / 3.0M read · 38k out");
+    expect(formatUsage({ input: 1234, output: 25_600, cacheWrite: 0, cacheRead: 0 }))
+      .toBe("1.2k in · cache 0 write / 0 read · 26k out");
+    expect(formatTurnUsage({ input: 13_810, output: 5, cacheWrite: 0, cacheRead: 13_800, context: 13_810 }))
+      .toBe("last turn: 10 in · cache 0 write / 14k read · 5 out · context 14k");
+    expect(formatTurnUsage({ input: 10, output: 5, cacheWrite: 0, cacheRead: 0, context: 0 }))
+      .toBe("last turn: 10 in · cache 0 write / 0 read · 5 out");
   });
 
   it("prefers the engine's cumulative totals", () => {
     const t = run([
-      { type: "usage_seed", usage: { input: 500, output: 50 } },
-      ev({ type: "usage", input_tokens: 1, output_tokens: 1, total_input_tokens: 600, total_output_tokens: 70 }),
+      { type: "usage_seed", usage: { input: 500, output: 50, cacheWrite: 0, cacheRead: 400 } },
+      ev({
+        type: "usage", input_tokens: 1, output_tokens: 1, total_input_tokens: 600,
+        total_output_tokens: 70, total_cache_read_input_tokens: 450,
+      }),
     ]);
-    expect(t.usage).toEqual({ input: 600, output: 70 });
+    expect(t.usage).toEqual({ input: 600, output: 70, cacheWrite: 0, cacheRead: 450 });
   });
 
   it("an error or a stop settles what is still pending", () => {
