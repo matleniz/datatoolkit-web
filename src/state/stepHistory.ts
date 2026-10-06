@@ -1,15 +1,21 @@
-import type { Step } from "../api/types";
+import type { Step, WorkspaceNotes } from "../api/types";
 
-/**
- * Undo / redo over the pipeline's steps only (datatoolkit-issues#16):
- * snapshots of `workspace.steps`, in memory, per open workspace.
- */
-export interface StepHistory {
-  past: Step[][];
-  future: Step[][];
+/** What one undo level restores: the steps and the notes (#152). */
+export interface PipelineSnapshot {
+  steps: Step[];
+  notes: WorkspaceNotes | undefined;
 }
 
-export const EMPTY_STEP_HISTORY: StepHistory = { past: [], future: [] };
+/**
+ * Undo / redo over the pipeline (datatoolkit-issues#16): snapshots of
+ * `workspace.steps` and `workspace.notes`, in memory, per open workspace.
+ */
+export interface StepHistory<T = PipelineSnapshot> {
+  past: T[];
+  future: T[];
+}
+
+export const EMPTY_STEP_HISTORY: StepHistory<never> = { past: [], future: [] };
 
 /** Undo levels kept; the oldest snapshot is dropped beyond this. */
 export const MAX_STEP_HISTORY = 100;
@@ -20,7 +26,7 @@ export function sameSteps(a: Step[], b: Step[]): boolean {
 }
 
 /** A new change: `before` becomes undoable, the redo branch is dropped. */
-export function recordSteps(history: StepHistory, before: Step[]): StepHistory {
+export function recordSteps<T>(history: StepHistory<T>, before: T): StepHistory<T> {
   return {
     past: [...history.past, before].slice(-MAX_STEP_HISTORY),
     future: [],
@@ -28,10 +34,10 @@ export function recordSteps(history: StepHistory, before: Step[]): StepHistory {
 }
 
 /** Steps to restore and the history after an undo; null when nothing to undo. */
-export function undoSteps(
-  history: StepHistory,
-  current: Step[],
-): { steps: Step[]; history: StepHistory } | null {
+export function undoSteps<T>(
+  history: StepHistory<T>,
+  current: T,
+): { steps: T; history: StepHistory<T> } | null {
   const steps = history.past.at(-1);
   if (!steps) return null;
   return {
@@ -44,10 +50,10 @@ export function undoSteps(
 }
 
 /** Steps to restore and the history after a redo; null when nothing to redo. */
-export function redoSteps(
-  history: StepHistory,
-  current: Step[],
-): { steps: Step[]; history: StepHistory } | null {
+export function redoSteps<T>(
+  history: StepHistory<T>,
+  current: T,
+): { steps: T; history: StepHistory<T> } | null {
   const [steps, ...future] = history.future;
   if (!steps) return null;
   return {

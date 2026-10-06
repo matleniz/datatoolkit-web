@@ -1,4 +1,5 @@
 import type { Step } from "../api/types";
+import { withNote } from "./notes";
 import { withNewId } from "./stepIds";
 
 /**
@@ -43,7 +44,8 @@ export function orderSteps(steps: Step[]): Step[] {
 /**
  * Steps after applying `ops`, or `{ error }` when one op is invalid (no such
  * step). Same rules as ADD_STEP (a new step gets a fresh id unless it carries
- * one) / REPLACE_STEP (keeps the `align` flag and the id) / REMOVE_STEP;
+ * one) / REPLACE_STEP (keeps the `align` flag, the id and, unless the new
+ * step sets one, the note) / REMOVE_STEP;
  * `orderSteps` runs once at the end.
  */
 export function applyStepOps(
@@ -62,11 +64,16 @@ export function applyStepOps(
     if ("replace" in op) {
       const old = next[at]!;
       const { align: _drop, id: _id, ...rest } = op.replace.step;
-      next[at] = {
-        ...(old.id ? { id: old.id } : {}),
-        ...rest,
-        ...(old.align ? { align: true } : {}),
-      };
+      // The note follows the slot unless the new step sets one (#152).
+      const note = "note" in op.replace.step ? op.replace.step.note : old.note;
+      next[at] = withNote(
+        {
+          ...(old.id ? { id: old.id } : {}),
+          ...rest,
+          ...(old.align ? { align: true } : {}),
+        },
+        note,
+      );
     } else {
       next.splice(at, 1);
     }

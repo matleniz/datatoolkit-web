@@ -115,6 +115,15 @@ function ActiveBridge({ token }: { token: string }) {
         return page.columns.map((c) => c.name);
       },
       keySchema: (keyId) => apiClient.keySchema(keyId),
+      latestColumns: async () => {
+        const { workspace: ws } = stateRef.current;
+        if (!ws) throw new Error("no workspace open");
+        const [page, notes] = await Promise.all([
+          apiClient.workspaceRows(ws, "train", null, 0, 1),
+          apiClient.columnNotes(ws, "train", null),
+        ]);
+        return { names: page.columns.map((c) => c.name), keys: notes.keys };
+      },
       touch: (touched) => {
         const { columns = [], tools = [], steps = [], rows = [], cells = [] } = touched;
         if (columns.length + tools.length + steps.length + rows.length + cells.length === 0) return;

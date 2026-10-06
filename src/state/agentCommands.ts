@@ -20,6 +20,7 @@ import { TOOL_IDS, type ToolId } from "./dockTypes";
 import { appReducer, type AppAction, type AppState } from "./reducer";
 import { applyStepOps, opRef, refIndex, type StepOp, type StepRef } from "./stepOps";
 import { newStepId } from "./stepIds";
+import { NOTE_MAX, columnNoteKey, noteText } from "./notes";
 import { currentIdentityKey } from "./uiContext";
 import { chartDraftToParams } from "../bench/dock/chartPrefill";
 import { missingChartField } from "../bench/dock/chartDockModel";
@@ -64,7 +65,21 @@ export type AgentCommand =
       tool: ToolId;
       params: Record<string, unknown>;
       column?: string;
+    }
+  | {
+      type: "set_note";
+      workspace: string;
+      kind: NoteKind;
+      /** kind step. */
+      step_id?: string;
+      /** kind column: its name at the latest version. */
+      column?: string;
+      /** "" deletes the note. */
+      text: string;
     };
+
+const NOTE_KINDS = ["step", "column", "workspace"] as const;
+type NoteKind = (typeof NOTE_KINDS)[number];
 
 type StepTarget = Step["target"];
 
@@ -139,6 +154,11 @@ export interface BridgeDeps {
   frameColumns(): Promise<string[]>;
   /** Engine schema of a key (validates `set_tool_params`); cached by the client. */
   keySchema(keyId: string): Promise<JsonSchema>;
+  /**
+   * Column names at the latest version of the train frame, and the origin key
+   * of those a rename moved (`set_note` on a column, #152).
+   */
+  latestColumns(): Promise<{ names: string[]; keys: Record<string, string> }>;
 }
 
 /** What a command touched; every field optional, later commands declare only theirs. */
@@ -501,6 +521,30 @@ function parseSetToolParams(raw: Record<string, unknown>): Parsed<AgentCommand> 
   };
 }
 
+function parseSetNote(raw: Record<string, unknown>): Parsed<AgentCommand> {
+  if (typeof raw.workspace !== "string") return { error: "workspace must be a string" };
+  if (!NOTE_KINDS.includes(raw.kind as NoteKind)) {
+    return { error: `kind must be one of ${NOTE_KINDS.join(", ")}` };
+  }
+  if (typeof raw.text !== "string") return { error: "text must be a string" };
+  if (raw.text.length > NOTE_MAX) return { error: `note longer than ${NOTE_MAX} characters` };
+  const kind = raw.kind as NoteKind;
+  if (kind === "step" && (typeof raw.step_id !== "string" || !raw.step_id)) {
+    return { error: "step_id must be a non-empty string for a step note" };
+  }
+  if (kind === "column" && !isColumnName(raw.column)) {
+    return { error: "column must be a non-empty string for a column note" };
+  }
+  return {
+    type: "set_note",
+    workspace: raw.workspace,
+    kind,
+    text: raw.text,
+    ...(kind === "step" ? { step_id: raw.step_id as string } : {}),
+    ...(kind === "column" ? { column: raw.column as string } : {}),
+  };
+}
+
 /** Validate a relayed command; the error text is the `bad_command: …` reason. */
 export function parseCommand(raw: Record<string, unknown>): Parsed<AgentCommand> {
   switch (raw.type) {
@@ -541,6 +585,8 @@ export function parseCommand(raw: Record<string, unknown>): Parsed<AgentCommand>
       return parseSetToolParams(raw);
     case "set_grid_view":
       return parseSetGridView(raw);
+    case "set_note":
+      return parseSetNote(raw);
     default:
       return { error: `unknown type ${JSON.stringify(raw.type)}` };
   }
@@ -969,6 +1015,69 @@ async function proposeSteps(
   };
 }
 
+/** The reducer action of a `set_note`, what it touches and its toast line; a string = refused. */
+async function noteChange(
+  cmd: Extract<AgentCommand, { type: "set_note" }>,
+  deps: BridgeDeps,
+): Promise<{ action: AppAction; touched: Touched; what: string } | string> {
+  const text = cmd.text;
+  if (cmd.kind === "workspace") {
+    return { action: { type: "SET_WORKSPACE_NOTE", text }, touched: {}, what: "the workspace" };
+  }
+  if (cmd.kind === "step") {
+    const steps = deps.getState().workspace?.steps ?? [];
+    const at = steps.findIndex((s) => s.id === cmd.step_id);
+    if (at < 0) return `bad_command: no step ${cmd.step_id}`;
+    return {
+      action: { type: "SET_STEP_NOTE", id: cmd.step_id!, text },
+      touched: { steps: [at] },
+      what: `step ${at + 1} (${steps[at]!.op})`,
+    };
+  }
+  const column = cmd.column!;
+  let latest: { names: string[]; keys: Record<string, string> };
+  try {
+    latest = await deps.latestColumns();
+  } catch (e) {
+    return `frame_unavailable: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  if (!latest.names.includes(column)) return `bad_command: no column ${column}`;
+  return {
+    action: { type: "SET_COLUMN_NOTE", key: columnNoteKey(column, latest.keys), text },
+    touched: { columns: [column] },
+    what: `column ${column}`,
+  };
+}
+
+/**
+ * set_note (#152): a step / column / workspace note, one undo entry (the
+ * pipeline history snapshots notes), persisted before the ack.
+ */
+async function setNote(
+  id: string,
+  cmd: Extract<AgentCommand, { type: "set_note" }>,
+  deps: BridgeDeps,
+): Promise<Ack> {
+  const open = deps.getState().workspace?.name;
+  if (open !== cmd.workspace) {
+    return fail(id, `stale: workspace ${JSON.stringify(cmd.workspace)} is not open in Studio (open: ${JSON.stringify(open ?? null)})`);
+  }
+  const change = await noteChange(cmd, deps);
+  if (typeof change === "string") return fail(id, change);
+  const before = deps.getState().stepHistory;
+  deps.dispatch(change.action);
+  const recorded = deps.getState().stepHistory !== before;
+  try {
+    await deps.settle();
+  } catch (e) {
+    return fail(id, `save_failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  deps.touch(change.touched);
+  const verb = noteText(cmd.text) === null ? "removed the note on" : "note on";
+  deps.announce(`${verb} ${change.what}`, recorded ? [{ type: "UNDO_STEPS" }] : undefined);
+  return { id, ok: true, identity: currentIdentityKey(deps.getState()) };
+}
+
 /**
  * Run one relayed command and build its ack. Returns null when the command
  * carries no id (nothing to ack).
@@ -990,6 +1099,7 @@ export async function handleCommand(
     return setSetting(id, cmd, deps);
   }
   if (cmd.type === "set_grid_view") return setGridView(id, cmd, deps);
+  if (cmd.type === "set_note") return setNote(id, cmd, deps);
   if (cmd.type === "pick_row" || cmd.type === "pick_cell" || cmd.type === "clear_selection") {
     return pick(id, cmd, deps);
   }

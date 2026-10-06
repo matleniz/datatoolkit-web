@@ -13,6 +13,7 @@ import {
   MAX_STEP_HISTORY,
   recordSteps,
   redoSteps,
+  type StepHistory,
   sameSteps,
   undoSteps,
 } from "../src/state/stepHistory";
@@ -26,7 +27,7 @@ const scale: Step = { op: "scale", target: "both", params: { columns: ["age"] } 
 
 describe("step history (datatoolkit-issues#16)", () => {
   it("undo then redo walks the snapshots", () => {
-    let h = recordSteps(EMPTY_STEP_HISTORY, []);
+    let h = recordSteps<Step[]>(EMPTY_STEP_HISTORY, []);
     h = recordSteps(h, [impute]);
     const current = [impute, scale];
 
@@ -52,7 +53,7 @@ describe("step history (datatoolkit-issues#16)", () => {
   });
 
   it(`keeps at most ${MAX_STEP_HISTORY} undo levels`, () => {
-    let h = EMPTY_STEP_HISTORY;
+    let h: StepHistory<Step[]> = EMPTY_STEP_HISTORY;
     for (let i = 0; i < MAX_STEP_HISTORY + 5; i++) {
       h = recordSteps(h, Array.from({ length: i }, () => impute));
     }
