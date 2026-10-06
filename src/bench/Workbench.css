@@ -1547,3 +1547,65 @@
   color: #5b5850;
   font-family: var(--dtk-font-mono);
 }
+
+/* Notes on steps, columns and the workspace (datatoolkit-issues#152). */
+.pipeline-note {
+  position: absolute;
+  bottom: -7px;
+  right: -7px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid #d6d3ca;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.45;
+}
+.pipeline-note.has-note,
+.pipeline-note:hover,
+.pipeline-note:focus-visible,
+.pipeline-node-rel:hover .pipeline-note {
+  opacity: 1;
+}
+
+.th-note {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.note-pop {
+  position: fixed;
+  z-index: 60;
+  width: 280px;
+  box-sizing: border-box;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #ffffff;
+  border: 1px solid #d6d3ca;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(28, 27, 24, 0.14);
+}
+.note-pop-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1c1b18;
+}
+.note-pop-text {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font: inherit;
+  font-size: 12px;
+}
+.note-pop-actions {
+  display: flex;
+  gap: 6px;
+}
+.note-pop-spacer {
+  flex: 1;
+}

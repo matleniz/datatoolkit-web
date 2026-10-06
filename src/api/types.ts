@@ -202,8 +202,27 @@ export interface Step {
   op: string;
   target: StepTarget;
   params: Record<string, unknown>;
+  /** Free-text note (datatoolkit-issues#152); follows the step id. Not data. */
+  note?: string;
   /** Front-only: alignment steps stay first in the pipeline (MAT-126). */
   align?: boolean;
+}
+
+/**
+ * Workspace and column notes (datatoolkit-issues#152). Column notes are keyed
+ * by the column's origin name (its name in the sources or the name a step
+ * created it with); the engine traces renames (`/workspace/column-notes`).
+ */
+export interface WorkspaceNotes {
+  workspace: string | null;
+  columns: Record<string, string>;
+}
+
+/** `POST /workspace/column-notes`: notes and origin keys by name at a version. */
+export interface ColumnNotes {
+  notes: Record<string, string>;
+  /** Only columns whose name differs from their key. */
+  keys: Record<string, string>;
 }
 
 export interface Workspace {
@@ -219,6 +238,8 @@ export interface Workspace {
    * engine answers 422 `duplicate chart name`).
    */
   charts?: ChartSpec[];
+  /** Absent on workspaces without notes (and engines before #152). */
+  notes?: WorkspaceNotes;
 }
 
 /** One role's file meta from GET /workspaces/summaries (MAT-171). */

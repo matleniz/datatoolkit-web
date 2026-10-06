@@ -82,6 +82,8 @@ function harness(init: AppState, answer: (p: Proposal) => boolean | Promise<bool
     },
     frameColumns: async () => COLS,
     keySchema: async () => distSchema,
+    // `fare` was renamed from `fare_raw` by a step (#152 origin keys).
+    latestColumns: async () => ({ names: [...COLS, "fare"], keys: { fare: "fare_raw" } }),
   };
   return h;
 }
@@ -414,6 +416,91 @@ describe("stable step ids (datatoolkit-issues#153)", () => {
     const cmd = propose(h.state, [{ remove: { id: "s2" } }, { remove: { index: 0 } }]);
     h.deps.dispatch({ type: "ADD_STEP", step: drop });
     expect(await handleCommand(cmd, h.deps)).toEqual({ id: "c1", ok: false, error: "stale" });
+  });
+});
+
+describe("notes (datatoolkit-issues#152)", () => {
+  const ided = (steps: Step[]) => steps.map((s, i) => ({ ...s, id: `s${i + 1}` }));
+  const setNote = (extra: Record<string, unknown>) => ({
+    id: "n1", type: "set_note", workspace: "demo", ...extra,
+  });
+
+  it("note actions are one undo entry each; notes never change the data identity", () => {
+    let s = start(ided([impute, scale]));
+    const identity = currentIdentityKey(s);
+    s = appReducer(s, { type: "SET_STEP_NOTE", id: "s2", text: "why we scale" });
+    s = appReducer(s, { type: "SET_COLUMN_NOTE", key: "age", text: "years" });
+    s = appReducer(s, { type: "SET_WORKSPACE_NOTE", text: "parkison dogfood" });
+    expect(s.workspace?.steps[1]?.note).toBe("why we scale");
+    expect(s.workspace?.notes).toEqual({ workspace: "parkison dogfood", columns: { age: "years" } });
+    expect(s.stepHistory.past).toHaveLength(3);
+    expect(currentIdentityKey(s)).toBe(identity);
+    s = appReducer(s, { type: "UNDO_STEPS" });
+    expect(s.workspace?.notes).toEqual({ workspace: null, columns: { age: "years" } });
+    s = appReducer(s, { type: "UNDO_STEPS" });
+    s = appReducer(s, { type: "UNDO_STEPS" });
+    expect(s.workspace?.steps[1]?.note).toBeUndefined();
+    s = appReducer(s, { type: "REDO_STEPS" });
+    expect(s.workspace?.steps[1]?.note).toBe("why we scale");
+    // A blank text removes the note.
+    s = appReducer(s, { type: "SET_STEP_NOTE", id: "s2", text: "  " });
+    expect(s.workspace?.steps[1]).not.toHaveProperty("note");
+  });
+
+  it("a replace keeps the note unless the new step sets one", () => {
+    const steps = [{ ...impute, id: "s1", note: "keep me" }];
+    const kept = applyStepOps(steps, [{ replace: { id: "s1", step: scale } }]);
+    expect(kept).toEqual({ steps: [{ ...scale, id: "s1", note: "keep me" }] });
+    const cleared = applyStepOps(steps, [{ replace: { id: "s1", step: { ...scale, note: "" } } }]);
+    expect(cleared).toEqual({ steps: [{ ...scale, id: "s1" }] });
+    let s = start(steps);
+    s = appReducer(s, { type: "REPLACE_STEP", index: 0, step: scale });
+    expect(s.workspace?.steps[0]?.note).toBe("keep me");
+  });
+
+  it("parses set_note and refuses bad payloads", () => {
+    expect(parseCommand(setNote({ kind: "column", column: "age", text: "x" }))).toEqual({
+      type: "set_note", workspace: "demo", kind: "column", column: "age", text: "x",
+    });
+    expect(parseCommand(setNote({ kind: "step", text: "x" }))).toHaveProperty("error");
+    expect(parseCommand(setNote({ kind: "column", text: "x" }))).toHaveProperty("error");
+    expect(parseCommand(setNote({ kind: "row", text: "x" }))).toHaveProperty("error");
+    expect(parseCommand(setNote({ kind: "workspace", text: "x".repeat(4001) }))).toEqual({
+      error: "note longer than 4000 characters",
+    });
+  });
+
+  it("set_note writes step / column (origin key) / workspace notes, acks, Undo reverts", async () => {
+    const h = harness(start(ided([impute, scale])));
+    const identity = currentIdentityKey(h.state);
+    expect(await handleCommand(setNote({ kind: "step", step_id: "s2", text: "scaled for knn" }), h.deps))
+      .toEqual({ id: "n1", ok: true, identity });
+    expect(h.state.workspace?.steps[1]?.note).toBe("scaled for knn");
+    expect(h.touches.at(-1)).toEqual({ steps: [1] });
+    await handleCommand(setNote({ kind: "column", column: "fare", text: "in euros" }), h.deps);
+    expect(h.state.workspace?.notes?.columns).toEqual({ fare_raw: "in euros" });
+    await handleCommand(setNote({ kind: "workspace", text: "train only" }), h.deps);
+    expect(h.state.workspace?.notes?.workspace).toBe("train only");
+    expect(h.toasts).toEqual([
+      "note on step 2 (scale)", "note on column fare", "note on the workspace",
+    ]);
+    expect(h.settled).toBe(3);
+    h.undos.at(-1)!.forEach(h.deps.dispatch);
+    expect(h.state.workspace?.notes?.workspace).toBeNull();
+    await handleCommand(setNote({ kind: "step", step_id: "s2", text: "" }), h.deps);
+    expect(h.toasts.at(-1)).toBe("removed the note on step 2 (scale)");
+  });
+
+  it("set_note refuses an unknown step / column and another workspace", async () => {
+    const h = harness(start(ided([impute])));
+    expect(await handleCommand(setNote({ kind: "step", step_id: "s9", text: "x" }), h.deps))
+      .toEqual({ id: "n1", ok: false, error: "bad_command: no step s9" });
+    expect(await handleCommand(setNote({ kind: "column", column: "nope", text: "x" }), h.deps))
+      .toEqual({ id: "n1", ok: false, error: "bad_command: no column nope" });
+    expect(await handleCommand(setNote({ kind: "workspace", text: "x", workspace: "other" }), h.deps))
+      .toMatchObject({ ok: false, error: expect.stringMatching(/^stale: workspace "other"/) });
+    expect(h.state.stepHistory.past).toHaveLength(0);
+    expect(h.toasts).toEqual([]);
   });
 });
 

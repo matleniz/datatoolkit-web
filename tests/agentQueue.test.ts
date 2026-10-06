@@ -39,6 +39,7 @@ function harness() {
     reviewPending: () => h.answers.size > 0,
     opSchema: async () => ({ type: "object" }),
     frameColumns: async () => ["age", "id"],
+    latestColumns: async () => ({ names: [], keys: {} }),
     keySchema: async () => ({ type: "object" }),
   };
   const show = (p: Proposal) =>

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { chartPrefillFromSelection } from "../dock/chartPrefill";
@@ -6,12 +6,42 @@ import { toggleSort } from "../../state/gridView";
 import { isNumericKind, isTextKind, KIND_LABEL } from "../kinds";
 import { toEngineParams } from "../presets";
 import { useWorkbenchData } from "../WorkbenchData";
+import { NotePopover, type NoteAnchor } from "../notes/NotePopover";
+import { columnNoteKey } from "../../state/notes";
 
-/** W2 — column context menu (prototype item order). */
+/** W2 — column context menu, and the column note it opens (#152). */
 export function ContextMenu() {
+  const [note, setNote] = useState<(NoteAnchor & { col: string }) | null>(null);
+  const { columnNotes } = useWorkbenchData();
+  const dispatch = useAppDispatch();
+  const close = useCallback(() => setNote(null), []);
+  return (
+    <>
+      <ColumnMenu onNote={(col, x, y) => setNote({ col, x, y })} />
+      {note ? (
+        <NotePopover
+          label={`column ${note.col}`}
+          text={columnNotes.notes[note.col] ?? null}
+          anchor={note}
+          onSave={(text) =>
+            dispatch({
+              type: "SET_COLUMN_NOTE",
+              key: columnNoteKey(note.col, columnNotes.keys),
+              text,
+            })
+          }
+          onClose={close}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** Column context menu (prototype item order). */
+function ColumnMenu({ onNote }: { onNote: (col: string, x: number, y: number) => void }) {
   const { ctx, selection, screen, targetColumn, gridView } = useAppState();
   const dispatch = useAppDispatch();
-  const { columns, profiles, isLatest } = useWorkbenchData();
+  const { columns, profiles, isLatest, columnNotes } = useWorkbenchData();
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -98,6 +128,11 @@ export function ContextMenu() {
           dispatch({ type: "PICK_COL", name, add: true });
         }
       },
+    },
+    {
+      kind: "item",
+      text: columnNotes.notes[col] ? "Edit note…" : "Add note…",
+      run: () => onNote(col, ctx.x, ctx.y),
     },
   ];
 

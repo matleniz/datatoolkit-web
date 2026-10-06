@@ -1,5 +1,6 @@
 import {
   AlignReport,
+  ColumnNotes,
   ColumnProfiles,
   EngineError,
   ErrorBody,
@@ -70,6 +71,8 @@ interface ApiClient {
     signal?: AbortSignal,
   ): Promise<PreviewStep>;
   alignReport(workspace: Workspace): Promise<AlignReport>;
+  /** Column notes by name at `version` (null = latest), renames traced (#152). */
+  columnNotes(workspace: Workspace, role: Role, version?: number | null): Promise<ColumnNotes>;
 
   upload(filename: string, body: BodyInit): Promise<UploadResponse>;
 }
@@ -95,21 +98,33 @@ export function serializeWorkspace(ws: Workspace): string {
   return JSON.stringify(workspaceBody(ws));
 }
 
-/** PUT body: the stored workspace, saved charts included (MAT-185). */
+/** PUT body: the stored workspace, saved charts and notes included (MAT-185, #152). */
 function workspaceBody(ws: Workspace): Record<string, unknown> {
-  return { ...frameBody(ws), charts: ws.charts ?? [] };
+  return { ...notesBody(ws), charts: ws.charts ?? [] };
 }
 
 /**
- * Workspace sent to frame / analysis calls: saved charts never feed a frame,
- * so a chart save does not change those request bodies (MAT-175 identity).
- * Step.align is front-only pipeline ordering.
+ * Workspace sent to frame / analysis calls: saved charts and notes never feed
+ * a frame, so saving one does not change those request bodies (MAT-175
+ * identity, #152). Step.align is front-only pipeline ordering.
  */
 function frameBody(ws: Workspace): Record<string, unknown> {
-  const { charts: _charts, ...rest } = ws;
+  const { charts: _charts, notes: _notes, ...rest } = ws;
   return {
     ...rest,
+    steps: ws.steps.map((step) => {
+      const { note: _note, ...plain } = sanitizeStep(step);
+      return plain;
+    }),
+  };
+}
+
+/** Frame body plus the notes (stored body without charts): column notes need both. */
+function notesBody(ws: Workspace): Record<string, unknown> {
+  return {
+    ...frameBody(ws),
     steps: ws.steps.map(sanitizeStep),
+    ...(ws.notes ? { notes: ws.notes } : {}),
   };
 }
 
@@ -420,6 +435,18 @@ class HttpApiClient implements ApiClient {
       undefined,
       signal,
     );
+  }
+
+  columnNotes(
+    workspace: Workspace,
+    role: Role,
+    version: number | null = null,
+  ): Promise<ColumnNotes> {
+    return this.request("POST", "/workspace/column-notes", {
+      workspace: notesBody(workspace),
+      role,
+      version,
+    });
   }
 
   columnProfiles(

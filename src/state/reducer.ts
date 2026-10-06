@@ -21,8 +21,10 @@ import {
   redoSteps,
   sameSteps,
   undoSteps,
+  type PipelineSnapshot,
   type StepHistory,
 } from "./stepHistory";
+import { withColumnNote, withNote, withWorkspaceNote } from "./notes";
 import { applyStepOps, orderSteps, type StepOp } from "./stepOps";
 import { fillStepIds, withNewId } from "./stepIds";
 import { EMPTY_GRID_VIEW, gridViewKey, type GridView } from "./gridView";
@@ -303,6 +305,11 @@ export type AppAction =
   /** Several step edits as ONE undo entry (agent bridge, #63); no-op if one op is invalid. */
   | { type: "APPLY_STEP_BATCH"; ops: StepOp[] }
   /** Pipeline history only (datatoolkit-issues#16); no-op while editing a step. */
+  /** Notes (#152): one undoable change each; a blank text removes the note. */
+  | { type: "SET_STEP_NOTE"; id: string; text: string }
+  /** `key` = the column's origin name (`columnNoteKey`). */
+  | { type: "SET_COLUMN_NOTE"; key: string; text: string }
+  | { type: "SET_WORKSPACE_NOTE"; text: string }
   | { type: "UNDO_STEPS" }
   | { type: "REDO_STEPS" };
 
@@ -729,6 +736,31 @@ function loadedWorkspace(raw: Workspace): Workspace {
   return steps === ws.steps ? ws : { ...ws, steps };
 }
 
+/** Step / column / workspace notes (#152); recorded in the pipeline history. */
+function reduceNotes(state: AppState, action: AppAction): AppState | undefined {
+  if (!state.workspace) return undefined;
+  switch (action.type) {
+    case "SET_STEP_NOTE": {
+      const steps = state.workspace.steps;
+      const at = steps.findIndex((s) => s.id === action.id);
+      if (at < 0) return state;
+      const next = steps.slice();
+      next[at] = withNote(steps[at]!, action.text);
+      return withWorkspace(state, { steps: next });
+    }
+    case "SET_COLUMN_NOTE":
+      return withWorkspace(state, {
+        notes: withColumnNote(state.workspace.notes, action.key, action.text),
+      });
+    case "SET_WORKSPACE_NOTE":
+      return withWorkspace(state, {
+        notes: withWorkspaceNote(state.workspace.notes, action.text),
+      });
+    default:
+      return undefined;
+  }
+}
+
 /** The open workspace: steps, variables, charts, test options. */
 function reduceWorkspace(
   state: AppState,
@@ -888,11 +920,11 @@ function reduceStepHistory(
   }
   if (!state.workspace || state.editor) return state;
   const move = action.type === "UNDO_STEPS" ? undoSteps : redoSteps;
-  const moved = move(state.stepHistory, state.workspace.steps);
+  const moved = move(state.stepHistory, snapshot(state.workspace));
   if (!moved) return state;
   return withWorkspace(
     state,
-    { steps: moved.steps },
+    { steps: moved.steps.steps, notes: moved.steps.notes },
     {
       stepHistory: moved.history,
       viewVersion: null,
@@ -907,6 +939,8 @@ function reduceStepHistory(
  * only when it is the same workspace with the same steps (e.g. a Sources
  * edit); otherwise it starts empty.
  */
+const snapshot = (ws: Workspace): PipelineSnapshot => ({ steps: ws.steps, notes: ws.notes });
+
 function trackStepHistory(
   prev: AppState,
   next: AppState,
@@ -920,13 +954,14 @@ function trackStepHistory(
       before !== null &&
       after !== null &&
       before.name === after.name &&
-      JSON.stringify(before.steps) === JSON.stringify(after.steps);
+      JSON.stringify(snapshot(before)) === JSON.stringify(snapshot(after));
     return kept || next.stepHistory === EMPTY_STEP_HISTORY
       ? next
       : { ...next, stepHistory: EMPTY_STEP_HISTORY };
   }
-  if (!before || !after || sameSteps(before.steps, after.steps)) return next;
-  return { ...next, stepHistory: recordSteps(next.stepHistory, before.steps) };
+  if (!before || !after) return next;
+  if (sameSteps(before.steps, after.steps) && before.notes === after.notes) return next;
+  return { ...next, stepHistory: recordSteps(next.stepHistory, snapshot(before)) };
 }
 
 export function appReducer(state: AppState, action: AppAction): AppState {
@@ -938,6 +973,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     reduceDock(state, action) ??
     reduceToolState(state, action) ??
     reduceWorkspace(state, action) ??
+    reduceNotes(state, action) ??
     state;
   return trackStepHistory(state, next, action);
 }

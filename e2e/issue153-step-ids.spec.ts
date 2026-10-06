@@ -159,9 +159,11 @@ test("issue 153: stub agent mid-task, the user removes the step it read, its rem
   await waitForGridReady(page);
 
   // The agent's remove by the id it saw: acked stale with the reason, no review, nothing applied.
+  // The turn's Studio note (#151) already told the agent s2 is gone, so its
+  // base_steps lacks s2 and Studio cannot name the op: "(scale)" is optional.
   await say("remove step s2");
   await expect(panel.locator('[data-tool-call="propose_steps"]').last()).toContainText("remove step s2");
-  await expect(reply).toHaveText("stub: stale: step s2 (scale) removed", { timeout: 30_000 });
+  await expect(reply).toHaveText(/^stub: stale: step s2 (\(scale\) )?removed\s*$/, { timeout: 30_000 });
   await expect(page.getByLabel("Agent proposal")).toHaveCount(0);
   expect((await steps(page)).map((s) => s.id)).toEqual(["s1"]);
 });
