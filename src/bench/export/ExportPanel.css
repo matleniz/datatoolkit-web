@@ -211,3 +211,30 @@
   line-height: 1.4;
   flex-shrink: 0;
 }
+
+/* Format picker (datatoolkit-issues#156). */
+.export-formats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid #d6d3ca;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.export-formats legend {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 4px;
+}
+.export-side label.export-format {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+.export-side .export-format input {
+  height: auto;
+  padding: 0;
+}

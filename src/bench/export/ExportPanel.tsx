@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "../../api/client";
-import type { ExportManifest, ExportOutputEntry } from "../../api/types";
+import type { ExportFormat, ExportManifest, ExportOutputEntry } from "../../api/types";
 import { errorText } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import {
@@ -20,6 +20,19 @@ const FIT_OPS = new Set([
   "formula",
   "log1p",
 ]);
+
+/** Format picker (#156): label, short name for the button, files written. */
+const FORMATS: { id: ExportFormat; label: string; short: string; files: string }[] = [
+  { id: "parquet", label: "Parquet", short: "parquet", files: "processed/train.parquet, test.parquet" },
+  { id: "csv", label: "CSV", short: "CSV", files: "processed/train.csv, test.csv" },
+  {
+    id: "ipynb",
+    label: "Notebook (.ipynb)",
+    short: "notebook",
+    files: "code/pipeline.ipynb · replays the steps, with the notes",
+  },
+  { id: "py", label: "Python script (.py)", short: "script", files: "code/pipeline.py" },
+];
 
 function outputEntries(
   outputs: ExportManifest["outputs"],
@@ -61,6 +74,10 @@ export function ExportPanel() {
   const [exportedOutDir, setExportedOutDir] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [formats, setFormats] = useState<ExportFormat[]>(["parquet"]);
+  const picked = FORMATS.filter((f) => formats.includes(f.id));
+  const toggleFormat = (id: ExportFormat, on: boolean) =>
+    setFormats((cur) => FORMATS.map((f) => f.id).filter((f) => (f === id ? on : cur.includes(f))));
 
   useEffect(() => {
     if (workspace) setOutDir(defaultExportOutDir(workspace));
@@ -126,11 +143,26 @@ export function ExportPanel() {
           aria-label="Export outputs"
         >
           <div className="export-side-title">Outputs</div>
+          <fieldset className="export-formats">
+            <legend>Formats</legend>
+            {FORMATS.map((f) => (
+              <label key={f.id} className="export-format" title={f.files}>
+                <input
+                  type="checkbox"
+                  checked={formats.includes(f.id)}
+                  onChange={(e) => toggleFormat(f.id, e.target.checked)}
+                />
+                {f.label}
+              </label>
+            ))}
+          </fieldset>
           <div className="export-outputs mono muted">
-            train.parquet
-            <br />
-            test.parquet
-            <br />
+            {picked.map((f) => (
+              <span key={f.id}>
+                {f.files}
+                <br />
+              </span>
+            ))}
             manifest.json · steps, states, hashes
           </div>
           <div className="leak-line">{leakText}</div>
@@ -145,7 +177,7 @@ export function ExportPanel() {
           <button
             type="button"
             className="export-run-btn"
-            disabled={!workspace || busy || !outDir.trim()}
+            disabled={!workspace || busy || !outDir.trim() || picked.length === 0}
             onClick={async () => {
               if (!workspace) return;
               setBusy(true);
@@ -158,6 +190,7 @@ export function ExportPanel() {
                 const m = await apiClient.exportWorkspace(workspace.name, {
                   out_dir: requested,
                   overwrite: true,
+                  formats,
                 });
                 setExportedOutDir(requested);
                 setManifest(m);
@@ -170,7 +203,9 @@ export function ExportPanel() {
               }
             }}
           >
-            Export parquet + manifest
+            {picked.length
+              ? `Export ${picked.map((f) => f.short).join(" + ")} + manifest`
+              : "Pick a format"}
           </button>
           {error ? (
             <div className="engine-error" role="alert">
