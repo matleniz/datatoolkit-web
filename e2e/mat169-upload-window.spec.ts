@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { join } from "node:path";
 
 import type { Workspace } from "../src/api/types";
-import { fixturesDir, waitForGridReady } from "./helpers";
+import { fixturesDir, sourceFileInput, waitForGridReady } from "./helpers";
 
 const EMPTY_MSG =
   /This train file has no columns \(empty or unreadable\)/;
@@ -32,7 +32,7 @@ test("MAT-169: bad CSV row shows SourceError; on_bad_lines=skip opens workbench"
   });
 
   const badPath = join(fixturesDir, "bad_csv_row.csv");
-  await page.locator('input[type="file"]').setInputFiles(badPath);
+  await sourceFileInput(page).setInputFiles(badPath);
 
   const filesList = page.getByRole("region", { name: "Files list" });
   await expect(filesList.getByText("bad_csv_row.csv")).toBeVisible({
