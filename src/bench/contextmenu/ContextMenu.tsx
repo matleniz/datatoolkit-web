@@ -8,6 +8,7 @@ import { toEngineParams } from "../presets";
 import { useWorkbenchData } from "../WorkbenchData";
 import { NotePopover, type NoteAnchor } from "../notes/NotePopover";
 import { columnNoteKey } from "../../state/notes";
+import { usePopupPlacement } from "../placement";
 
 /** W2 — column context menu, and the column note it opens (#152). */
 export function ContextMenu() {
@@ -43,6 +44,7 @@ function ColumnMenu({ onNote }: { onNote: (col: string, x: number, y: number) =>
   const dispatch = useAppDispatch();
   const { columns, profiles, isLatest, columnNotes } = useWorkbenchData();
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const placed = usePopupPlacement(menuRef, ctx && screen === "bench" ? ctx : null);
 
   useEffect(() => {
     if (!ctx) return;
@@ -375,17 +377,18 @@ function ColumnMenu({ onNote }: { onNote: (col: string, x: number, y: number) =>
     });
   }
 
-  const hh = items.reduce((a, x) => a + (x.kind === "sep" ? 9 : 28), 30);
-  const x0 = Math.min(ctx.x, 1440 - 250);
-  const y0 = Math.max(8, Math.min(ctx.y, 900 - hh - 8));
-
   return (
     <div
       ref={menuRef}
       role="menu"
       aria-label="Column menu"
       className="ctx-menu"
-      style={{ left: Math.round(x0), top: Math.round(y0) }}
+      style={{
+        left: Math.round(placed?.left ?? ctx.x),
+        top: Math.round(placed?.top ?? ctx.y),
+        maxHeight: placed?.maxHeight,
+        overflowY: "auto",
+      }}
     >
       <div className="ctx-title">
         {col} · {KIND_LABEL[kind] ?? kind}
