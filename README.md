@@ -179,8 +179,9 @@ CLI in the engine image). The engine also keeps the token in
 ## Run without Docker (uv)
 
 `launcher/` is a small Python package (`dtk-studio`, hatchling) whose only
-dependency is the engine with its `api` extra, straight from GitHub
-(`dtk-engine[api] @ git+https://github.com/matleniz/datatoolkit`; nothing is on
+dependency is the engine with its `api` and `pdf` extras (`pdf` = pypdf, so PDF
+workspace documents have their text extracted), straight from GitHub
+(`dtk-engine[api,pdf] @ git+https://github.com/matleniz/datatoolkit`; nothing is on
 PyPI). With [uv](https://docs.astral.sh/uv/) installed:
 
 ```bash
