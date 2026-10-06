@@ -63,6 +63,8 @@ export type AgentEvent =
   /** The session's attachment set changed (datatoolkit-issues#121, #129). */
   | { type: "attachment_added"; attachment: SessionAttachment }
   | { type: "attachment_removed"; id: string }
+  /** The pack summarised older turns (#151); `preTokens` = context size before. */
+  | { type: "compacted"; preTokens?: number }
   | { type: "done"; stopReason?: string }
   | { type: "error"; message: string; code?: string };
 
@@ -133,7 +135,7 @@ const num = (v: unknown): number =>
   typeof v === "number" && Number.isFinite(v) ? v : 0;
 
 /** Token counts under `prefix` (`""` = the turn, `"total_"` = cumulative). */
-export function parseTokens(o: Obj, prefix = ""): UsageTotals {
+function parseTokens(o: Obj, prefix = ""): UsageTotals {
   return {
     input: num(o[`${prefix}input_tokens`]),
     output: num(o[`${prefix}output_tokens`]),
@@ -236,6 +238,11 @@ export function parseAgentEvent(raw: unknown): AgentEvent | null {
         pack: str(o.pack) ?? null,
         model: str(o.model) ?? null,
         reset: o.reset === true,
+      };
+    case "compacted":
+      return {
+        type: "compacted",
+        ...(typeof o.pre_tokens === "number" ? { preTokens: o.pre_tokens } : {}),
       };
     case "done":
       return { type: "done", stopReason: str(o.stop_reason) };

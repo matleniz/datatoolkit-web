@@ -44,7 +44,9 @@ export type TranscriptItem =
       lines: string[];
       status: PermissionStatus;
     }
-  | { kind: "error"; key: string; message: string; code?: string };
+  | { kind: "error"; key: string; message: string; code?: string }
+  /** The conversation's older turns were summarised (#151). */
+  | { kind: "compacted"; key: string; preTokens?: number };
 
 export interface Transcript {
   items: TranscriptItem[];
@@ -223,6 +225,8 @@ function applyEvent(t: Transcript, ev: AgentEvent): Transcript {
       return settle(t);
     case "error":
       return settle(push(t, { kind: "error", message: ev.message, code: ev.code }));
+    case "compacted":
+      return push(t, { kind: "compacted", preTokens: ev.preTokens });
   }
 }
 

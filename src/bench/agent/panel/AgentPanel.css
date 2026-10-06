@@ -358,3 +358,12 @@
   font-size: 12px;
   opacity: 0.75;
 }
+
+/* #151: the pack summarised older turns. */
+.agent-compacted {
+  align-self: center;
+  font-size: 11px;
+  color: var(--dtk-muted);
+  border-top: 1px dashed #d6d3ca;
+  padding-top: 4px;
+}

@@ -125,6 +125,14 @@ describe("agent panel transcript (#67)", () => {
       .toBe("last turn: 10 in · cache 0 write / 0 read · 5 out");
   });
 
+  it("shows a compacted line (#151)", () => {
+    expect(parseAgentEvent({ type: "compacted", turn: "t1", trigger: "auto", pre_tokens: 61234 }))
+      .toEqual({ type: "compacted", preTokens: 61234 });
+    expect(parseAgentEvent({ type: "compacted", pre_tokens: null })).toEqual({ type: "compacted" });
+    const t = run([ev({ type: "compacted", pre_tokens: 61234 })]);
+    expect(t.items).toEqual([{ kind: "compacted", key: expect.any(String), preTokens: 61234 }]);
+  });
+
   it("prefers the engine's cumulative totals", () => {
     const t = run([
       { type: "usage_seed", usage: { input: 500, output: 50, cacheWrite: 0, cacheRead: 400 } },
