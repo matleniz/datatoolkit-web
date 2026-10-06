@@ -68,11 +68,14 @@ test("issue 153: ids are filled on load, stored, and kept across reload and edit
 
   // A new step gets a fresh id; ids survive a reload.
   await page.evaluate((step) => window.__DTK_DISPATCH__!({ type: "ADD_STEP", step }), scaleSessions);
+  await expect.poll(async () => (await steps(page)).length).toBe(3);
   const ids = (await steps(page)).map((s) => s.id);
   expect(ids[2]).toMatch(/^s[0-9a-f]{8}$/);
   await expect.poll(async () => (await storedSteps(request)).map((s) => s.id), { timeout: 15_000 })
     .toEqual(ids);
   await page.reload();
+  await expect(page.getByText("Loading workspace…")).toBeHidden({ timeout: 60_000 });
+  await page.getByRole("button", { name: /Workbench/ }).click();
   await waitForGridReady(page);
   expect((await steps(page)).map((s) => s.id)).toEqual(ids);
 });
