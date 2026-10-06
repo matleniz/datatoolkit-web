@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "datatoolkit Studio + engine in one local process (no Docker)"
 requires-python = ">=3.11"
 dependencies = [
-    "dtk-engine[api] @ git+https://github.com/matleniz/datatoolkit",
+    "dtk-engine[api,pdf] @ git+https://github.com/matleniz/datatoolkit",
 ]
 
 [project.scripts]

@@ -49,7 +49,7 @@ jobs:
           echo "DTK_LAUNCHER_SRC=$GITHUB_WORKSPACE/launcher" >> "$GITHUB_ENV"
           if [ -n "$ENGINE_REF" ]; then
             # Every uv run below (scripts included) resolves the engine at that ref.
-            printf 'dtk-engine[api] @ git+https://github.com/matleniz/datatoolkit@%s\n' "$ENGINE_REF" > "$RUNNER_TEMP/overrides.txt"
+            printf 'dtk-engine[api,pdf] @ git+https://github.com/matleniz/datatoolkit@%s\n' "$ENGINE_REF" > "$RUNNER_TEMP/overrides.txt"
             echo "UV_OVERRIDE=$RUNNER_TEMP/overrides.txt" >> "$GITHUB_ENV"
           fi
         env:
@@ -80,6 +80,10 @@ jobs:
         env:
           UV_PYTHON_PREFERENCE: only-managed
         run: uv run --no-project python -c "import urllib.request; print(urllib.request.urlopen('https://github.com/matleniz/datatoolkit-web', timeout=30).status)"
+      - name: The launcher env has the engine's pdf extra (pypdf)
+        env:
+          UV_PYTHON_PREFERENCE: only-managed
+        run: uv run --no-project --with ./launcher python -c "import pypdf; print(pypdf.__version__)"
       - name: uvx --from ./launcher dtk-studio (download, verify, cache)
         env:
           UV_PYTHON_PREFERENCE: only-managed
