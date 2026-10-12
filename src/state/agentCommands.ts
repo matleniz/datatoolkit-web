@@ -219,7 +219,15 @@ function parseStep(raw: unknown): Step | string {
   }
   const params = raw.params ?? {};
   if (!isRecord(params)) return "step.params must be an object";
-  return { op: raw.op, target, params };
+  const step: Step = { op: raw.op, target, params };
+  if (raw.note !== undefined && raw.note !== null) {
+    if (typeof raw.note !== "string") return "step.note must be a string";
+    if (raw.note.length > NOTE_MAX) return `step.note longer than ${NOTE_MAX} characters`;
+    // A blank note is "no note" (a replace then keeps the slot's note).
+    const note = noteText(raw.note);
+    if (note !== null) step.note = note;
+  }
+  return step;
 }
 
 /** `{id}` (#153) or `{index}` (older form) of a replace / remove op. */
@@ -630,6 +638,12 @@ function stepLabel(step: Step): string {
   return `${step.op}${on}`;
 }
 
+/** The note a proposed add / replace carries, if any. */
+function opNote(op: StepOp): string | undefined {
+  if ("remove" in op) return undefined;
+  return ("add" in op ? op.add : op.replace).step.note;
+}
+
 /** One line per op, for the review banner. */
 export function describeOps(ops: StepOp[], steps: Step[]): string[] {
   return ops.map((op) => {
@@ -1012,7 +1026,10 @@ async function proposeSteps(
     const accepted = await deps.review({
       id,
       summary,
-      lines: describeOps(cmd.ops, steps),
+      lines: describeOps(cmd.ops, steps).map((line, i) => {
+        const note = opNote(cmd.ops[i]!);
+        return note === undefined ? line : `${line} — note: ${note}`;
+      }),
     });
     if (!accepted) return fail(id, "rejected");
     // The user may have changed the frame while the proposal waited.

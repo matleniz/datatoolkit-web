@@ -1368,3 +1368,23 @@ describe("set_grid_view", () => {
     expect(await send(h, { filter })).toEqual({ id: "g", ok: false, error: "frame_unavailable: engine down" });
   });
 });
+
+describe("step note on a proposed step (datatoolkit-issues#187)", () => {
+  const propose = (step: Record<string, unknown>) =>
+    parseCommand({
+      id: "p1", type: "propose_steps", workspace: "demo", base_identity: "x",
+      ops: [{ add: { step: { op: "scale", params: {}, ...step } } }],
+    });
+
+  it("keeps a note, drops a blank one, refuses a bad or too long one", () => {
+    expect(propose({ note: "why" })).toMatchObject({
+      ops: [{ add: { step: { note: "why" } } }],
+    });
+    const blank = propose({ note: "  " }) as { ops: { add: { step: object } }[] };
+    expect(blank.ops[0]!.add.step).not.toHaveProperty("note");
+    expect(propose({ note: 3 })).toMatchObject({ error: expect.stringContaining("step.note") });
+    expect(propose({ note: "x".repeat(4001) })).toMatchObject({
+      error: expect.stringContaining("longer than 4000"),
+    });
+  });
+});
