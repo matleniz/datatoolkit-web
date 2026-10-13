@@ -464,6 +464,7 @@
 }
 
 .preview-banner {
+  flex-wrap: wrap;
   background: #e3eef6;
   border-bottom: 1px solid #b9d0e2;
 }
@@ -512,8 +513,13 @@
 
 .grid-filter-form {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  /* A flex item defaults to min-width: auto: without this the row keeps its
+     content width and its last buttons leave a narrow centre column (#201). */
+  min-width: 0;
+  max-width: 100%;
 }
 
 .banner-kicker.travel {
