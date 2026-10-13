@@ -15,15 +15,23 @@ type PreviewInputs = Pick<
   "files" | "roles" | "labelMode" | "targetCol"
 >;
 
-/** Target column the preview resolves to (engine columns, y file, then pick). */
-function resolvePreviewTarget(
+/**
+ * Target column the preview resolves to (engine columns, y file, then pick).
+ * The preview is the frame *after* the workspace's steps, so with steps every
+ * column a step created or renamed would look "added by the join": the engine
+ * columns only tell the label apart when there is no step (#199).
+ */
+export function resolvePreviewTarget(
   res: { columns: string[] },
   src: PreviewInputs,
   buildResult: WorkspaceBuildResult,
 ): string | null {
   const { files, roles, labelMode, targetCol } = src;
   const trainX = files.find((f) => roles[f.id] === "trainX");
-  const fromPreview = targetFromPreviewColumns(res.columns, trainX?.cols ?? []);
+  const hasSteps = (buildResult.workspace.steps?.length ?? 0) > 0;
+  const fromPreview = hasSteps
+    ? null
+    : targetFromPreviewColumns(res.columns, trainX?.cols ?? []);
   const fallback =
     labelMode === "yfile"
       ? yLabelValueColumn(
