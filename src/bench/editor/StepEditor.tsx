@@ -3,6 +3,8 @@ import { apiClient } from "../../api/client";
 import type { ColumnKind, JsonValue } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { FormulaField } from "./FormulaField";
+import { ValueMappingField } from "./ValueMappingField";
+import type { ValueMapping } from "./valueMapping";
 import { formatLearnedState } from "../format";
 import { targetColumnOf } from "../left/datasetSource";
 import { pickerPreset, resolveOp, toEngineParams } from "../presets";
@@ -495,6 +497,14 @@ function Field({
       return <CategoriesField params={params} columns={columns} onChange={setOwn} />;
     case "mapping":
       return <MappingField params={params} columns={columns} onChange={setOwn} />;
+    case "value_mapping":
+      return (
+        <ValueMappingField
+          value={params.mapping as ValueMapping | undefined}
+          columns={columns}
+          onChange={setOwn}
+        />
+      );
     case "dtypes":
       return <DtypesField params={params} columns={columns} onChange={setOwn} />;
     case "formula":

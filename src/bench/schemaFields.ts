@@ -16,6 +16,8 @@ export type FieldWidget =
   | "sentinels"
   | "categories"
   | "mapping"
+  /** replace_values: column -> {old value: new value} (#198). */
+  | "value_mapping"
   | "dtypes"
   | "formula"
   | "variables"
@@ -164,6 +166,7 @@ const SPECIAL_FIELDS: Record<
   sentinels: { widget: "sentinels", label: "Sentinels" },
   categories: { widget: "categories", label: "Categories" },
   "rename.mapping": { widget: "mapping", label: "Rename", fixedLabel: true },
+  "replace_values.mapping": { widget: "value_mapping", label: "Replacements", fixedLabel: true },
   "standardize_text.mapping": { widget: "object", label: "Mapping", required: false },
   dtypes: { widget: "dtypes", label: "Types" },
   expr: { widget: "formula", label: "Expression" },
@@ -360,6 +363,7 @@ const EMPTY_VALUE: Partial<Record<FieldWidget, () => unknown>> = {
   sentinels: () => ({}),
   categories: () => ({}),
   mapping: () => ({}),
+  value_mapping: () => ({}),
   dtypes: () => ({}),
   variables: () => [],
   conditions: () => [],

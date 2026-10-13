@@ -269,6 +269,14 @@ const SUB_LABEL: Record<string, (p: Params) => string> = {
   clip: colsWith((p) => `p${str(p.lower ?? 1)}–p${str(p.upper ?? 99)}`),
   scale: (p) => `${cols(p).length} col · ${str(p.method ?? "standard")}`,
   rename: perColumn<string>("mapping", (a, b) => `${a} → ${b}`),
+  replace_values: perColumn<Record<string, unknown>>(
+    "mapping",
+    (c, pairs) =>
+      `${c} · ${Object.entries(pairs)
+        .map(([o, n]) => `${o} → ${n === null ? "NaN" : String(n)}`)
+        .join(", ")}`,
+    "; ",
+  ),
   cast: perColumn<string>("dtypes", (c, t) => `${c} → ${t}`),
   drop_columns: (p) => cols(p).join(", "),
   drop_duplicates: (p) => `exact rows · keep ${str(p.keep ?? "none")}`,
