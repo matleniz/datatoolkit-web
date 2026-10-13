@@ -349,6 +349,15 @@ describe("real dtk-api schema fixtures", () => {
     expect(fields.find((f) => f.key === "sort_by")?.widget).toBe("columns");
   });
 
+  it("sort_rows: `ascending` (bool | list[bool]) is a bool control, not column chips (#197)", () => {
+    const fields = schemaToFields(loadSchema("sort_rows"), "sort_rows");
+    expect(fields.map((f) => [f.key, f.widget])).toEqual([
+      ["by", "columns"],
+      ["ascending", "bool"],
+      ["na_position", "enum"],
+    ]);
+  });
+
   it("formula: name, expr, variables", () => {
     const fields = schemaToFields(loadSchema("formula"), "formula");
     expect(fields.map((f) => f.key)).toEqual(["name", "expr", "variables"]);

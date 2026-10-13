@@ -36,7 +36,8 @@ interface Ctx {
 }
 
 function currentColumns(value: unknown, multi: boolean): string[] {
-  if (multi) return (value as string[] | null | undefined) ?? [];
+  // A scalar default (e.g. `true`) must never reach `.filter` / `.includes`.
+  if (multi) return Array.isArray(value) ? (value as string[]) : [];
   return value ? [String(value)] : [];
 }
 
@@ -93,7 +94,7 @@ function enumControl({ field, value, set }: Ctx): ReactNode {
 }
 
 function enumListControl({ field, value, set }: Ctx): ReactNode {
-  const current = (value as string[] | null | undefined) ?? [];
+  const current = Array.isArray(value) ? (value as string[]) : [];
   return (
     <Chips
       label={field.label}
