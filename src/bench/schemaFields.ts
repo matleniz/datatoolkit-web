@@ -79,8 +79,14 @@ function resolveLocalRef(prop: JsonSchema, root: JsonSchema): JsonSchema {
 function collapseUnion(outer: JsonSchema, resolved: JsonSchema[]): JsonSchema {
   const types = new Set(resolved.flatMap((r) => (r.type ? [r.type].flat() : [])));
   const base = hintsOf(outer);
-  if (types.has("array")) {
-    const arr = resolved.find((r) => r.type === "array");
+  const arr = resolved.find((r) => r.type === "array");
+  // `bool | list[bool]` (sort_rows.ascending): the scalar is valid for every
+  // column, and chips of column names make no sense for booleans.
+  const itemType = Array.isArray(arr?.items) ? undefined : arr?.items?.type;
+  if (arr && types.has("boolean") && itemType === "boolean") {
+    return { ...base, type: "boolean" };
+  }
+  if (arr) {
     return { ...base, type: "array", items: arr?.items ?? { type: "string" } };
   }
   if (types.has("number") || types.has("integer")) return { ...base, type: "number" };
