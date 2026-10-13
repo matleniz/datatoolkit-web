@@ -27,7 +27,7 @@ export function parseNewValue(text: string, kind: ColumnKind | undefined): JsonV
 }
 
 /** Display form of a stored new value (null / undefined -> empty = missing). */
-export function newValueText(v: JsonValue | undefined): string {
+function newValueText(v: JsonValue | undefined): string {
   return v === null || v === undefined ? "" : String(v);
 }
 
