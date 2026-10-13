@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { closeReason, encodeResize, parseControl, terminalUrl } from "./terminalProtocol";
-import { TerminalSocket, type TerminalState } from "./terminalSocket";
+import { deferConnect, TerminalSocket, type TerminalState } from "./terminalSocket";
 
 class FakeWs {
   binaryType: BinaryType = "blob";
@@ -163,5 +163,22 @@ describe("TerminalSocket", () => {
     expect(states.at(-1)).toBe("closed");
     sock.input("x");
     expect(ws.sent).toEqual([]);
+  });
+});
+
+describe("deferConnect (#200)", () => {
+  it("StrictMode mount / cleanup / mount opens one connection", () => {
+    vi.useFakeTimers();
+    try {
+      const opened: number[] = [];
+      // First effect run, its cleanup, then the second run.
+      const cancelFirst = deferConnect(() => opened.push(1));
+      cancelFirst();
+      deferConnect(() => opened.push(2));
+      vi.runAllTimers();
+      expect(opened).toEqual([2]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

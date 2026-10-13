@@ -21,6 +21,16 @@ type WebSocketLike = Pick<WebSocket, "close" | "readyState"> & {
 
 const OPEN = 1;
 
+/**
+ * Run `connect` on the next macrotask, unless the returned cancel runs first.
+ * An effect that is mounted, cleaned up and re-mounted straight away (React
+ * StrictMode in dev) then opens one socket, not two.
+ */
+export function deferConnect(connect: () => void): () => void {
+  const timer = setTimeout(connect, 0);
+  return () => clearTimeout(timer);
+}
+
 /** One PTY session over one WebSocket; closing it ends the session. */
 export class TerminalSocket {
   private ws: WebSocketLike;

@@ -130,3 +130,22 @@ test("issue 146: agent + terminal open together keep the rail, both closes and t
   expect(main!.width).toBeGreaterThanOrEqual(240);
   await page.screenshot({ path: test.info().outputPath("agent-terminal-1440.png") });
 });
+
+test("issue 200: one Start opens exactly one WebSocket (StrictMode mounts the effect twice in dev)", async ({
+  page,
+}) => {
+  let connections = 0;
+  await page.routeWebSocket(/\/api\/ui\/terminal/, (ws) => {
+    connections += 1;
+    ws.send(JSON.stringify({ type: "started", pack: "claude-code", model: null, command: ["claude"] }));
+    ws.send(enc("single session\r\n$ "));
+  });
+  await mockOptions(page);
+  await openWorkbench(page, true);
+  const panel = await start(page);
+  await expect(panel.locator(".xterm-rows")).toContainText("single session", { timeout: 15_000 });
+  await expect(panel.locator("[data-terminal-state]")).toHaveCount(0);
+  // Let any late second connection show up before counting.
+  await page.waitForTimeout(1000);
+  expect(connections).toBe(1);
+});
