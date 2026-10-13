@@ -7,7 +7,7 @@ import { API_BASE, uiSession, uiToken } from "../../../api/client";
 import { setTerminalPanelOpen, useTerminalPanelOpen } from "./terminalOpen";
 import { getTerminalPacks, type TerminalPack } from "./terminalOptions";
 import { terminalUrl } from "./terminalProtocol";
-import { TerminalSocket, type TerminalState } from "./terminalSocket";
+import { deferConnect, TerminalSocket, type TerminalState } from "./terminalSocket";
 import "./TerminalPanel.css";
 
 /**
@@ -175,43 +175,50 @@ function Session({ token, pack: packId, onStop }: { token: string; pack: string;
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);
-    // The engine takes the initial size on the URL, so fit before connecting.
-    try {
-      fit.fit();
-    } catch {
-      /* not laid out yet: the default size, corrected by the first resize */
-    }
-    const socket = new TerminalSocket(
-      terminalUrl(
-        { session: uiSession(), token, pack: packId, cols: term.cols, rows: term.rows },
-        API_BASE,
-        window.location.origin,
-      ),
-      {
-        onState: (s, d) => {
-          setState(s);
-          setDetail(d);
-        },
-        onStarted: setStarted,
-        onOutput: (data) => term.write(data),
-      },
-    );
     const sendSize = () => {
       try {
         fit.fit();
       } catch {
         return; // not laid out yet (hidden / zero size)
       }
-      socket.resize(term.cols, term.rows);
+      socket?.resize(term.cols, term.rows);
     };
-    term.onData((d) => socket.input(d));
-    sendSize();
+    let socket: TerminalSocket | null = null;
+    // Connect once the effect has settled: StrictMode (dev) mounts, cleans up and
+    // re-mounts at once, and a socket opened for the discarded mount makes the
+    // engine refuse the real one ("already has a terminal", #200).
+    const cancelConnect = deferConnect(() => {
+      // The engine takes the initial size on the URL, so fit before connecting.
+      try {
+        fit.fit();
+      } catch {
+        /* not laid out yet: the default size, corrected by the first resize */
+      }
+      socket = new TerminalSocket(
+        terminalUrl(
+          { session: uiSession(), token, pack: packId, cols: term.cols, rows: term.rows },
+          API_BASE,
+          window.location.origin,
+        ),
+        {
+          onState: (s, d) => {
+            setState(s);
+            setDetail(d);
+          },
+          onStarted: setStarted,
+          onOutput: (data) => term.write(data),
+        },
+      );
+      sendSize();
+    });
+    term.onData((d) => socket?.input(d));
     const observer = new ResizeObserver(sendSize);
     observer.observe(el);
     term.focus();
     return () => {
+      cancelConnect();
       observer.disconnect();
-      socket.close();
+      socket?.close();
       term.dispose();
     };
   }, [token, packId, attempt]);
