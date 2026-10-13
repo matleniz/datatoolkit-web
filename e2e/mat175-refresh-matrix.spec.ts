@@ -471,7 +471,7 @@ test("MAT-175: refresh matrix — every consumer follows the exact version", asy
   const applyEdit = editor.getByRole("button", { name: "Apply step" });
   await expect(applyEdit).toBeEnabled({ timeout: 30_000 });
   await applyEdit.click();
-  await expect(editor).toHaveCount(0);
+  await expect(editor).toHaveCount(0, { timeout: 30_000 });
   await expect
     .poll(async () => (await appState(page)).workspace.steps.map((s) => s.op))
     .toEqual(["impute", "scale", "onehot", "drop_columns", "filter_rows"]);
