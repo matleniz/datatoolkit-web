@@ -11,6 +11,8 @@ export interface PipelineSnapshot {
   documents: WorkspaceDocument[] | undefined;
   /** Undo gives the counters back with the entries (#180). */
   id_counters: IdCounters | undefined;
+  /** The "keep the target last" toggle (#196) is one undoable change. */
+  label_last: boolean | undefined;
 }
 
 /**

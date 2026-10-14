@@ -163,7 +163,7 @@ export interface WorkspaceBuildInput {
 }
 
 /** Workspace fields the Sources screen does not edit but must not drop on save. */
-export type CarriedFields = Partial<Pick<Workspace, "notes" | "memory" | "documents">>;
+export type CarriedFields = Partial<Pick<Workspace, "notes" | "memory" | "documents" | "label_last">>;
 
 export interface WorkspaceBuildResult {
   workspace: Workspace;

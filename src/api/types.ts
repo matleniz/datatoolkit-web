@@ -233,6 +233,12 @@ export interface Workspace {
   variables: VariableSpec[];
   steps: Step[];
   /**
+   * Keep the label column last after every step (engine `label_last`,
+   * datatoolkit-issues#196). Absent = false; feeds the frame, so it is part of
+   * the data identity.
+   */
+  label_last?: boolean;
+  /**
    * Saved chart specs (MAT-172), stored on the engine workspace (MAT-185):
    * sent on PUT, never on frame / analysis calls. Names must be unique (the
    * engine answers 422 `duplicate chart name`).
