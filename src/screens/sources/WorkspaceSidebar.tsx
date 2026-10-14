@@ -3,8 +3,10 @@ import { useMemo, useRef, useState } from "react";
 import { apiClient } from "../../api/client";
 import {
   EngineError,
+  isCorruptEntry,
   type Workspace,
   type WorkspaceSummary,
+  type WorkspaceSummaryEntry,
 } from "../../api/types";
 import { abandonPendingWorkspaceSave } from "../../state/AppStore";
 import { engineMessage } from "./sourcesLogic";
@@ -32,11 +34,11 @@ async function deleteIfPresent(name: string): Promise<void> {
 }
 
 export interface WorkspaceSidebarProps {
-  summaries: WorkspaceSummary[];
+  summaries: WorkspaceSummaryEntry[];
   activeName: string;
   listError: string | null;
   onSelect: (name: string) => void;
-  onSummariesChange: (next: WorkspaceSummary[]) => void;
+  onSummariesChange: (next: WorkspaceSummaryEntry[]) => void;
   /** After create: parent should select the new empty workspace. */
   onCreated: (name: string) => void;
   /**
@@ -91,7 +93,7 @@ export function WorkspaceSidebar({
     [selected],
   );
 
-  const refreshSummaries = async (): Promise<WorkspaceSummary[]> => {
+  const refreshSummaries = async (): Promise<WorkspaceSummaryEntry[]> => {
     const gen = ++refreshGen.current;
     const next = await apiClient.listWorkspaceSummaries();
     if (gen !== refreshGen.current) return next;
@@ -101,7 +103,7 @@ export function WorkspaceSidebar({
 
   /** Patch local list immediately; refresh shapes in the background. */
   const optimisticThenRefresh = (
-    patch: (prev: WorkspaceSummary[]) => WorkspaceSummary[],
+    patch: (prev: WorkspaceSummaryEntry[]) => WorkspaceSummaryEntry[],
   ) => {
     onSummariesChange(patch(summaries));
     void refreshSummaries().catch((err: unknown) => {
@@ -209,7 +211,8 @@ export function WorkspaceSidebar({
     setBusy(true);
     try {
       const ws = await apiClient.duplicateWorkspace(name, copyName);
-      const src = summaries.find((s) => s.name === name);
+      const found = summaries.find((s) => s.name === name);
+      const src = found && !isCorruptEntry(found) ? found : undefined;
       optimisticThenRefresh((prev) => {
         const stub: WorkspaceSummary = src
           ? {
@@ -358,6 +361,7 @@ export function WorkspaceSidebar({
           const isActive = s.name === activeName;
           const isChecked = Boolean(selected[s.name]);
           const isRenaming = renaming === s.name;
+          const corrupt = isCorruptEntry(s);
           return (
             <div
               key={s.name}
@@ -412,21 +416,33 @@ export function WorkspaceSidebar({
                   <button
                     type="button"
                     className="ws-item-select"
+                    disabled={corrupt}
                     onClick={() => onSelect(s.name)}
                     aria-current={isActive ? "true" : undefined}
                   >
                     <span className="ws-item-name">{s.name}</span>
-                    <span className="ws-item-meta">
-                      {formatMtime(s.mtime)} · {s.step_count} step
-                      {s.step_count === 1 ? "" : "s"}
-                      {s.target ? ` · target ${s.target}` : ""}
-                      {isActive ? " · open" : ""}
-                    </span>
-                    <span className="ws-item-files">
-                      train {roleLine(s.train)}
-                      {" · "}
-                      test {roleLine(s.test)}
-                    </span>
+                    {isCorruptEntry(s) ? (
+                      <span
+                        className="ws-badge-corrupt"
+                        title={`Unreadable workspace file: ${s.error}`}
+                      >
+                        corrupt
+                      </span>
+                    ) : (
+                      <>
+                        <span className="ws-item-meta">
+                          {formatMtime(s.mtime)} · {s.step_count} step
+                          {s.step_count === 1 ? "" : "s"}
+                          {s.target ? ` · target ${s.target}` : ""}
+                          {isActive ? " · open" : ""}
+                        </span>
+                        <span className="ws-item-files">
+                          train {roleLine(s.train)}
+                          {" · "}
+                          test {roleLine(s.test)}
+                        </span>
+                      </>
+                    )}
                   </button>
                 )}
               </div>
@@ -438,7 +454,7 @@ export function WorkspaceSidebar({
                 <button
                   type="button"
                   className="ws-action"
-                  disabled={busy}
+                  disabled={busy || corrupt}
                   onClick={() => {
                     setRenaming(s.name);
                     setRenameValue(s.name);
@@ -449,7 +465,7 @@ export function WorkspaceSidebar({
                 <button
                   type="button"
                   className="ws-action"
-                  disabled={busy}
+                  disabled={busy || corrupt}
                   onClick={() => void handleDuplicate(s.name)}
                 >
                   Duplicate
@@ -457,7 +473,7 @@ export function WorkspaceSidebar({
                 <button
                   type="button"
                   className="ws-action"
-                  disabled={busy}
+                  disabled={busy || corrupt}
                   onClick={() => onExport(s.name)}
                 >
                   Export

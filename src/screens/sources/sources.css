@@ -803,3 +803,12 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.ws-badge-corrupt {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 8px;
+  color: #a3242c;
+  border: 1px solid currentColor;
+}

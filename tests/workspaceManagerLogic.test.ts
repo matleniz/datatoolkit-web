@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { WorkspaceSummary } from "../src/api/types";
+import {
+  isCorruptEntry,
+  type CorruptEntry,
+  type WorkspaceSummary,
+} from "../src/api/types";
 import {
   deleteConfirmMessage,
   filterWorkspaceSummaries,
@@ -105,5 +109,34 @@ describe("workspaceManagerLogic", () => {
     expect(pickFallbackWorkspace(["z", "churn", "a"])).toBe("churn");
     expect(pickFallbackWorkspace(["z", "a"], "z")).toBe("z");
     expect(pickFallbackWorkspace(["z", "a"])).toBe("a");
+  });
+});
+
+describe("corrupt entries (engine #215)", () => {
+  const bad: CorruptEntry = { name: "broken", corrupt: true, error: "WorkspaceCorruptError" };
+
+  it("filter does not throw and matches a corrupt entry by name only", () => {
+    const list = [summary({ name: "ok", target: "churn" }), bad];
+    expect(filterWorkspaceSummaries(list, "brok")).toEqual([bad]);
+    expect(filterWorkspaceSummaries(list, "churn").map((s) => s.name)).toEqual(["ok"]);
+    expect(filterWorkspaceSummaries(list, "train.csv").map((s) => s.name)).toEqual(["ok"]);
+  });
+
+  it("sorts corrupt entries last by modified time", () => {
+    const list = [bad, summary({ name: "a" })];
+    expect(sortWorkspaceSummaries(list, "mtime", "desc").map((s) => s.name)).toEqual(["a", "broken"]);
+    expect(sortWorkspaceSummaries(list, "mtime", "asc").map((s) => s.name)).toEqual(["a", "broken"]);
+  });
+
+  it("delete message names the error, not undefined steps", () => {
+    const msg = deleteConfirmMessage(bad);
+    expect(msg).toContain("broken");
+    expect(msg).toContain("WorkspaceCorruptError");
+    expect(msg).not.toContain("undefined");
+  });
+
+  it("isCorruptEntry discriminates", () => {
+    expect(isCorruptEntry(bad)).toBe(true);
+    expect(isCorruptEntry(summary({ name: "x" }))).toBe(false);
   });
 });

@@ -318,6 +318,26 @@ export interface WorkspaceSummary {
   test: WorkspaceRoleSummary | null;
 }
 
+/**
+ * Engine marker for a stored workspace file it cannot read (engine #215):
+ * listed in GET /workspaces and /workspaces/summaries instead of failing the
+ * whole list. `error` is the exception type name.
+ */
+export interface CorruptEntry {
+  name: string;
+  corrupt: true;
+  error: string;
+}
+
+/** One row of GET /workspaces/summaries. */
+export type WorkspaceSummaryEntry = WorkspaceSummary | CorruptEntry;
+
+export function isCorruptEntry(
+  entry: WorkspaceSummaryEntry | Workspace | CorruptEntry,
+): entry is CorruptEntry {
+  return "corrupt" in entry && entry.corrupt === true;
+}
+
 /** What an export writes besides the manifest (datatoolkit-issues#156). */
 export type ExportFormat = "parquet" | "csv" | "ipynb" | "py";
 

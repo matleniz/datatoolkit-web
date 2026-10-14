@@ -20,7 +20,8 @@ import {
   WorkspaceDocument,
   WorkspacePreview,
   WorkspaceRows,
-  WorkspaceSummary,
+  CorruptEntry,
+  WorkspaceSummaryEntry,
 } from "./types";
 import { gridViewBody, type GridView } from "../state/gridView";
 import { InFlightDedupe } from "./requestDedupe";
@@ -33,8 +34,8 @@ interface ApiClient {
   listTransforms(): Promise<TransformInfo[]>;
   transformSchema(op: string): Promise<JsonSchema>;
 
-  listWorkspaces(): Promise<Workspace[]>;
-  listWorkspaceSummaries(): Promise<WorkspaceSummary[]>;
+  listWorkspaces(): Promise<(Workspace | CorruptEntry)[]>;
+  listWorkspaceSummaries(): Promise<WorkspaceSummaryEntry[]>;
   getWorkspace(name: string): Promise<Workspace>;
   saveWorkspace(ws: Workspace, signal?: AbortSignal): Promise<Workspace>;
   deleteWorkspace(name: string): Promise<void>;
@@ -356,11 +357,11 @@ class HttpApiClient implements ApiClient {
     return cached;
   }
 
-  listWorkspaces(): Promise<Workspace[]> {
+  listWorkspaces(): Promise<(Workspace | CorruptEntry)[]> {
     return this.request("GET", "/workspaces");
   }
 
-  listWorkspaceSummaries(): Promise<WorkspaceSummary[]> {
+  listWorkspaceSummaries(): Promise<WorkspaceSummaryEntry[]> {
     return this.request("GET", "/workspaces/summaries");
   }
 
