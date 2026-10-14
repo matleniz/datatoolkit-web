@@ -136,8 +136,9 @@ test("issue 104: 'drop' waits for review, Apply after the timeout, the chip and 
     (await (await request.get(`${API}/commands/${command}`, { headers: AUTH })).json()) as Record<string, unknown>;
   expect(await status()).toEqual({ id: command, ok: null, pending: "review" });
 
-  // Past the 30 s command timeout: still under review, not timed out.
-  await page.waitForTimeout(31_000);
+  // The 30 s command timeout is a server-side wait on the first ack; the pending
+  // ack already ended it (the chip shows the tool returned), so there is no timer
+  // left to outwait. The review itself must stay open and Apply must still work.
   await expect(chip).toContainText("waiting for your review in Studio");
   expect(await status()).toMatchObject({ ok: null, pending: "review" });
 

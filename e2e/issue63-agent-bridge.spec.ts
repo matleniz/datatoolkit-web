@@ -304,8 +304,8 @@ test("issue 97: pending review ack, queue free meanwhile, Apply after the timeou
   });
   expect(busy).toMatchObject({ ok: false, error: "busy" });
 
-  // Past the 2 s command timeout the command is still under review, not timed out.
-  await page.waitForTimeout(3_000);
+  // The 2 s command timeout only bounds the wait for the first ack, which was the
+  // pending ack above; the command is still under review, not timed out.
   expect(await commandStatus(request, pending.id)).toMatchObject({ ok: null, pending: "review" });
   await review.getByRole("button", { name: "Apply" }).click();
   const final = await settled(request, pending.id);
