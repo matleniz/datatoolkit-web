@@ -300,6 +300,7 @@ export function Grid() {
     pendingStep,
     pendingDiffText,
     preview,
+    previewLoading,
     applyPending,
     version,
     loading,
@@ -589,6 +590,7 @@ export function Grid() {
           <button
             type="button"
             className="btn-primary"
+            disabled={previewLoading}
             onClick={applyPending}
           >
             Apply step

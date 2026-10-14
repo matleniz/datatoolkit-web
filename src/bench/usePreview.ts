@@ -38,6 +38,8 @@ interface PreviewState {
   nextColumns: WorkspaceRowsColumn[] | null;
   error: string | null;
   loading: boolean;
+  /** Step key the result belongs to; null before the first fetch settles. */
+  key: string | null;
 }
 
 const IDLE: PreviewState = {
@@ -46,6 +48,7 @@ const IDLE: PreviewState = {
   nextColumns: null,
   error: null,
   loading: false,
+  key: null,
 };
 
 function stepKey(step: Step | null): string | null {
@@ -80,7 +83,7 @@ async function fetchPreview(
   role: Role,
   columnCount: number,
   signal: AbortSignal,
-): Promise<Omit<PreviewState, "loading">> {
+): Promise<Omit<PreviewState, "loading" | "key">> {
   let preview: PreviewStep;
   try {
     preview = await apiClient.previewStep(ws, step, role, signal);
@@ -238,7 +241,7 @@ export function usePreview(input: PreviewInput) {
       columnsRef.current.length,
       ac.signal,
     ).then((res) => {
-      if (!ac.signal.aborted) setState({ ...res, loading: false });
+      if (!ac.signal.aborted) setState({ ...res, loading: false, key });
     });
     return () => ac.abort();
   }, [workspace, role, debouncedKey, editIndex]);
@@ -248,7 +251,8 @@ export function usePreview(input: PreviewInput) {
     pendingStep,
     preview: state.preview,
     previewError: state.error,
-    previewLoading: state.loading,
+    // Also true while the debounce runs: the shown preview is of another step.
+    previewLoading: state.loading || (!!pendingKey && state.key !== pendingKey),
     nextRows: state.nextRows,
     nextColumns: state.nextColumns,
   };
