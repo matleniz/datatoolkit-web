@@ -21,3 +21,6 @@ datatoolkit-data/
 # dtk-studio launcher (Python)
 __pycache__/
 launcher/.venv/
+
+# vitest coverage output
+coverage/
