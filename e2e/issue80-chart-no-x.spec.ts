@@ -25,7 +25,9 @@ test("#80: Chart with no X: no run, hint, then one run on pick", async ({ page }
   const chart = page.locator('.dock-window[data-tool="chart"]');
   await expect(chart.locator("[data-chart-hint]")).toHaveText("Pick X");
   await expect(chart.locator(".engine-error")).toHaveCount(0);
-  await page.waitForTimeout(1500);
+  // A run would go out after the save + schema round trips: wait for the network
+  // to go quiet (a condition, not a fixed delay) before counting.
+  await page.waitForLoadState("networkidle");
   expect(runs).toHaveLength(0);
 
   await chart.locator("#chart-x").selectOption("Age");
@@ -34,6 +36,6 @@ test("#80: Chart with no X: no run, hint, then one run on pick", async ({ page }
   });
   await expect(chart.locator("[data-chart-hint]")).toHaveCount(0);
   await expect(chart.locator(".engine-error")).toHaveCount(0);
-  await page.waitForTimeout(1500);
+  await page.waitForLoadState("networkidle");
   expect(runs).toHaveLength(1);
 });

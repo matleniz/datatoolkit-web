@@ -25,8 +25,10 @@ async function box(loc: Locator): Promise<Box> {
 /** Wait for a grid item to finish its move / resize transition. */
 async function settled(loc: Locator): Promise<Box> {
   let prev = await box(loc);
-  for (let i = 0; i < 40; i++) {
-    await loc.page().waitForTimeout(50);
+  for (let i = 0; i < 120; i++) {
+    await loc.evaluate(
+      () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
+    );
     const next = await box(loc);
     if (JSON.stringify(next) === JSON.stringify(prev)) return next;
     prev = next;

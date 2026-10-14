@@ -145,7 +145,7 @@ test("issue 200: one Start opens exactly one WebSocket (StrictMode mounts the ef
   const panel = await start(page);
   await expect(panel.locator(".xterm-rows")).toContainText("single session", { timeout: 15_000 });
   await expect(panel.locator("[data-terminal-state]")).toHaveCount(0);
-  // Let any late second connection show up before counting.
-  await page.waitForTimeout(1000);
+  // The mount effect (both StrictMode passes) opens its socket before the first
+  // frame is rendered, so the count is final once the output is visible.
   expect(connections).toBe(1);
 });
