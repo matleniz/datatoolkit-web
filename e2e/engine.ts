@@ -12,12 +12,12 @@ export function engineDir(): string {
 }
 
 /** True when the engine checkout has the synced `.venv` the specs need. */
-export function engineAvailable(): boolean {
+function engineAvailable(): boolean {
   return existsSync(join(engineDir(), ".venv/bin/python"));
 }
 
 /** `DTK_E2E_SKIP_ENGINE=1` opts out of the engine-dependent specs. */
-export function engineSkipped(): boolean {
+function engineSkipped(): boolean {
   return process.env.DTK_E2E_SKIP_ENGINE === "1";
 }
 
