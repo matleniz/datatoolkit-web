@@ -50,6 +50,7 @@ function stepsHash(ws: Workspace, version: number | null): string {
       datasets: ws.datasets,
       label: ws.label,
       merges: ws.merges ?? [],
+      label_last: ws.label_last ?? false,
       steps: ws.steps.slice(0, v).map((s) => ({
         op: s.op,
         target: s.target,

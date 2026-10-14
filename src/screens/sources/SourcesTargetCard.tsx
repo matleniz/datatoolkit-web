@@ -16,6 +16,9 @@ interface SourcesTargetCardProps {
   /** Effective key of the join by key. */
   joinKey: string | null;
   resolvedTarget: string | null;
+  /** Workspace `label_last`: keep the target column last after every step. */
+  labelLast: boolean;
+  onLabelLast: (value: boolean) => void;
   infoText: string;
   patch: Patch;
 }
@@ -121,7 +124,7 @@ function ColumnTargetOptions({
 }
 
 export function SourcesTargetCard(props: SourcesTargetCardProps) {
-  const { labelMode, resolvedTarget, infoText, patch } = props;
+  const { labelMode, resolvedTarget, labelLast, onLabelLast, infoText, patch } = props;
   return (
     <section className="sources-card-padded" aria-label="Target settings">
       <div className="sources-card-title">Target</div>
@@ -149,6 +152,23 @@ export function SourcesTargetCard(props: SourcesTargetCardProps) {
       ) : (
         <ColumnTargetOptions {...props} />
       )}
+
+      <label
+        style={MUTED_LABEL}
+        title={
+          resolvedTarget
+            ? "Move the target column back to the end after every step"
+            : "Pick a target first"
+        }
+      >
+        <input
+          type="checkbox"
+          checked={labelLast}
+          disabled={!resolvedTarget}
+          onChange={(e) => onLabelLast(e.target.checked)}
+        />{" "}
+        Keep target column last
+      </label>
 
       <div className={`label-info ${resolvedTarget ? "success" : "error"}`}>
         {infoText}

@@ -284,6 +284,8 @@ export type AppAction =
   | { type: "CLEAR_WORKSPACE_FILES"; name: string }
   /* W2 workbench-core */
   | { type: "SET_TARGET_COLUMN"; name: string | null }
+  /** Keep the label column last (workspace `label_last`, #196). */
+  | { type: "SET_LABEL_LAST"; value: boolean }
   | { type: "SET_DIST_BY"; by: string | null }
   | {
       type: "SET_TOOL_PARAMS";
@@ -954,6 +956,9 @@ function reduceWorkspace(
       });
     case "SET_CHARTS":
       return withWorkspace(state, { charts: action.charts });
+    case "SET_LABEL_LAST":
+      if ((state.workspace?.label_last ?? false) === action.value) return state;
+      return withWorkspace(state, { label_last: action.value });
     default:
       return undefined;
   }
@@ -979,6 +984,7 @@ function reduceStepHistory(
       memory: moved.steps.memory,
       documents: moved.steps.documents,
       id_counters: moved.steps.id_counters,
+      label_last: moved.steps.label_last,
     },
     {
       stepHistory: moved.history,
@@ -1000,6 +1006,7 @@ const snapshot = (ws: Workspace): PipelineSnapshot => ({
   memory: ws.memory,
   documents: ws.documents,
   id_counters: ws.id_counters,
+  label_last: ws.label_last,
 });
 
 function trackStepHistory(
@@ -1026,7 +1033,8 @@ function trackStepHistory(
     before.notes === after.notes &&
     before.memory === after.memory &&
     before.documents === after.documents &&
-    before.id_counters === after.id_counters
+    before.id_counters === after.id_counters &&
+    (before.label_last ?? false) === (after.label_last ?? false)
   ) {
     return next;
   }

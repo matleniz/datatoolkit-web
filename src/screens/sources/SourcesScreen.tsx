@@ -32,6 +32,7 @@ function useBuildResult(core: SourcesCore) {
   const notes = workspace?.notes;
   const memory = workspace?.memory;
   const documents = workspace?.documents;
+  const labelLast = workspace?.label_last;
   return useMemo(
     () =>
       buildWorkspaceJson({
@@ -46,7 +47,7 @@ function useBuildResult(core: SourcesCore) {
         mergeInTest,
         steps: steps ?? [],
         charts: charts ?? [],
-        carry: { notes, memory, documents },
+        carry: { notes, memory, documents, label_last: labelLast },
       }),
     [
       activeWsName,
@@ -63,6 +64,7 @@ function useBuildResult(core: SourcesCore) {
       notes,
       memory,
       documents,
+      labelLast,
     ],
   );
 }
@@ -166,6 +168,8 @@ export function SourcesScreen() {
             commonYCols={commonYCols}
             joinKey={joinKey}
             resolvedTarget={resolvedTarget}
+            labelLast={core.workspace?.label_last ?? false}
+            onLabelLast={(value) => core.dispatch({ type: "SET_LABEL_LAST", value })}
             infoText={targetInfoText(
               buildResult,
               labelMode,

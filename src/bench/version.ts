@@ -31,6 +31,7 @@ export function shapesStructureKey(
     datasets: ws.datasets,
     merges: ws.merges ?? [],
     label: ws.label,
+    label_last: ws.label_last ?? false,
   });
 }
 
