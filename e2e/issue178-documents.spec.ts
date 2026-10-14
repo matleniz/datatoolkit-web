@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { engineDir, requireEngine } from "./engine";
 import type { Workspace } from "../src/api/types";
 import { churnWorkspace, waitForGridReady } from "./helpers";
 
@@ -14,7 +15,7 @@ const PORT = process.env.DTK_E2E_API_PORT ?? "8766";
 const API = `http://127.0.0.1:${PORT}/api`;
 const AUTH = { Authorization: `Bearer ${process.env.DTK_UI_TOKEN}` };
 
-const ENGINE = process.env.DTK_ENGINE_DIR ?? "";
+const ENGINE = engineDir();
 
 /** The stub pack drives the real dtk MCP tools against this dtk-api (`mcp_stub_driver.py`, #100). */
 function runTools(script: { tool: string; args: Record<string, unknown> }[]) {
@@ -184,7 +185,7 @@ test("issue 178: keep_attachment from the bridge and the chip's keep button, Und
 test("issue 178: the agent (stub pack, real MCP tools) lists and reads a document added in Studio", async ({
   page, request,
 }) => {
-  test.skip(!ENGINE, "set DTK_ENGINE_DIR to an engine checkout with a synced .venv (extra agent)");
+  requireEngine(test);
   test.setTimeout(180_000);
   const section = await openSources(page, request);
   await section.locator('input[type="file"]').setInputFiles([
