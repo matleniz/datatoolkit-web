@@ -219,6 +219,18 @@ export { orderSteps };
 
 export type AppAction =
   | { type: "SET_WORKSPACE"; workspace: Workspace | null }
+  /**
+   * Sources edits (#234): only the Sources-owned fields of the open workspace
+   * `name`. Unlike SET_WORKSPACE it keeps variables, steps, memory, documents,
+   * the step history, the dock and the suggestion count.
+   */
+  | {
+      type: "SET_SOURCES_SPEC";
+      name: string;
+      datasets: Workspace["datasets"];
+      label: Workspace["label"];
+      merges: Workspace["merges"];
+    }
   | { type: "SET_SCREEN"; screen: ScreenId }
   | { type: "SET_ROLE"; role: Role }
   | { type: "SET_VIEW_VERSION"; version: number | null }
@@ -832,6 +844,13 @@ function reduceWorkspace(
         dock: dockForWorkspace(state, ws),
       };
     }
+    case "SET_SOURCES_SPEC":
+      if (state.workspace?.name !== action.name) return state;
+      return withWorkspace(state, {
+        datasets: action.datasets,
+        label: action.label,
+        merges: action.merges,
+      });
     case "SET_STEPS":
       return withWorkspace(state, { steps: orderSteps(fillStepIds(action.steps)) });
     case "ADD_STEP": {

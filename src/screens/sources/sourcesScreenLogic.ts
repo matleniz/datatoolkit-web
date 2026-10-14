@@ -429,7 +429,10 @@ export function trainStatus(
       : (trainX?.cols.length ?? 0);
   const hasPath = Boolean(trainX?.spec.path);
   const parseError = trainX?.parseError?.trim() || null;
-  const ready = hasPath && columnCount > 0 && !parseError;
+  // The file's own columns too: a stale preview shape of the previous train
+  // file must not make a freshly swapped, still-empty file navigable.
+  const ready =
+    hasPath && columnCount > 0 && (trainX?.cols.length ?? 0) > 0 && !parseError;
   const parseErrorHint = parseError ? trainParseErrorDisplay(parseError) : null;
 
   let emptyTrainHint: string | null = null;
@@ -557,20 +560,37 @@ export function isUnknownWorkspaceError(msg: string): boolean {
   return /unknown workspace|not found/i.test(msg);
 }
 
+/** The Sources-owned part of a workspace (the rest is not Sources' to touch). */
+export type SourcesSpec = Pick<Workspace, "datasets" | "label" | "merges">;
+
 /**
- * The workspace Sources should push into the app store as the user edits
- * (#234), or null when nothing may be stored yet: still loading, no readable
- * train file, a switch to another workspace in flight, or already in sync.
- * AppStore's debounced autosave then PUTs it, so a reload keeps the setup.
+ * The Sources-owned fields to push into the app store as the user edits
+ * (#234), or null when nothing may be stored yet: still loading, build errors,
+ * no readable train file, a switch to another workspace in flight, or already
+ * in sync. Variables, steps, notes, memory, documents... stay the store's:
+ * the caller dispatches SET_SOURCES_SPEC, never a wholesale workspace.
  */
 export function sourcesWorkspaceToSync(opts: {
   built: Workspace;
   current: Workspace | null;
   canNavigate: boolean;
-  serialize: (ws: Workspace) => string;
-}): Workspace | null {
-  const { built, current, canNavigate, serialize } = opts;
-  if (!canNavigate || !current || current.name !== built.name) return null;
+  buildErrors: readonly string[];
+}): SourcesSpec | null {
+  const { built, current, canNavigate, buildErrors } = opts;
+  if (!canNavigate || buildErrors.length > 0) return null;
+  if (!current || current.name !== built.name) return null;
   if (!built.datasets.train.x.path) return null;
-  return serialize(built) === serialize(current) ? null : built;
+  const spec: SourcesSpec = {
+    datasets: built.datasets,
+    label: built.label,
+    merges: built.merges,
+  };
+  const same =
+    JSON.stringify(spec) ===
+    JSON.stringify({
+      datasets: current.datasets,
+      label: current.label,
+      merges: current.merges,
+    });
+  return same ? null : spec;
 }

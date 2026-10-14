@@ -1,5 +1,4 @@
-import { useEffect, useId, useMemo, useRef } from "react";
-import { serializeWorkspace } from "../../api/client";
+import { useEffect, useId, useMemo } from "react";
 import {
   getCommonColumns,
   buildWorkspaceJson,
@@ -103,21 +102,17 @@ export function SourcesScreen() {
   const status = trainStatus(trainXFile, preview, sourcesLoading);
   // Persist Sources edits as they happen (#234): hand the built workspace to
   // the store; AppStore's debounced autosave PUTs it.
-  const lastSynced = useRef<string | null>(null);
   const { dispatch, workspace: storeWorkspace } = core;
   useEffect(() => {
-    const ws = sourcesWorkspaceToSync({
+    const spec = sourcesWorkspaceToSync({
       built: buildResult.workspace,
       current: storeWorkspace,
       canNavigate: status.canNavigate,
-      serialize: serializeWorkspace,
+      buildErrors: buildResult.errors,
     });
-    if (!ws) return;
-    const serialized = serializeWorkspace(ws);
-    if (serialized === lastSynced.current) return;
-    lastSynced.current = serialized;
-    dispatch({ type: "SET_WORKSPACE", workspace: ws });
-  }, [buildResult.workspace, storeWorkspace, status.canNavigate, dispatch]);
+    if (!spec) return;
+    dispatch({ type: "SET_SOURCES_SPEC", name: activeWsName, ...spec });
+  }, [buildResult, storeWorkspace, status.canNavigate, activeWsName, dispatch]);
 
   const fileActions = useSourcesFiles({
     core,
