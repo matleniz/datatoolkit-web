@@ -8,7 +8,7 @@ import {
   type SetStateAction,
 } from "react";
 import { apiClient, serializeWorkspace } from "../../api/client";
-import type { Workspace, WorkspaceSummary } from "../../api/types";
+import type { Workspace, WorkspaceSummaryEntry } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { engineMessage, type WorkspaceSourcesState } from "./sourcesLogic";
 import {
@@ -37,8 +37,8 @@ export interface SourcesCore {
   dispatch: ReturnType<typeof useAppDispatch>;
   workspace: ReturnType<typeof useAppState>["workspace"];
   filesByWorkspace: Record<string, WorkspaceSourcesState>;
-  summaries: WorkspaceSummary[];
-  setSummaries: Dispatch<SetStateAction<WorkspaceSummary[]>>;
+  summaries: WorkspaceSummaryEntry[];
+  setSummaries: Dispatch<SetStateAction<WorkspaceSummaryEntry[]>>;
   listError: string | null;
   activeWsName: string;
   setActiveWsName: Dispatch<SetStateAction<string>>;
@@ -100,7 +100,7 @@ function useSourcesErrors(): [string[], SourcesErrors] {
 
 /** Load workspace summaries on mount. */
 function useWorkspaceSummaries(workspace: Workspace | null) {
-  const [summaries, setSummaries] = useState<WorkspaceSummary[]>([]);
+  const [summaries, setSummaries] = useState<WorkspaceSummaryEntry[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   useEffect(() => {
     let active = true;

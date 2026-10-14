@@ -4,7 +4,11 @@
  */
 
 import { fmtCount } from "../../bench/format";
-import type { WorkspaceRoleSummary, WorkspaceSummary } from "../../api/types";
+import {
+  isCorruptEntry,
+  type WorkspaceRoleSummary,
+  type WorkspaceSummaryEntry,
+} from "../../api/types";
 
 export type WorkspaceSortKey = "name" | "mtime";
 export type WorkspaceSortDir = "asc" | "desc";
@@ -52,13 +56,14 @@ export function roleLine(role: WorkspaceRoleSummary | null): string {
 }
 
 export function filterWorkspaceSummaries(
-  summaries: WorkspaceSummary[],
+  summaries: WorkspaceSummaryEntry[],
   query: string,
-): WorkspaceSummary[] {
+): WorkspaceSummaryEntry[] {
   const q = query.trim().toLowerCase();
   if (!q) return summaries;
   return summaries.filter((s) => {
     if (s.name.toLowerCase().includes(q)) return true;
+    if (isCorruptEntry(s)) return false;
     if (s.target?.toLowerCase().includes(q)) return true;
     if (s.train.file?.toLowerCase().includes(q)) return true;
     if (s.test?.file?.toLowerCase().includes(q)) return true;
@@ -67,17 +72,17 @@ export function filterWorkspaceSummaries(
 }
 
 export function sortWorkspaceSummaries(
-  summaries: WorkspaceSummary[],
+  summaries: WorkspaceSummaryEntry[],
   key: WorkspaceSortKey,
   dir: WorkspaceSortDir,
-): WorkspaceSummary[] {
+): WorkspaceSummaryEntry[] {
   const mul = dir === "asc" ? 1 : -1;
   return [...summaries].sort((a, b) => {
     if (key === "name") {
       return mul * a.name.localeCompare(b.name);
     }
-    const at = Date.parse(a.mtime);
-    const bt = Date.parse(b.mtime);
+    const at = isCorruptEntry(a) ? NaN : Date.parse(a.mtime);
+    const bt = isCorruptEntry(b) ? NaN : Date.parse(b.mtime);
     if (Number.isNaN(at) && Number.isNaN(bt)) return 0;
     if (Number.isNaN(at)) return 1;
     if (Number.isNaN(bt)) return -1;
@@ -100,7 +105,13 @@ export function suggestDuplicateName(
   return `${base}-${Date.now()}`;
 }
 
-export function deleteConfirmMessage(summary: WorkspaceSummary): string {
+export function deleteConfirmMessage(summary: WorkspaceSummaryEntry): string {
+  if (isCorruptEntry(summary)) {
+    return (
+      `Delete workspace “${summary.name}”? Its file is unreadable (${summary.error}); ` +
+      `deleting removes it from the store. Uploaded files stay on disk.`
+    );
+  }
   const steps = summary.step_count;
   const stepBit =
     steps === 0
