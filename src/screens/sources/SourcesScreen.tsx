@@ -1,4 +1,5 @@
-import { useId, useMemo } from "react";
+import { useEffect, useId, useMemo, useRef } from "react";
+import { serializeWorkspace } from "../../api/client";
 import {
   getCommonColumns,
   buildWorkspaceJson,
@@ -12,6 +13,7 @@ import { SourcesMergeCard } from "./SourcesMergeCard";
 import { SourcesResultCard } from "./SourcesResultCard";
 import {
   columnOrigin,
+  sourcesWorkspaceToSync,
   targetInfoText,
   testShapeText,
   trainShapeText,
@@ -99,6 +101,24 @@ export function SourcesScreen() {
   const resolvedTarget = preview.target ?? buildResult.targetLabel ?? null;
 
   const status = trainStatus(trainXFile, preview, sourcesLoading);
+  // Persist Sources edits as they happen (#234): hand the built workspace to
+  // the store; AppStore's debounced autosave PUTs it.
+  const lastSynced = useRef<string | null>(null);
+  const { dispatch, workspace: storeWorkspace } = core;
+  useEffect(() => {
+    const ws = sourcesWorkspaceToSync({
+      built: buildResult.workspace,
+      current: storeWorkspace,
+      canNavigate: status.canNavigate,
+      serialize: serializeWorkspace,
+    });
+    if (!ws) return;
+    const serialized = serializeWorkspace(ws);
+    if (serialized === lastSynced.current) return;
+    lastSynced.current = serialized;
+    dispatch({ type: "SET_WORKSPACE", workspace: ws });
+  }, [buildResult.workspace, storeWorkspace, status.canNavigate, dispatch]);
+
   const fileActions = useSourcesFiles({
     core,
     trainXFile,
@@ -139,8 +159,8 @@ export function SourcesScreen() {
         <div className="sources-header">
           <span className="sources-title">Sources of “{activeWsName}”</span>
           <span className="sources-subtitle">
-            Roles were guessed from the file names. Check them: nothing is loaded
-            until you continue.
+            Roles were guessed from the file names. Check them: changes are saved
+            as you make them.
           </span>
         </div>
 

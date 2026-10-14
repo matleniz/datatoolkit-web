@@ -556,3 +556,21 @@ export function showEmptyTrainBanner(
 export function isUnknownWorkspaceError(msg: string): boolean {
   return /unknown workspace|not found/i.test(msg);
 }
+
+/**
+ * The workspace Sources should push into the app store as the user edits
+ * (#234), or null when nothing may be stored yet: still loading, no readable
+ * train file, a switch to another workspace in flight, or already in sync.
+ * AppStore's debounced autosave then PUTs it, so a reload keeps the setup.
+ */
+export function sourcesWorkspaceToSync(opts: {
+  built: Workspace;
+  current: Workspace | null;
+  canNavigate: boolean;
+  serialize: (ws: Workspace) => string;
+}): Workspace | null {
+  const { built, current, canNavigate, serialize } = opts;
+  if (!canNavigate || !current || current.name !== built.name) return null;
+  if (!built.datasets.train.x.path) return null;
+  return serialize(built) === serialize(current) ? null : built;
+}
