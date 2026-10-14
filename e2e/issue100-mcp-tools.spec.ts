@@ -7,9 +7,10 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
+import { engineDir, requireEngine } from "./engine";
 import { openWorkbench } from "./helpers";
 
-const ENGINE = process.env.DTK_ENGINE_DIR ?? "";
+const ENGINE = engineDir();
 const API = `http://127.0.0.1:${process.env.DTK_E2E_API_PORT ?? "8766"}/api/ui`;
 const AUTH = { Authorization: `Bearer ${process.env.DTK_UI_TOKEN}` };
 
@@ -43,10 +44,7 @@ test("#100: each new MCP tool reaches Studio and is acked", async ({
   page,
   request,
 }) => {
-  test.skip(
-    !ENGINE,
-    "set DTK_ENGINE_DIR to an engine checkout with a synced .venv (extra agent)",
-  );
+  requireEngine(test);
   test.setTimeout(240_000);
   await openWorkbench(page, true);
   const sid = await session(page);

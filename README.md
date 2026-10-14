@@ -248,6 +248,12 @@ project's fleet config, outside this repo); the e2e suite is run separately.
 - `dtk-api` resolution: `DTK_API_CMD` (full command), else
   `DTK_API_BIN --port <port>`, else `~/datatoolkit/.venv/bin/dtk-api`, else
   `uv run --project ~/datatoolkit --extra api dtk-api`.
+- Engine checkout: `DTK_ENGINE_DIR`, else `~/datatoolkit` (`e2e/engine.ts`,
+  used by the config and by the specs that drive the real MCP tools:
+  `issue100-mcp-tools`, `issue178-documents`, `issue179-agent-memory`). Without
+  a synced `.venv` there those specs **fail** with a message naming
+  `DTK_ENGINE_DIR`; `DTK_E2E_SKIP_ENGINE=1` is the explicit opt-out that skips
+  them.
 - The engine runs with `DTK_HOME` = `DTK_E2E_HOME` or a fresh temp dir,
   deleted after the run unless `DTK_E2E_KEEP=1` (`e2e/global-teardown.ts`).
 - One worker, not fully parallel; retries only on CI.

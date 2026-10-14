@@ -1,8 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 import { existsSync, mkdtempSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
+
+import { engineDir } from "./e2e/engine";
 
 // Agent-bridge token (#63): one per run, shared by the engine, the Vite page
 // (meta tag) and the specs that post commands to /api/ui.
@@ -12,7 +14,12 @@ process.env.DTK_UI_TOKEN = uiToken;
 const dtkHome =
   process.env.DTK_E2E_HOME ?? mkdtempSync(join(tmpdir(), "dtk-e2e-"));
 process.env.DTK_E2E_HOME = dtkHome;
-const dtkToolkitDir = join(homedir(), "datatoolkit");
+// Engine checkout: DTK_ENGINE_DIR, else ~/datatoolkit (e2e/engine.ts). Exported
+// so the specs that drive the real MCP tools use the same checkout as dtk-api.
+// Those specs fail with a message naming DTK_ENGINE_DIR when it has no .venv;
+// DTK_E2E_SKIP_ENGINE=1 is the explicit opt-out that skips them instead.
+const dtkToolkitDir = engineDir();
+process.env.DTK_ENGINE_DIR = dtkToolkitDir;
 
 /** Dedicated ports — parallel worktrees fuser-kill 8765/5173. */
 const apiPort = Number(process.env.DTK_E2E_API_PORT ?? "8766");
