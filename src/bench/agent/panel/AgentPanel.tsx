@@ -5,6 +5,7 @@ import { toWire } from "../attachments/attachmentContract";
 import { canSend, earlierAttachments } from "../attachments/attachmentState";
 import { AttachmentBar, SessionAttachments } from "../attachments/AttachmentBar";
 import { dropProps } from "../attachments/dropProps";
+import { handlePaste } from "../attachments/pasteAttach";
 import { useAttachments } from "../attachments/useAttachments";
 import { useKeepAttachment } from "../attachments/useKeepAttachment";
 import { AgentPicker } from "./AgentPicker";
@@ -212,6 +213,11 @@ function Conversation({ chat, status, token }: { chat: AgentChat; status: AgentS
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKey}
+          onPaste={(e) =>
+            handlePaste(e, attachments, (line) =>
+              setDraft((d) => (d.trim() ? `${d.trimEnd()}\n${line}` : line)),
+            )
+          }
         />
         <SessionAttachments
           attached={earlierAttachments(transcript.attached, attachments.items)}
