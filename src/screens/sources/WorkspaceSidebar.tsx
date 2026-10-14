@@ -265,7 +265,7 @@ export function WorkspaceSidebar({
       }
       setSelected({});
       const remainingLocal = summaries
-        .filter((s) => !deleted.includes(s.name))
+        .filter((s) => !deleted.includes(s.name) && !isCorruptEntry(s))
         .map((s) => s.name);
       onSummariesChange(summaries.filter((s) => !deleted.includes(s.name)));
       void refreshSummaries().catch(() => {
@@ -287,8 +287,8 @@ export function WorkspaceSidebar({
       }
       if (deleted.includes(activeName)) {
         const remaining = summaries
-          .map((s) => s.name)
-          .filter((n) => !deleted.includes(n));
+          .filter((s) => !deleted.includes(s.name) && !isCorruptEntry(s))
+          .map((s) => s.name);
         onActiveRemoved(deleted, pickFallbackWorkspace(remaining));
       }
     } finally {

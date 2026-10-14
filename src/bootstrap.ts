@@ -1,5 +1,5 @@
 import { apiClient } from "./api/client";
-import type { Workspace } from "./api/types";
+import { isCorruptEntry, type Workspace } from "./api/types";
 
 const FILES = [
   "churn_train.csv",
@@ -86,7 +86,10 @@ async function createChurnWorkspace(): Promise<Workspace> {
  */
 export async function loadInitialWorkspace(): Promise<Workspace | null> {
   const list = await apiClient.listWorkspaces();
-  const names = new Set(list.map((w) => w.name));
+  // A corrupt entry is listed but cannot be opened: never auto-open it.
+  const names = new Set(
+    list.filter((w) => !isCorruptEntry(w)).map((w) => w.name),
+  );
   const remembered = rememberedWorkspaceName();
   if (remembered && names.has(remembered)) {
     return apiClient.getWorkspace(remembered);
