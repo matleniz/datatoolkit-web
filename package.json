@@ -41,5 +41,8 @@
     "typescript-eslint": "^8.24.1",
     "vite": "^6.2.0",
     "vitest": "^3.0.7"
+  },
+  "overrides": {
+    "tinypool": "^2.1.2"
   }
 }
