@@ -400,7 +400,9 @@ export function useBenchFrame(
           dispatch({ type: "SET_BENCH_ERROR", message: errorText(e) });
       })
       .finally(() => {
-        if (gen === fetchGen.current) setLoadingMore(false);
+        // Always release: a reload that raced this page must not leave
+        // loadMore locked for good (#246). The reload resets the frame itself.
+        setLoadingMore(false);
       });
   }, [workspace, role, version, loading, loadingMore, dispatch]);
 

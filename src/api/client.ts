@@ -24,6 +24,7 @@ import {
   WorkspaceSummaryEntry,
 } from "./types";
 import { gridViewBody, type GridView } from "../state/gridView";
+import { scopeOf, trackRequest } from "./inflight";
 import { InFlightDedupe } from "./requestDedupe";
 
 interface ApiClient {
@@ -252,6 +253,17 @@ class HttpApiClient implements ApiClient {
     this.baseUrl = baseUrl.replace(/\/$/, "");
   }
 
+  /** Drop a rejected promise from a session cache so the next call retries (#246). */
+  private evictOnFailure<T>(
+    cache: Map<string, Promise<T>>,
+    id: string,
+    p: Promise<T>,
+  ): void {
+    p.catch(() => {
+      if (cache.get(id) === p) cache.delete(id);
+    });
+  }
+
   private async request<T>(
     method: string,
     path: string,
@@ -293,31 +305,91 @@ class HttpApiClient implements ApiClient {
     payload: BodyInit | undefined,
     signal?: AbortSignal,
   ): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers,
-      body: payload,
-      signal,
-    });
-    if (res.status === 204) {
-      return undefined as T;
+    const scope = scopeOf(method, path);
+    const ac = new AbortController();
+    let cancelled = false;
+    if (signal) {
+      if (signal.aborted) ac.abort();
+      else signal.addEventListener("abort", () => ac.abort(), { once: true });
     }
-    const text = await res.text();
+    const untrack = scope
+      ? trackRequest(scope, () => {
+          cancelled = true;
+          ac.abort();
+        })
+      : () => {};
+    try {
+      return await this.fetchJson<T>(method, path, headers, payload, ac.signal);
+    } catch (e) {
+      if (cancelled) {
+        throw new EngineError("Cancelled", "Request cancelled.");
+      }
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        console.error(`[engine] ${method} ${path} failed`, e);
+      }
+      throw e;
+    } finally {
+      untrack();
+    }
+  }
+
+  /** One fetch + decode; every failure is an `EngineError` (or an `AbortError`). */
+  private async fetchJson<T>(
+    method: string,
+    path: string,
+    headers: Record<string, string>,
+    payload: BodyInit | undefined,
+    signal: AbortSignal,
+  ): Promise<T> {
+    const where = `${method} ${path}`;
+    let res: Response;
+    let text: string;
+    try {
+      res = await fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers,
+        body: payload,
+        signal,
+      });
+      if (res.status === 204) return undefined as T;
+      text = await res.text();
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") throw e;
+      // fetch rejects with a bare TypeError("Failed to fetch") when the engine
+      // is down, the connection drops or the body stream is cut.
+      const why = e instanceof Error ? e.message : String(e);
+      throw new EngineError(
+        "NetworkError",
+        `Cannot reach the engine (${where}): ${why}`,
+      );
+    }
     let data: unknown = null;
+    let parsed = true;
     if (text) {
       try {
         data = JSON.parse(text) as unknown;
       } catch {
-        data = { type: "ParseError", message: text };
+        parsed = false;
       }
     }
+    const snippet = text.length > 200 ? `${text.slice(0, 200)}…` : text;
     if (!res.ok) {
-      if (isErrorBody(data)) {
+      if (parsed && isErrorBody(data)) {
         throw new EngineError(data.type, data.message, res.status);
       }
+      const base = `HTTP ${res.status} ${res.statusText}`.trim();
       throw new EngineError(
         "HttpError",
-        `HTTP ${res.status} ${res.statusText}`.trim(),
+        !parsed && snippet ? `${base}: ${snippet}` : base,
+        res.status,
+      );
+    }
+    if (!parsed) {
+      // A 2xx that is not JSON (proxy page, truncated body): never hand the
+      // raw text to a caller expecting data.
+      throw new EngineError(
+        "ParseError",
+        `Engine answered HTTP ${res.status} (${where}) with a body that is not JSON: ${snippet}`,
         res.status,
       );
     }
@@ -336,6 +408,7 @@ class HttpApiClient implements ApiClient {
         `/keys/${encodeURIComponent(id)}/schema`,
       );
       this.keySchemaCache.set(id, cached);
+      this.evictOnFailure(this.keySchemaCache, id, cached);
     }
     return cached;
   }
@@ -348,7 +421,12 @@ class HttpApiClient implements ApiClient {
 
   listTransforms(): Promise<TransformInfo[]> {
     if (!this.transformsCache) {
-      this.transformsCache = this.request("GET", "/transforms");
+      const p: Promise<TransformInfo[]> = this.request("GET", "/transforms");
+      // A failed catalogue must be retried, not cached for the session (#246).
+      p.catch(() => {
+        if (this.transformsCache === p) this.transformsCache = null;
+      });
+      this.transformsCache = p;
     }
     return this.transformsCache;
   }
@@ -361,6 +439,7 @@ class HttpApiClient implements ApiClient {
         `/transforms/${encodeURIComponent(op)}/schema`,
       );
       this.transformSchemaCache.set(op, cached);
+      this.evictOnFailure(this.transformSchemaCache, op, cached);
     }
     return cached;
   }

@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 
+import { BusyIndicator } from "../../BusyIndicator";
 import { apiClient } from "../../api/client";
 import type { ColumnProfile, Step } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
@@ -534,6 +535,7 @@ export function Grid() {
             Clear
           </button>
         ) : null}
+        <BusyIndicator scope="frame" label="Loading rows…" />
         {loading && display.rows.length > 0 ? (
           <span className="grid-inline-loading" aria-live="polite">
             Updating…
@@ -637,6 +639,7 @@ export function Grid() {
       <div
         className="grid"
         aria-label="Data grid"
+        aria-busy={loading}
         data-identity={rowsIdentity ?? ""}
         data-identity-current={identity.key}
         data-col-window={`${windowed.start}:${windowed.end}/${display.cols.length}`}
