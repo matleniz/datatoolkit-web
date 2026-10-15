@@ -11,7 +11,7 @@ import {
   type Dispatch,
 } from "react";
 
-import { apiClient } from "../api/client";
+import { apiClient, onSourceFilesWritten } from "../api/client";
 import {
   EngineError,
   errorText,
@@ -30,6 +30,7 @@ import {
   rowsPageSize,
   WIDE_COL_THRESHOLD,
 } from "./grid/columnWindow";
+import { FrameCache } from "./frameCache";
 import { preferKnownColumns } from "./profileColumns";
 import {
   effectiveVersion,
@@ -61,6 +62,23 @@ interface Frame {
 interface Shapes {
   shapes: PipelineShape[];
   stepErrors: Map<number, string>;
+}
+
+/** A loaded frame and the pipeline shapes it was shown with (#245). */
+interface CachedFrame {
+  frame: Frame;
+  shapes: Shapes;
+  structureKey: string;
+}
+
+const frameCache = new FrameCache<CachedFrame>();
+// The file behind a cached frame may have changed while Studio was out of
+// sight (edited in another program) or through an upload.
+onSourceFilesWritten(() => frameCache.clear());
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") frameCache.clear();
+  });
 }
 
 const EMPTY_FRAME: Frame = {
@@ -226,6 +244,7 @@ export function useBenchFrame(
   const fetchGen = useRef(0);
   const prevViewKeyRef = useRef<string | null>(null);
   const prevStructureRef = useRef<string | null>(null);
+  const prevTickRef = useRef(0);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
   // A ref, not state: only read when the next profile fetch starts.
@@ -275,6 +294,20 @@ export function useBenchFrame(
 
     // Stale cells for a different time-travel version must never flash.
     if (viewChanged) setFrame(EMPTY_FRAME);
+    // An explicit reload (Retry, #246) refetches even a cached frame.
+    const reloaded = prevTickRef.current !== tick;
+    prevTickRef.current = tick;
+    if (reloaded) frameCache.clear();
+    const cacheKey = `${identityKey}|${gridKey}`;
+    const cached = frameCache.get(cacheKey);
+    if (cached && cached.structureKey === structureKey) {
+      // Instant switch: nothing to ask the engine.
+      setFrame(cached.frame);
+      setShapes(cached.shapes);
+      setLoading(false);
+      fail(null);
+      return;
+    }
     const needShapes = structureChanged || shapesRef.current.length === 0;
     if (structureChanged) setShapes(NO_SHAPES);
     setLoading(true);
@@ -367,6 +400,22 @@ export function useBenchFrame(
     tick,
     dispatch,
   ]);
+
+  // Remember the frame on screen once rows, profiles and shapes are all in.
+  useEffect(() => {
+    if (
+      frame.rowsIdentity === identityKey &&
+      frame.profilesIdentity === identityKey &&
+      frame.rowsGridKey === gridKey &&
+      shapes.length > 0
+    ) {
+      frameCache.set(`${identityKey}|${gridKey}`, {
+        frame,
+        shapes: { shapes, stepErrors },
+        structureKey,
+      });
+    }
+  }, [frame, shapes, stepErrors, identityKey, gridKey, structureKey]);
 
   const loadMore = useCallback(() => {
     if (!workspace || !workspace.datasets.train.x.path) return;
