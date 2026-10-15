@@ -15,7 +15,7 @@
  * frames, less for wide ones) and its profiles. Eight covers the two roles ×
  * a few viewed versions or grid views without letting a long session grow.
  */
-export const FRAME_CACHE_SIZE = 8;
+const FRAME_CACHE_SIZE = 8;
 
 export class FrameCache<T> {
   private readonly entries = new Map<string, T>();
