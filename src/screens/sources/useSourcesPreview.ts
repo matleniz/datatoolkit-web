@@ -52,7 +52,8 @@ function useKeyJoinReport(
   const key = ws.label.mode === "key" ? (ws.label.key ?? null) : null;
   const x = ws.datasets.train.x;
   const y = ws.datasets.train.y;
-  const ready = key !== null && Boolean(y?.path) && buildResult.errors.length === 0;
+  const ready =
+    key !== null && Boolean(y?.path) && buildResult.errors.length === 0;
 
   useEffect(() => {
     let active = true;
@@ -97,7 +98,15 @@ export function useSourcesPreview(
 
     if (buildResult.errors.length > 0) {
       setEngineErrors(buildResult.errors);
-      patchPreview({ columns: null, target: null });
+      // A failed preview must not leave the previous file's shapes behind:
+      // they would make an empty train file look navigable and hide the
+      // empty-file hint (#244).
+      patchPreview({
+        trainShape: null,
+        testShape: null,
+        columns: null,
+        target: null,
+      });
       return;
     }
 
@@ -112,14 +121,22 @@ export function useSourcesPreview(
           { files, roles, labelMode, targetCol },
           buildResult,
         );
-        patchPreview({ trainShape: res.shape, columns: res.columns, target: resolved });
+        patchPreview({
+          trainShape: res.shape,
+          columns: res.columns,
+          target: resolved,
+        });
         if (resolved) {
           dispatch({ type: "SET_TARGET_COLUMN", name: resolved });
         }
       })
       .catch((err: unknown) => {
         if (!active) return;
-        patchPreview({ columns: null, target: buildResult.targetLabel });
+        patchPreview({
+          trainShape: null,
+          columns: null,
+          target: buildResult.targetLabel,
+        });
         pushError(engineMessage(err));
       });
 
