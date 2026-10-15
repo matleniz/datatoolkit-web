@@ -575,6 +575,12 @@ export function sourcesWorkspaceToSync(opts: {
   current: Workspace | null;
   canNavigate: boolean;
   buildErrors: readonly string[];
+  /**
+   * `sourcesSpecKey` of what loading an already stored workspace produced
+   * (inspect fills defaults such as sep "auto" -> ","): not a user edit, so
+   * not written back. Null for a workspace with no train file yet.
+   */
+  baseline?: string | null;
 }): SourcesSpec | null {
   const { built, current, canNavigate, buildErrors } = opts;
   if (!canNavigate || buildErrors.length > 0) return null;
@@ -585,12 +591,18 @@ export function sourcesWorkspaceToSync(opts: {
     label: built.label,
     merges: built.merges,
   };
-  const same =
-    JSON.stringify(spec) ===
-    JSON.stringify({
-      datasets: current.datasets,
-      label: current.label,
-      merges: current.merges,
-    });
-  return same ? null : spec;
+  const key = sourcesSpecKey(spec);
+  if (opts.baseline != null && key === opts.baseline) return null;
+  return key === sourcesSpecKey(current) ? null : spec;
+}
+
+/** Stable key of the Sources-owned fields of a workspace. */
+export function sourcesSpecKey(
+  ws: Pick<Workspace, "datasets" | "label" | "merges">,
+): string {
+  return JSON.stringify({
+    datasets: ws.datasets,
+    label: ws.label,
+    merges: ws.merges,
+  });
 }

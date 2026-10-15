@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo } from "react";
+import { useEffect, useId, useMemo, useRef } from "react";
 import {
   getCommonColumns,
   buildWorkspaceJson,
@@ -12,6 +12,7 @@ import { SourcesMergeCard } from "./SourcesMergeCard";
 import { SourcesResultCard } from "./SourcesResultCard";
 import {
   columnOrigin,
+  sourcesSpecKey,
   sourcesWorkspaceToSync,
   targetInfoText,
   testShapeText,
@@ -103,12 +104,24 @@ export function SourcesScreen() {
   // Persist Sources edits as they happen (#234): hand the built workspace to
   // the store; AppStore's debounced autosave PUTs it.
   const { dispatch, workspace: storeWorkspace } = core;
+  // What loading a stored workspace built: not a user edit (no write-back).
+  const baseline = useRef<{ name: string; key: string | null } | null>(null);
   useEffect(() => {
+    if (!status.canNavigate || storeWorkspace?.name !== activeWsName) return;
+    if (baseline.current?.name !== activeWsName) {
+      baseline.current = {
+        name: activeWsName,
+        key: storeWorkspace.datasets.train.x.path
+          ? sourcesSpecKey(buildResult.workspace)
+          : null,
+      };
+    }
     const spec = sourcesWorkspaceToSync({
       built: buildResult.workspace,
       current: storeWorkspace,
       canNavigate: status.canNavigate,
       buildErrors: buildResult.errors,
+      baseline: baseline.current.key,
     });
     if (!spec) return;
     dispatch({ type: "SET_SOURCES_SPEC", name: activeWsName, ...spec });

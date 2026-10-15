@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Workspace } from "../src/api/types";
-import { sourcesWorkspaceToSync } from "../src/screens/sources/sourcesScreenLogic";
+import {
+  sourcesSpecKey,
+  sourcesWorkspaceToSync,
+} from "../src/screens/sources/sourcesScreenLogic";
 import { appReducer, initialState } from "../src/state/reducer";
 
 const ws = (name: string, path: string, target?: string): Workspace => ({
@@ -36,6 +39,19 @@ describe("sourcesWorkspaceToSync (#234)", () => {
     const built = ws("a", "/u/a.csv");
     const current = { ...ws("a", "/u/a.csv"), memory: [] };
     expect(sourcesWorkspaceToSync({ ...base, built, current })).toBeNull();
+  });
+
+  it("does not write back what loading a stored workspace built", () => {
+    const built = ws("a", "/u/a.csv", "plan");
+    const baseline = sourcesSpecKey(built);
+    const current = ws("a", "/u/a.csv");
+    expect(
+      sourcesWorkspaceToSync({ ...base, built, current, baseline }),
+    ).toBeNull();
+    const edited = ws("a", "/u/a.csv", "age");
+    expect(
+      sourcesWorkspaceToSync({ ...base, built: edited, current, baseline }),
+    ).not.toBeNull();
   });
 
   it("never syncs while loading, with build errors, no path, or across names", () => {
