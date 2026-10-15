@@ -21,7 +21,7 @@ const FRAME_CACHE_SIZE = 8;
  * Entries expire: a file rewritten on disk (an agent run, a script) is not
  * visible to the key, so a frame is trusted for a minute at most.
  */
-export const FRAME_CACHE_TTL_MS = 60_000;
+const FRAME_CACHE_TTL_MS = 60_000;
 
 /**
  * Whether a settled frame may be cached: only the first page (rows scrolled in
