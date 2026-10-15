@@ -43,14 +43,31 @@ describe("sourcesWorkspaceToSync (#234)", () => {
 
   it("does not write back what loading a stored workspace built", () => {
     const built = ws("a", "/u/a.csv", "plan");
-    const baseline = sourcesSpecKey(built);
     const current = ws("a", "/u/a.csv");
+    const baseline = {
+      loaded: sourcesSpecKey(built),
+      stored: sourcesSpecKey(current),
+    };
     expect(
       sourcesWorkspaceToSync({ ...base, built, current, baseline }),
     ).toBeNull();
     const edited = ws("a", "/u/a.csv", "age");
     expect(
       sourcesWorkspaceToSync({ ...base, built: edited, current, baseline }),
+    ).not.toBeNull();
+  });
+
+  it("syncs an edit reverted to the loaded value once the edit was stored", () => {
+    const loaded = ws("a", "/u/a.csv", "plan");
+    const stored = ws("a", "/u/a.csv");
+    const baseline = {
+      loaded: sourcesSpecKey(loaded),
+      stored: sourcesSpecKey(stored),
+    };
+    // plan -> churn was synced (store holds churn), then plan is picked again.
+    const storeNow = ws("a", "/u/a.csv", "churn");
+    expect(
+      sourcesWorkspaceToSync({ ...base, built: loaded, current: storeNow, baseline }),
     ).not.toBeNull();
   });
 

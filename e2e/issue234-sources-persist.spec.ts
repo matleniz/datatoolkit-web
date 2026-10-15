@@ -75,5 +75,21 @@ test("#234: upload + role + target survive a reload", async ({
       .getByRole("button", { name: "plan", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
 
+  // Edit then revert to the value the reload loaded: both are stored.
+  const targetOnDisk = async () =>
+    (
+      (await (await request.get("/api/workspaces/issue234_persist")).json()) as {
+        datasets: { train: { target_column?: string } };
+      }
+    ).datasets.train.target_column;
+  const chip = (name: string) =>
+    page
+      .getByRole("region", { name: "Target settings" })
+      .getByRole("button", { name, exact: true });
+  await chip("city").click();
+  await expect.poll(targetOnDisk, { timeout: 15_000 }).toBe("city");
+  await chip("plan").click();
+  await expect.poll(targetOnDisk, { timeout: 15_000 }).toBe("plan");
+
   await request.delete("/api/workspaces/issue234_persist");
 });

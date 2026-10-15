@@ -105,14 +105,17 @@ export function SourcesScreen() {
   // the store; AppStore's debounced autosave PUTs it.
   const { dispatch, workspace: storeWorkspace } = core;
   // What loading a stored workspace built: not a user edit (no write-back).
-  const baseline = useRef<{ name: string; key: string | null } | null>(null);
+  const baseline = useRef<{ name: string; baseline: { loaded: string; stored: string } | null } | null>(null);
   useEffect(() => {
     if (!status.canNavigate || storeWorkspace?.name !== activeWsName) return;
     if (baseline.current?.name !== activeWsName) {
       baseline.current = {
         name: activeWsName,
-        key: storeWorkspace.datasets.train.x.path
-          ? sourcesSpecKey(buildResult.workspace)
+        baseline: storeWorkspace.datasets.train.x.path
+          ? {
+              loaded: sourcesSpecKey(buildResult.workspace),
+              stored: sourcesSpecKey(storeWorkspace),
+            }
           : null,
       };
     }
@@ -121,7 +124,7 @@ export function SourcesScreen() {
       current: storeWorkspace,
       canNavigate: status.canNavigate,
       buildErrors: buildResult.errors,
-      baseline: baseline.current.key,
+      baseline: baseline.current.baseline,
     });
     if (!spec) return;
     dispatch({ type: "SET_SOURCES_SPEC", name: activeWsName, ...spec });

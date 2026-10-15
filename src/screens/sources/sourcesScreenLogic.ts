@@ -576,11 +576,14 @@ export function sourcesWorkspaceToSync(opts: {
   canNavigate: boolean;
   buildErrors: readonly string[];
   /**
-   * `sourcesSpecKey` of what loading an already stored workspace produced
-   * (inspect fills defaults such as sep "auto" -> ","): not a user edit, so
-   * not written back. Null for a workspace with no train file yet.
+   * What loading an already stored workspace produced (`loaded`, inspect
+   * fills defaults such as sep "auto" -> ",") next to the stored value it was
+   * built from (`stored`), both `sourcesSpecKey`s. Building `loaded` while
+   * the store still holds `stored` is not a user edit, so not written back;
+   * once the store moved (an edit synced), going back to `loaded` is an edit.
+   * Null for a workspace with no train file yet.
    */
-  baseline?: string | null;
+  baseline?: { loaded: string; stored: string } | null;
 }): SourcesSpec | null {
   const { built, current, canNavigate, buildErrors } = opts;
   if (!canNavigate || buildErrors.length > 0) return null;
@@ -592,8 +595,12 @@ export function sourcesWorkspaceToSync(opts: {
     merges: built.merges,
   };
   const key = sourcesSpecKey(spec);
-  if (opts.baseline != null && key === opts.baseline) return null;
-  return key === sourcesSpecKey(current) ? null : spec;
+  const currentKey = sourcesSpecKey(current);
+  const { baseline } = opts;
+  if (baseline && key === baseline.loaded && currentKey === baseline.stored) {
+    return null;
+  }
+  return key === currentKey ? null : spec;
 }
 
 /** Stable key of the Sources-owned fields of a workspace. */
