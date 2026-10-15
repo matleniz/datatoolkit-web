@@ -17,6 +17,7 @@ import {
   isWorkspaceSaveSuppressed,
   markWorkspaceLoaded,
   markWorkspaceSaved,
+  queueWorkspaceSave,
   resetWorkspaceSaveGateForTests,
 } from "../src/state/workspaceSaveGate";
 
@@ -284,9 +285,7 @@ describe("autosave failure surfacing (#218)", () => {
       seen.push(getWorkspaceSaveFailure()?.message ?? null),
     );
 
-    await expect(ensureWorkspaceSaved(body)).rejects.toThrow(
-      "engine down: 503",
-    );
+    await expect(ensureWorkspaceSaved(body)).rejects.toThrow("engine down: 503");
     expect(getWorkspaceSaveFailure()?.message).toBe("engine down: 503");
     expect(getLastSavedWorkspaceJson()).not.toBe(serializeWorkspace(body));
 
@@ -300,9 +299,7 @@ describe("autosave failure surfacing (#218)", () => {
 
   it("keeps the chain alive and the failure recorded when retry fails again", async () => {
     const body = ws("fail218b");
-    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(
-      new Error("422 bad"),
-    );
+    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("422 bad"));
     await expect(ensureWorkspaceSaved(body)).rejects.toThrow("422 bad");
     await expect(retryWorkspaceSave()).rejects.toThrow("422 bad");
     expect(getWorkspaceSaveFailure()?.message).toBe("422 bad");
@@ -316,11 +313,7 @@ describe("autosave failure scoping (#218 review)", () => {
   it("clears the failure when the workspace is reverted to the saved one", async () => {
     const saved = ws("rev218", "/tmp/a.csv");
     markWorkspaceSaved(saved);
-    const edited = {
-      ...saved,
-      label: { mode: "order" as const },
-      variables: [{ name: "v", expr: "1" } as never],
-    };
+    const edited = { ...saved, label: { mode: "order" as const }, variables: [{ name: "v", expr: "1" } as never] };
     vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));
     setCommittedWorkspace(edited);
     await expect(ensureWorkspaceSaved(edited)).rejects.toThrow("503");
@@ -345,6 +338,32 @@ describe("autosave failure scoping (#218 review)", () => {
     fail(new Error("422"));
     await inFlight;
     expect(getWorkspaceSaveFailure()).toBeNull();
+  });
+
+  it("re-sends the saved copy when the edit was undone while its PUT was on the wire (#244)", async () => {
+    const base = ws("undo244", "/tmp/a.csv");
+    const edited = { ...base, variables: [{ name: "v", expr: "1" } as never] };
+    markWorkspaceSaved(base);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    const bodies: string[] = [];
+    vi.spyOn(apiClient, "saveWorkspace").mockImplementation(async (body) => {
+      bodies.push(serializeWorkspace(body));
+      if (bodies.length === 1) await gate;
+      return body;
+    });
+    setCommittedWorkspace(edited);
+    const first = queueWorkspaceSave(edited);
+    await vi.waitFor(() => expect(bodies).toHaveLength(1));
+    // Undo: the committed workspace is the last saved one again, so the
+    // autosave effect has nothing to queue.
+    setCommittedWorkspace(base);
+    release();
+    await first;
+    await vi.waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toBe(serializeWorkspace(base));
+    await ensureWorkspaceSaved(base);
+    expect(getLastSavedWorkspaceJson()).toBe(serializeWorkspace(base));
   });
 
   it("never re-sends or silently drops another workspace's failure", async () => {

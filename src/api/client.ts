@@ -74,18 +74,11 @@ interface ApiClient {
   ): Promise<PreviewStep>;
   alignReport(workspace: Workspace): Promise<AlignReport>;
   /** Column notes by name at `version` (null = latest), renames traced (#152). */
-  columnNotes(
-    workspace: Workspace,
-    role: Role,
-    version?: number | null,
-  ): Promise<ColumnNotes>;
+  columnNotes(workspace: Workspace, role: Role, version?: number | null): Promise<ColumnNotes>;
 
   upload(filename: string, body: BodyInit): Promise<UploadResponse>;
   /** `POST /documents/describe`: a document entry (no id) for an uploaded file (#178). */
-  describeDocument(
-    path: string,
-    name?: string,
-  ): Promise<Omit<WorkspaceDocument, "id">>;
+  describeDocument(path: string, name?: string): Promise<Omit<WorkspaceDocument, "id">>;
 }
 
 function isErrorBody(value: unknown): value is ErrorBody {
@@ -127,14 +120,7 @@ function workspaceBody(ws: Workspace): Record<string, unknown> {
  * front-only pipeline ordering.
  */
 function frameBody(ws: Workspace): Record<string, unknown> {
-  const {
-    charts: _charts,
-    notes: _notes,
-    memory: _memory,
-    documents: _documents,
-    id_counters: _ids,
-    ...rest
-  } = ws;
+  const { charts: _charts, notes: _notes, memory: _memory, documents: _documents, id_counters: _ids, ...rest } = ws;
   return {
     ...rest,
     steps: ws.steps.map((step) => {
@@ -198,17 +184,13 @@ export class UiHttpError extends Error {
 }
 
 /** Error of a non-ok `/ui/*` response; the engine answers `{type, message}`. */
-export async function uiError(
-  res: Response,
-  what: string,
-): Promise<UiHttpError> {
+export async function uiError(res: Response, what: string): Promise<UiHttpError> {
   let kind: string | undefined;
   let message = `${what}: HTTP ${res.status}`;
   try {
     const body = (await res.json()) as { type?: unknown; message?: unknown };
     if (typeof body.type === "string") kind = body.type;
-    if (typeof body.message === "string" && body.message)
-      message = body.message;
+    if (typeof body.message === "string" && body.message) message = body.message;
   } catch {
     /* no JSON body */
   }
@@ -263,10 +245,7 @@ class HttpApiClient implements ApiClient {
   private readonly dedupe = new InFlightDedupe();
   private transformsCache: Promise<TransformInfo[]> | null = null;
   /** Session cache — schemas are immutable per op/key id for a given engine. */
-  private readonly transformSchemaCache = new Map<
-    string,
-    Promise<JsonSchema>
-  >();
+  private readonly transformSchemaCache = new Map<string, Promise<JsonSchema>>();
   private readonly keySchemaCache = new Map<string, Promise<JsonSchema>>();
 
   constructor(baseUrl = API_BASE) {
@@ -298,12 +277,12 @@ class HttpApiClient implements ApiClient {
     // stale: a list requested right after a create / rename / delete must not
     // join the answer computed before it (#244).
     const writesStore = method !== "GET" && path.startsWith("/workspaces/");
-    if (writesStore) this.dedupe.invalidate("/workspaces");
+    if (writesStore) this.dedupe.invalidateReads("/workspaces");
     const run = this.dedupe.run(key, () =>
       this.execute<T>(method, path, headers, payload),
     );
     return writesStore
-      ? run.finally(() => this.dedupe.invalidate("/workspaces"))
+      ? run.finally(() => this.dedupe.invalidateReads("/workspaces"))
       : run;
   }
 
@@ -352,7 +331,10 @@ class HttpApiClient implements ApiClient {
   keySchema(id: string): Promise<JsonSchema> {
     let cached = this.keySchemaCache.get(id);
     if (!cached) {
-      cached = this.request("GET", `/keys/${encodeURIComponent(id)}/schema`);
+      cached = this.request(
+        "GET",
+        `/keys/${encodeURIComponent(id)}/schema`,
+      );
       this.keySchemaCache.set(id, cached);
     }
     return cached;
@@ -538,24 +520,13 @@ class HttpApiClient implements ApiClient {
     );
   }
 
-  describeDocument(
-    path: string,
-    name?: string,
-  ): Promise<Omit<WorkspaceDocument, "id">> {
-    return this.request(
-      "POST",
-      "/documents/describe",
-      name ? { path, name } : { path },
-    );
+  describeDocument(path: string, name?: string): Promise<Omit<WorkspaceDocument, "id">> {
+    return this.request("POST", "/documents/describe", name ? { path, name } : { path });
   }
 }
 
 /** The stored file of a workspace document (open / download, #178). */
-export function documentFileUrl(
-  workspace: string,
-  id: string,
-  base: string = API_BASE,
-): string {
+export function documentFileUrl(workspace: string, id: string, base: string = API_BASE): string {
   return `${base.replace(/\/$/, "")}/workspaces/${encodeURIComponent(workspace)}/documents/${encodeURIComponent(id)}/file`;
 }
 

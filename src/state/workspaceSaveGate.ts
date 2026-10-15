@@ -280,6 +280,17 @@ function queueWorkspaceSave(
       if (outcome === "saved" || serialized === lastSavedWorkspaceJson) {
         clearSaveFailureFor(ws.name);
       }
+      // The user went back to the previously saved copy while this PUT was on
+      // the wire: that commit saw "nothing to save" and queued nothing, so the
+      // engine would keep the edit that was just undone (#244).
+      if (
+        outcome === "saved" &&
+        committedWorkspace &&
+        committedWorkspace.name === ws.name &&
+        serializeWorkspace(committedWorkspace) !== serialized
+      ) {
+        void queueWorkspaceSave(committedWorkspace, epochAtStart);
+      }
     } catch (e) {
       // Never reject the chain: later saves must still run. The failure is
       // recorded for the UI and handed to callers that asked for it (#218).

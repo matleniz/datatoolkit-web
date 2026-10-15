@@ -25,13 +25,17 @@ export class InFlightDedupe {
   }
 
   /**
-   * Forget the in-flight requests whose path starts with `prefix`: the next
-   * identical call goes out again instead of joining an answer that was
-   * computed before a write (#244). Callers already holding a promise keep it.
+   * Forget the in-flight GETs whose path starts with `prefix`: the next
+   * identical read goes out again instead of joining an answer that was
+   * computed before a write (#244). Writes keep their dedupe; callers already
+   * holding a promise keep it.
    */
-  invalidate(prefix: string): void {
+  invalidateReads(prefix: string): void {
     for (const key of this.inflight.keys()) {
-      if (key.split("\0")[1]?.startsWith(prefix)) this.inflight.delete(key);
+      const [method, path] = key.split("\0");
+      if (method === "GET" && path?.startsWith(prefix)) {
+        this.inflight.delete(key);
+      }
     }
   }
 

@@ -184,8 +184,7 @@ export function useSourcesState(): SourcesCore {
   // Stored files still to enrich on mount (useSourcesWorkspaces): gate the
   // navigation buttons until they are loaded.
   const [sourcesLoading, setSourcesLoading] = useState(
-    () =>
-      storedSourcesToLoad(activeWsName, filesByWorkspace, workspace) !== null,
+    () => storedSourcesToLoad(activeWsName, filesByWorkspace, workspace) !== null,
   );
   const [optionsOpen, setOptionsOpen] = useState<Record<string, boolean>>({});
   const [optionsBusy, setOptionsBusy] = useState<Record<string, boolean>>({});
@@ -221,8 +220,7 @@ export function useSourcesState(): SourcesCore {
     });
   }, [src, dispatch]);
 
-  const { summaries, setSummaries, listError } =
-    useWorkspaceSummaries(workspace);
+  const { summaries, setSummaries, listError } = useWorkspaceSummaries(workspace);
 
   return {
     dispatch,
