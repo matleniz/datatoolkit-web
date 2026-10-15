@@ -8,6 +8,7 @@ import {
 } from "../../state/AppStore";
 import {
   allowWorkspaceSave,
+  flushWorkspaceSave,
   markWorkspaceLoaded,
 } from "../../state/workspaceSaveGate";
 import {
@@ -266,6 +267,7 @@ export function useSourcesWorkspaces(core: SourcesCore): SourcesWorkspaceActions
       if (name !== activeWsName) {
         await select(name);
       }
+      await flushWorkspaceSave(name);
       const ws = await apiClient.getWorkspace(name);
       void abandonPendingWorkspaceSave();
       dispatch({ type: "SET_WORKSPACE", workspace: ws });
