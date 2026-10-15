@@ -284,7 +284,9 @@ describe("autosave failure surfacing (#218)", () => {
       seen.push(getWorkspaceSaveFailure()?.message ?? null),
     );
 
-    await expect(ensureWorkspaceSaved(body)).rejects.toThrow("engine down: 503");
+    await expect(ensureWorkspaceSaved(body)).rejects.toThrow(
+      "engine down: 503",
+    );
     expect(getWorkspaceSaveFailure()?.message).toBe("engine down: 503");
     expect(getLastSavedWorkspaceJson()).not.toBe(serializeWorkspace(body));
 
@@ -298,7 +300,9 @@ describe("autosave failure surfacing (#218)", () => {
 
   it("keeps the chain alive and the failure recorded when retry fails again", async () => {
     const body = ws("fail218b");
-    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("422 bad"));
+    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(
+      new Error("422 bad"),
+    );
     await expect(ensureWorkspaceSaved(body)).rejects.toThrow("422 bad");
     await expect(retryWorkspaceSave()).rejects.toThrow("422 bad");
     expect(getWorkspaceSaveFailure()?.message).toBe("422 bad");
@@ -312,7 +316,11 @@ describe("autosave failure scoping (#218 review)", () => {
   it("clears the failure when the workspace is reverted to the saved one", async () => {
     const saved = ws("rev218", "/tmp/a.csv");
     markWorkspaceSaved(saved);
-    const edited = { ...saved, label: { mode: "order" as const }, variables: [{ name: "v", expr: "1" } as never] };
+    const edited = {
+      ...saved,
+      label: { mode: "order" as const },
+      variables: [{ name: "v", expr: "1" } as never],
+    };
     vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));
     setCommittedWorkspace(edited);
     await expect(ensureWorkspaceSaved(edited)).rejects.toThrow("503");
@@ -342,7 +350,9 @@ describe("autosave failure scoping (#218 review)", () => {
   it("never re-sends or silently drops another workspace's failure", async () => {
     const a = ws("a218");
     const b = ws("b218", "/tmp/b.csv");
-    const save = vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));
+    const save = vi
+      .spyOn(apiClient, "saveWorkspace")
+      .mockRejectedValue(new Error("503"));
     setCommittedWorkspace(a);
     await expect(ensureWorkspaceSaved(a)).rejects.toThrow("503");
     setCommittedWorkspace(b);
