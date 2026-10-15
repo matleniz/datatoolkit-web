@@ -17,23 +17,49 @@
  */
 const FRAME_CACHE_SIZE = 8;
 
-export class FrameCache<T> {
-  private readonly entries = new Map<string, T>();
+/**
+ * Entries expire: a file rewritten on disk (an agent run, a script) is not
+ * visible to the key, so a frame is trusted for a minute at most.
+ */
+export const FRAME_CACHE_TTL_MS = 60_000;
 
-  constructor(private readonly capacity: number = FRAME_CACHE_SIZE) {}
+/**
+ * Whether a settled frame may be cached: only the first page (rows scrolled in
+ * by loadMore would grow an entry without bound; a hit resumes paging), and
+ * never a frame that carried a load-time error (empty-source mismatch, root
+ * shape failure), which a hit would hide.
+ */
+export function isCacheable(f: {
+  rows: number;
+  firstPageMax: number;
+  totalUnfiltered: number;
+  hadError: boolean;
+}): boolean {
+  return f.rows <= f.firstPageMax && f.totalUnfiltered > 0 && !f.hadError;
+}
+
+export class FrameCache<T> {
+  private readonly entries = new Map<string, { value: T; at: number }>();
+
+  constructor(
+    private readonly capacity: number = FRAME_CACHE_SIZE,
+    private readonly ttlMs: number = FRAME_CACHE_TTL_MS,
+    private readonly now: () => number = Date.now,
+  ) {}
 
   get(key: string): T | undefined {
     const hit = this.entries.get(key);
     if (hit === undefined) return undefined;
-    // Re-insert: Map iteration order is the recency order.
     this.entries.delete(key);
+    if (this.now() - hit.at > this.ttlMs) return undefined;
+    // Re-insert: Map iteration order is the recency order.
     this.entries.set(key, hit);
-    return hit;
+    return hit.value;
   }
 
   set(key: string, value: T): void {
     this.entries.delete(key);
-    this.entries.set(key, value);
+    this.entries.set(key, { value, at: this.now() });
     while (this.entries.size > this.capacity) {
       const oldest = this.entries.keys().next().value as string;
       this.entries.delete(oldest);

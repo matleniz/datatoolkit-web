@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { dataIdentity } from "../src/bench/dataIdentity";
-import { FrameCache } from "../src/bench/frameCache";
+import { FrameCache, isCacheable } from "../src/bench/frameCache";
 import type { Workspace } from "../src/api/types";
 
 function ws(over: Partial<Workspace> = {}): Workspace {
@@ -87,5 +87,30 @@ describe("FrameCache", () => {
     c.clear();
     expect(c.get("a")).toBeUndefined();
     expect(c.size).toBe(0);
+  });
+});
+
+describe("FrameCache expiry and cacheability", () => {
+  it("expires an entry after the TTL", () => {
+    let t = 0;
+    const c = new FrameCache<string>(8, 1000, () => t);
+    c.set("a", "x");
+    t = 999;
+    expect(c.get("a")).toBe("x");
+    t = 2000;
+    expect(c.get("a")).toBeUndefined();
+  });
+
+  it("does not cache a frame grown by loadMore (memory bound)", () => {
+    const base = { firstPageMax: 500, totalUnfiltered: 9000, hadError: false };
+    expect(isCacheable({ ...base, rows: 500 })).toBe(true);
+    expect(isCacheable({ ...base, rows: 1000 })).toBe(false);
+  });
+
+  it("does not cache a frame that carried an error", () => {
+    const base = { rows: 10, firstPageMax: 500 };
+    expect(isCacheable({ ...base, totalUnfiltered: 0, hadError: false })).toBe(false);
+    expect(isCacheable({ ...base, totalUnfiltered: 10, hadError: true })).toBe(false);
+    expect(isCacheable({ ...base, totalUnfiltered: 10, hadError: false })).toBe(true);
   });
 });

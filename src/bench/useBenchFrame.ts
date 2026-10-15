@@ -30,7 +30,7 @@ import {
   rowsPageSize,
   WIDE_COL_THRESHOLD,
 } from "./grid/columnWindow";
-import { FrameCache } from "./frameCache";
+import { FrameCache, isCacheable } from "./frameCache";
 import { preferKnownColumns } from "./profileColumns";
 import {
   effectiveVersion,
@@ -245,6 +245,8 @@ export function useBenchFrame(
   const prevViewKeyRef = useRef<string | null>(null);
   const prevStructureRef = useRef<string | null>(null);
   const prevTickRef = useRef(0);
+  /** The frame on screen carries a load-time error (not cacheable). */
+  const loadErrorRef = useRef(false);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
   // A ref, not state: only read when the next profile fetch starts.
@@ -298,6 +300,7 @@ export function useBenchFrame(
     const reloaded = prevTickRef.current !== tick;
     prevTickRef.current = tick;
     if (reloaded) frameCache.clear();
+    loadErrorRef.current = false;
     const cacheKey = `${identityKey}|${gridKey}`;
     const cached = frameCache.get(cacheKey);
     if (cached && cached.structureKey === structureKey) {
@@ -344,7 +347,10 @@ export function useBenchFrame(
 
         if (totalUnfiltered === 0 && res.columns.length > 0) {
           void sourceMismatch(ws).then((msg) => {
-            if (msg && alive()) fail(msg);
+            if (msg && alive()) {
+              loadErrorRef.current = true;
+              fail(msg);
+            }
           });
         }
 
@@ -371,7 +377,10 @@ export function useBenchFrame(
             })),
         ).catch((e: unknown) => {
           // Keep rows usable; surface profile failure without clearing grid.
-          if (alive()) fail(errorText(e));
+          if (alive()) {
+            loadErrorRef.current = true;
+            fail(errorText(e));
+          }
         });
 
         if (!needShapes) return;
@@ -381,7 +390,10 @@ export function useBenchFrame(
         });
         if (!alive()) return;
         setShapes(next);
-        if (rootError) fail(rootError);
+        if (rootError) {
+          loadErrorRef.current = true;
+          fail(rootError);
+        }
       } catch (e) {
         if (!alive()) return;
         setFrame(EMPTY_FRAME);
@@ -407,7 +419,13 @@ export function useBenchFrame(
       frame.rowsIdentity === identityKey &&
       frame.profilesIdentity === identityKey &&
       frame.rowsGridKey === gridKey &&
-      shapes.length > 0
+      shapes.length > 0 &&
+      isCacheable({
+        rows: frame.rows.length,
+        firstPageMax: Math.max(PAGE_DEFAULT, PAGE_WIDE),
+        totalUnfiltered: frame.totalUnfiltered,
+        hadError: loadErrorRef.current || stepErrors.size > 0,
+      })
     ) {
       frameCache.set(`${identityKey}|${gridKey}`, {
         frame,
