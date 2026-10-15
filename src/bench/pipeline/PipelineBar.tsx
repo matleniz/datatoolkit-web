@@ -12,6 +12,8 @@ import {
   stepSubLabel,
   stepSummary,
 } from "../stages";
+import { BusyIndicator } from "../../BusyIndicator";
+import { useInFlight } from "../../useInFlight";
 import { useWorkbenchData, type PipelineShape } from "../WorkbenchData";
 import { PipelineHistory } from "./PipelineHistory";
 import { rawNodeSubLabel } from "./rawNodeSubLabel";
@@ -172,6 +174,7 @@ export function PipelineBar() {
   const canDelete = isLatest && !editor;
   // Any applied step can be reopened in the editor while none is open (#10).
   const canEdit = !editor;
+  const frameBusy = useInFlight("frame") > 0;
   const [menu, setMenu] = useState<StepMenuState | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
 
@@ -201,7 +204,12 @@ export function PipelineBar() {
   }
 
   return (
-    <section className="pipeline-bar" aria-label="Pipeline" data-owner="W2">
+    <section
+      className="pipeline-bar"
+      aria-label="Pipeline"
+      aria-busy={frameBusy}
+      data-owner="W2"
+    >
       <div className="pipeline-nodes">
         {nodes.map((n, i) => (
           <div key={n.key} className="pipeline-node-wrap">
@@ -340,6 +348,8 @@ export function PipelineBar() {
       ) : null}
 
       <PipelineHistory />
+
+      <BusyIndicator scope="frame" label="Running the pipeline…" />
 
       <div className="pipeline-legend">
         {STAGES.map((st) => (

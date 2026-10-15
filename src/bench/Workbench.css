@@ -1615,3 +1615,51 @@
 .note-pop-spacer {
   flex: 1;
 }
+
+/* Busy indicator (#247): the slot is always rendered, so it never shifts the layout. */
+.busy-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  font-size: 12px;
+  color: var(--dtk-muted);
+  flex-shrink: 0;
+}
+
+.busy-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #c9c5ba;
+  border-top-color: #1d5b86;
+  border-radius: 50%;
+  animation: busy-spin 0.8s linear infinite;
+}
+
+@keyframes busy-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .busy-spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+/* Overlaid (absolute) in bars of fixed height: no layout shift. */
+.pipeline-bar,
+.grid-toolbar {
+  position: relative;
+}
+
+.pipeline-bar > .busy-slot,
+.grid-toolbar > .busy-slot {
+  position: absolute;
+  top: 2px;
+  right: 16px;
+  padding: 0 8px;
+  background: var(--dtk-bg-subtle);
+  border-radius: 4px;
+}

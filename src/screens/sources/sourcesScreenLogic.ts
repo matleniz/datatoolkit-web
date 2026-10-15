@@ -219,8 +219,9 @@ async function inspectStored(
     if (mapped.sheets) sheets = mapped.sheets;
     if (mapped.recordPaths) recordPaths = mapped.recordPaths;
     parseError = kindMismatchMessage(item.spec, mapped.spec);
-  } catch {
-    /* inspect is advisory when the stored spec still loads */
+  } catch (err: unknown) {
+    // Advisory when the stored spec still loads; the client logged the detail.
+    console.warn(`[sources] file_inspect skipped for ${path}`, err);
   }
   return { sheets, recordPaths, parseError };
 }

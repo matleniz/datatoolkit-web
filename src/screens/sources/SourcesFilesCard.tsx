@@ -54,6 +54,21 @@ interface FileBlockProps {
   onSpecChange: (fileId: string, spec: FileSourceSpec) => void;
 }
 
+/**
+ * A file that failed to load shows the engine's reason on its own row. The
+ * Train X file reports it in the Result card instead, so a failing test /
+ * label / merge file is no longer silent (#246).
+ */
+function FileLoadError({ file, role }: { file: SourceFileItem; role: FileRole | "ignore" }) {
+  const detail = file.parseError?.trim();
+  if (!detail || role === "trainX") return null;
+  return (
+    <div className="engine-error-box" role="alert" data-file-load-error={file.id}>
+      {file.name} could not be loaded: {detail}
+    </div>
+  );
+}
+
 function FileBlock({
   file: fl,
   currentRole,
@@ -94,6 +109,8 @@ function FileBlock({
           onPickRole={onPickRole}
         />
       </div>
+
+      <FileLoadError file={fl} role={currentRole} />
 
       {optsOpen ? (
         <div

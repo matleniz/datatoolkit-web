@@ -1,4 +1,6 @@
 import { useEffect, useId, useMemo, useRef } from "react";
+import { BusyIndicator } from "../../BusyIndicator";
+import { useInFlight } from "../../useInFlight";
 import {
   getCommonColumns,
   buildWorkspaceJson,
@@ -74,6 +76,7 @@ function useBuildResult(core: SourcesCore) {
 export function SourcesScreen() {
   const fileInputId = useId();
   const core = useSourcesState();
+  const sourceBusy = useInFlight("source") > 0;
   const { src, patch, preview, activeWsName, sourcesLoading } = core;
   const { files, roles, labelMode, yJoin, yKey, targetCol, mergeKey, mergeInTest } = src;
 
@@ -166,7 +169,7 @@ export function SourcesScreen() {
         onError={core.errors.addError}
       />
 
-      <main className="sources-main">
+      <main className="sources-main" aria-busy={core.sourcesLoading || sourceBusy}>
         <div className="sources-header">
           <span className="sources-title">Sources of “{activeWsName}”</span>
           <span className="sources-subtitle">
@@ -174,6 +177,8 @@ export function SourcesScreen() {
             as you make them.
           </span>
         </div>
+
+        <BusyIndicator scope="source" label="Loading the dataset…" />
 
         <SourcesFilesCard
           files={files}
