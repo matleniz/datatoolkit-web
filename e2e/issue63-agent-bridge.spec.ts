@@ -288,6 +288,7 @@ test("issue 97: pending review ack, queue free meanwhile, Apply after the timeou
   const ctx0 = await published(request, page);
   const review = page.getByLabel("Agent proposal");
 
+  const sentAt = Date.now();
   const pending = await send(request, page, {
     type: "propose_steps", workspace: "churn", base_identity: ctx0.identity,
     ops: [{ add: { step: { op: "drop_columns", target: "both", params: { columns: ["support_calls"] } } } }],
@@ -306,7 +307,8 @@ test("issue 97: pending review ack, queue free meanwhile, Apply after the timeou
 
   // Deliberately outlasts the 2 s server-side command timeout (a timer to outlive,
   // not a race): the review must survive it, since that timeout only bounds the first ack.
-  await page.waitForTimeout(2_500);
+  // Condition wait on the wall clock (no sleep): poll until the deadline passed.
+  await expect.poll(() => Date.now() >= sentAt + 2_500, { timeout: 10_000 }).toBe(true);
   expect(await commandStatus(request, pending.id)).toMatchObject({ ok: null, pending: "review" });
   await review.getByRole("button", { name: "Apply" }).click();
   const final = await settled(request, pending.id);

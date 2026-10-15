@@ -3,6 +3,7 @@ import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import sonarjs from "eslint-plugin-sonarjs";
+import playwright from "eslint-plugin-playwright";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -34,6 +35,23 @@ export default tseslint.config(
           caughtErrorsIgnorePattern: "^_",
         },
       ],
+    },
+  },
+  {
+    ...playwright.configs["flat/recommended"],
+    files: ["e2e/**/*.ts"],
+    rules: {
+      ...playwright.configs["flat/recommended"].rules,
+      "playwright/no-wait-for-timeout": "error",
+      // Left off: existing specs use these on purpose (follow-up cleanup).
+      "playwright/no-conditional-expect": "off",
+      "playwright/no-conditional-in-test": "off",
+      "playwright/no-force-option": "off",
+      "playwright/no-networkidle": "off",
+      "playwright/no-skipped-test": "off",
+      "playwright/prefer-web-first-assertions": "off",
+      "playwright/prefer-to-have-count": "off",
+      "playwright/prefer-to-have-length": "off",
     },
   },
 );

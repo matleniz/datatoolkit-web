@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 import type { Workspace } from "../src/api/types";
+import { expectNoA11yViolations } from "./a11y";
 import { openWorkbench } from "./helpers";
 
 /**
@@ -41,6 +42,7 @@ test("issue 218: failed autosave is shown and Retry saves", async ({ page, reque
   await expect(banner).toContainText("Not saved:", { timeout: 15_000 });
   await expect(banner).toContainText("engine unavailable (e2e)");
   expect((await stored(request)).steps).toHaveLength(0);
+  await expectNoA11yViolations(page, "save-failure banner (#218)");
 
   reject = false;
   await banner.getByRole("button", { name: "Retry" }).click();

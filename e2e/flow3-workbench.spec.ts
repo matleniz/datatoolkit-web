@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expectNoA11yViolations } from "./a11y";
 import type { Workspace } from "../src/api/types";
 import {
   captureFlowScreenshot,
@@ -81,6 +82,7 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
   await page.getByRole("button", { name: "Open workbench →" }).click();
   await expect(page.getByLabel("Workbench")).toBeVisible();
   await waitForGridReady(page);
+  await expectNoA11yViolations(page, "studio loaded with a workspace");
   await expect(page.getByRole("button", { name: "age, number" })).toBeVisible({
     timeout: 30_000,
   });
@@ -267,4 +269,5 @@ test("Flow 3: workbench (alignment first, sentinels, impute, onehot, time travel
 
   await waitForGridReady(page);
   await captureFlowScreenshot(page, "3-workbench", "06-after-delete.png");
+  await expectNoA11yViolations(page, "workbench after applying and removing steps");
 });

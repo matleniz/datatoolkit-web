@@ -1,4 +1,3 @@
 {
-  "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["e2e/vite.e2e.config.ts"]
+  "$schema": "https://unpkg.com/knip@6/schema.json"
 }

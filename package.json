@@ -27,6 +27,7 @@
     "react-grid-layout": "^2.2.4"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^9.21.0",
     "@playwright/test": "^1.51.0",
     "@types/node": "^26.6.3",
@@ -35,6 +36,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^9.21.0",
+    "eslint-plugin-playwright": "^2.12.1",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.19",
     "eslint-plugin-sonarjs": "^4.2.2",

@@ -55,7 +55,7 @@ test("#234: opening Sources without an edit keeps variables, memory, counters", 
     .toEqual(ws.variables);
 
   await goSources(page);
-  await page.waitForTimeout(1500);
+  // Any save the Sources sync effect starts is gated by __DTK_WORKSPACE_SAVED__.
   await settled(page);
   await page.reload();
   await expect(page.getByText("Loading workspace…")).toBeHidden({
