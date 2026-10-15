@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { expectNoA11yViolations } from "./a11y";
 import { openWorkbench } from "./helpers";
 
 /**
@@ -58,6 +59,7 @@ test("issue 67: 'add a step' from the panel refreshes the grid, Undo restores", 
 
   // The step is in, the grid moved to the new frame.
   expect(await stepOps(page)).toEqual(["scale"]);
+  await expectNoA11yViolations(page, "agent panel after a proposed step");
   await expect(grid).not.toHaveAttribute("data-identity-current", before!, { timeout: 30_000 });
   const after = await grid.getAttribute("data-identity-current");
   await expect(grid).toHaveAttribute("data-identity", after!, { timeout: 60_000 });

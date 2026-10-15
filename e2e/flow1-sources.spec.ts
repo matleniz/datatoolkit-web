@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expectNoA11yViolations } from "./a11y";
 import { captureFlowScreenshot, clearFlowScreenshots } from "./helpers";
 
 test("Flow 1: sources (roles, y by order, merge extra table, result chips)", async ({
@@ -67,6 +68,9 @@ test("Flow 1: sources (roles, y by order, merge extra table, result chips)", asy
   expect(await yChips.count()).toBeGreaterThan(0);
   expect(await mergeChips.count()).toBeGreaterThan(0);
 
-  // 7. Capture screenshot
+  // 7. Accessibility scan of the final state
+  await expectNoA11yViolations(page, "sources with files loaded");
+
+  // 8. Capture screenshot
   await captureFlowScreenshot(page, "1-sources", "01-sources-screen.png");
 });
