@@ -47,3 +47,29 @@ test("issue 218: failed autosave is shown and Retry saves", async ({ page, reque
   await expect(banner).toHaveCount(0);
   expect((await stored(request)).steps.map((s) => s.op)).toEqual(["drop_columns"]);
 });
+
+test("issue 218: reverting to the saved workspace clears the notice", async ({ page }) => {
+  test.setTimeout(120_000);
+  await openWorkbench(page, true);
+  await page.route(/\/api\/workspaces\/churn$/, async (route) => {
+    if (route.request().method() === "PUT") {
+      await route.fulfill({
+        status: 422,
+        contentType: "application/json",
+        body: JSON.stringify({ type: "ValidationError", message: "rejected (e2e)" }),
+      });
+      return;
+    }
+    await route.continue();
+  });
+  await page.evaluate(() =>
+    window.__DTK_DISPATCH__!({
+      type: "ADD_STEP",
+      step: { op: "drop_columns", target: "both", params: { columns: ["signup_date"] } },
+    }),
+  );
+  const banner = page.locator("[data-save-failed]");
+  await expect(banner).toContainText("rejected (e2e)", { timeout: 15_000 });
+  await page.evaluate(() => window.__DTK_DISPATCH__!({ type: "UNDO_STEPS" }));
+  await expect(banner).toHaveCount(0);
+});

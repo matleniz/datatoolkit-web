@@ -10,6 +10,8 @@ import {
   getLastSavedWorkspaceJson,
   getWorkspaceSaveFailure,
   retryWorkspaceSave,
+  dismissWorkspaceSaveFailure,
+  setCommittedWorkspace,
   subscribeWorkspaceSaveFailure,
   getWorkspaceSaveEpoch,
   isWorkspaceSaveSuppressed,
@@ -303,5 +305,45 @@ describe("autosave failure surfacing (#218)", () => {
     vi.spyOn(apiClient, "saveWorkspace").mockResolvedValue(body);
     await ensureWorkspaceSaved(body);
     expect(getWorkspaceSaveFailure()).toBeNull();
+  });
+});
+
+describe("autosave failure scoping (#218 review)", () => {
+  it("clears the failure when the workspace is reverted to the saved one", async () => {
+    const saved = ws("rev218", "/tmp/a.csv");
+    markWorkspaceSaved(saved);
+    const edited = { ...saved, label: { mode: "order" as const }, variables: [{ name: "v", expr: "1" } as never] };
+    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));
+    setCommittedWorkspace(edited);
+    await expect(ensureWorkspaceSaved(edited)).rejects.toThrow("503");
+    expect(getWorkspaceSaveFailure()?.orphaned).toBe(false);
+    setCommittedWorkspace(saved);
+    expect(getWorkspaceSaveFailure()).toBeNull();
+  });
+
+  it("never re-sends or silently drops another workspace's failure", async () => {
+    const a = ws("a218");
+    const b = ws("b218", "/tmp/b.csv");
+    const save = vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));
+    setCommittedWorkspace(a);
+    await expect(ensureWorkspaceSaved(a)).rejects.toThrow("503");
+    setCommittedWorkspace(b);
+    expect(getWorkspaceSaveFailure()).toMatchObject({ orphaned: true });
+    markWorkspaceLoaded(b);
+    expect(getWorkspaceSaveFailure()?.ws.name).toBe("a218");
+    save.mockClear();
+    await retryWorkspaceSave();
+    expect(save).not.toHaveBeenCalled();
+    dismissWorkspaceSaveFailure();
+    expect(getWorkspaceSaveFailure()).toBeNull();
+  });
+
+  it("flags a PUT of A that fails after switching to B as orphaned", async () => {
+    const a = ws("a218");
+    const b = ws("b218", "/tmp/b.csv");
+    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));
+    setCommittedWorkspace(b);
+    await expect(ensureWorkspaceSaved(a)).rejects.toThrow("503");
+    expect(getWorkspaceSaveFailure()).toMatchObject({ orphaned: true });
   });
 });

@@ -1,5 +1,6 @@
 import { useState, useSyncExternalStore } from "react";
 import {
+  dismissWorkspaceSaveFailure,
   getWorkspaceSaveFailure,
   retryWorkspaceSave,
   subscribeWorkspaceSaveFailure,
@@ -21,6 +22,20 @@ export function SaveFailureBanner() {
       .catch(() => undefined)
       .finally(() => setRetrying(false));
   };
+
+  if (failure.orphaned) {
+    return (
+      <div className="banner error-banner" role="alert" data-save-failed="orphaned">
+        <span>
+          Not saved: edits to workspace "{failure.ws.name}" were lost
+          ({failure.message})
+        </span>
+        <button type="button" onClick={dismissWorkspaceSaveFailure}>
+          Dismiss
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="banner error-banner" role="alert" data-save-failed="">
