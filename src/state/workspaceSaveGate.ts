@@ -19,6 +19,59 @@ const suppressedNames = new Set<string>();
 /** Every gate PUT runs on this chain, one at a time, in request order. */
 let saveChain: Promise<void> = Promise.resolve();
 
+export interface WorkspaceSaveFailure {
+  /** Engine (or network) message of the last failed autosave. */
+  message: string;
+  /** Workspace the failed save was for; Retry re-sends the latest commit. */
+  ws: Workspace;
+  /**
+   * The user left this workspace (or its PUT failed after they did): the
+   * edits are not on disk and cannot be retried; the banner says so until
+   * dismissed.
+   */
+  orphaned: boolean;
+}
+
+let saveFailure: WorkspaceSaveFailure | null = null;
+const failureListeners = new Set<() => void>();
+
+function setSaveFailure(next: WorkspaceSaveFailure | null): void {
+  if (saveFailure === null && next === null) return;
+  saveFailure = next;
+  for (const l of failureListeners) l();
+}
+
+/** Last autosave failure, until a save succeeds (issue #218). */
+export function getWorkspaceSaveFailure(): WorkspaceSaveFailure | null {
+  return saveFailure;
+}
+
+export function subscribeWorkspaceSaveFailure(l: () => void): () => void {
+  failureListeners.add(l);
+  return () => {
+    failureListeners.delete(l);
+  };
+}
+
+/** Clear the failure only when it belongs to `name` (a save of another workspace says nothing about it). */
+function clearSaveFailureFor(name: string): void {
+  if (saveFailure && !saveFailure.orphaned && saveFailure.ws.name === name) {
+    setSaveFailure(null);
+  } else if (saveFailure?.orphaned && saveFailure.ws.name === name) {
+    // The orphaned edits of this very name are superseded by a saved copy.
+    setSaveFailure(null);
+  }
+}
+
+/** Acknowledge an orphaned failure (the user was told edits were not saved). */
+export function dismissWorkspaceSaveFailure(): void {
+  setSaveFailure(null);
+}
+
+function failureMessage(e: unknown): string {
+  return e instanceof Error && e.message ? e.message : String(e);
+}
+
 export function getWorkspaceSaveEpoch(): number {
   return saveEpoch;
 }
@@ -30,6 +83,7 @@ export function getLastSavedWorkspaceJson(): string | null {
 /** Call after an explicit saveWorkspace so AppStore skips a redundant PUT. */
 export function markWorkspaceSaved(ws: Workspace): void {
   lastSavedWorkspaceJson = serializeWorkspace(ws);
+  clearSaveFailureFor(ws.name);
   suppressedNames.delete(ws.name);
   dropLegacyCharts(ws.name);
 }
@@ -42,6 +96,9 @@ export function markWorkspaceSaved(ws: Workspace): void {
  */
 export function markWorkspaceLoaded(ws: Workspace): void {
   lastSavedWorkspaceJson = serializeWorkspace(ws);
+  // Another workspace's unsaved failure stays (it is told to the user, not
+  // dropped); a fresh read of the same name supersedes it.
+  clearSaveFailureFor(ws.name);
 }
 
 /** Clear a tombstone when the user intentionally selects/creates that name. */
@@ -134,6 +191,8 @@ export function resetWorkspaceSaveGateForTests(): void {
   suppressedNames.clear();
   saveChain = Promise.resolve();
   committedWorkspace = null;
+  saveFailure = null;
+  failureListeners.clear();
 }
 
 /** Workspace of the current React commit (set in a layout effect, before any
@@ -142,6 +201,15 @@ let committedWorkspace: Workspace | null = null;
 
 export function setCommittedWorkspace(ws: Workspace | null): void {
   committedWorkspace = ws;
+  const f = saveFailure;
+  if (!f || f.orphaned || !ws) return;
+  if (ws.name !== f.ws.name) {
+    // Left the workspace with unsaved edits: tell, never silently drop.
+    setSaveFailure({ ...f, orphaned: true });
+  } else if (serializeWorkspace(ws) === lastSavedWorkspaceJson) {
+    // Edits reverted to what is on disk: nothing is unsaved any more.
+    setSaveFailure(null);
+  }
 }
 
 export function saveable(ws: Workspace | null): ws is Workspace {
@@ -166,6 +234,9 @@ export function saveWorkspaceNow(ws: Workspace): Promise<WorkspaceSaveOutcome> {
       save: (body) => apiClient.saveWorkspace(body),
       remove: (name) => apiClient.deleteWorkspace(name),
       rethrow: true,
+    }).then((outcome) => {
+      if (outcome === "saved") clearSaveFailureFor(ws.name);
+      return outcome;
     }),
   );
   saveChain = run.then(
@@ -183,8 +254,11 @@ export function saveWorkspaceNow(ws: Workspace): Promise<WorkspaceSaveOutcome> {
 function queueWorkspaceSave(
   ws: Workspace,
   epochAtStart: number = saveEpoch,
+  opts: { rethrow?: boolean } = {},
 ): Promise<void> {
   const serialized = serializeWorkspace(ws);
+  let failed = false;
+  let failure: unknown;
   const run = saveChain.then(async () => {
     if (
       committedWorkspace &&
@@ -193,17 +267,52 @@ function queueWorkspaceSave(
     ) {
       return;
     }
-    await commitWorkspaceSave({
-      ws,
-      serialized,
-      epochAtStart,
-      isCurrent: (e) => e === saveEpoch,
-      save: (body) => apiClient.saveWorkspace(body),
-      remove: (name) => apiClient.deleteWorkspace(name),
-    });
+    try {
+      const outcome = await commitWorkspaceSave({
+        ws,
+        serialized,
+        epochAtStart,
+        isCurrent: (e) => e === saveEpoch,
+        save: (body) => apiClient.saveWorkspace(body),
+        remove: (name) => apiClient.deleteWorkspace(name),
+        rethrow: true,
+      });
+      if (outcome === "saved" || serialized === lastSavedWorkspaceJson) {
+        clearSaveFailureFor(ws.name);
+      }
+    } catch (e) {
+      // Never reject the chain: later saves must still run. The failure is
+      // recorded for the UI and handed to callers that asked for it (#218).
+      setSaveFailure({
+        message: failureMessage(e),
+        ws,
+        orphaned: !!committedWorkspace && committedWorkspace.name !== ws.name,
+      });
+      failed = true;
+      failure = e;
+    }
   });
   saveChain = run;
-  return run;
+  return opts.rethrow
+    ? run.then(() => {
+        if (failed) throw failure;
+      })
+    : run;
+}
+
+/**
+ * Re-send the latest workspace after a failed autosave. Rejects (and keeps
+ * the failure recorded) when the engine still refuses it.
+ */
+export function retryWorkspaceSave(): Promise<void> {
+  const failure = saveFailure;
+  // Never re-send a snapshot of a workspace the user has left.
+  if (!failure || failure.orphaned) return Promise.resolve();
+  const latest =
+    committedWorkspace && committedWorkspace.name === failure.ws.name
+      ? committedWorkspace
+      : failure.ws;
+  return queueWorkspaceSave(latest, saveEpoch, { rethrow: true });
 }
 
 /**
@@ -213,13 +322,15 @@ function queueWorkspaceSave(
  * `__DTK_WORKSPACE_SAVED__` gate, it cannot observe the previous commit's
  * (already resolved) promise: child effects run before the provider's.
  * Honours the same tombstone / epoch rules as the debounced autosave.
+ * Rejects with the engine error when the PUT fails, so an analysis never
+ * runs against a stale on-disk workspace (#218).
  */
 export function ensureWorkspaceSaved(ws: Workspace | null): Promise<void> {
   if (!saveable(ws)) return Promise.resolve();
   if (serializeWorkspace(ws) === lastSavedWorkspaceJson) {
     return saveChain;
   }
-  return queueWorkspaceSave(ws);
+  return queueWorkspaceSave(ws, saveEpoch, { rethrow: true });
 }
 
 /** @internal AppStore's debounced-save effect reuses the same chain/queue. */

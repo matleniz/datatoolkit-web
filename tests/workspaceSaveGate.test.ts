@@ -8,6 +8,11 @@ import {
   commitWorkspaceSave,
   ensureWorkspaceSaved,
   getLastSavedWorkspaceJson,
+  getWorkspaceSaveFailure,
+  retryWorkspaceSave,
+  dismissWorkspaceSaveFailure,
+  setCommittedWorkspace,
+  subscribeWorkspaceSaveFailure,
   getWorkspaceSaveEpoch,
   isWorkspaceSaveSuppressed,
   markWorkspaceLoaded,
@@ -264,5 +269,81 @@ describe("workspaceSaveGate (MAT-217)", () => {
     });
     expect(outcome).toBe("skipped");
     expect(save).not.toHaveBeenCalled();
+  });
+});
+
+describe("autosave failure surfacing (#218)", () => {
+  it("records a failed autosave, rejects ensureWorkspaceSaved, clears on retry", async () => {
+    const body = ws("fail218");
+    const save = vi
+      .spyOn(apiClient, "saveWorkspace")
+      .mockRejectedValueOnce(new Error("engine down: 503"))
+      .mockResolvedValue(body);
+    const seen: Array<string | null> = [];
+    const unsub = subscribeWorkspaceSaveFailure(() =>
+      seen.push(getWorkspaceSaveFailure()?.message ?? null),
+    );
+
+    await expect(ensureWorkspaceSaved(body)).rejects.toThrow("engine down: 503");
+    expect(getWorkspaceSaveFailure()?.message).toBe("engine down: 503");
+    expect(getLastSavedWorkspaceJson()).not.toBe(serializeWorkspace(body));
+
+    await retryWorkspaceSave();
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(getWorkspaceSaveFailure()).toBeNull();
+    expect(getLastSavedWorkspaceJson()).toBe(serializeWorkspace(body));
+    expect(seen).toEqual(["engine down: 503", null]);
+    unsub();
+  });
+
+  it("keeps the chain alive and the failure recorded when retry fails again", async () => {
+    const body = ws("fail218b");
+    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("422 bad"));
+    await expect(ensureWorkspaceSaved(body)).rejects.toThrow("422 bad");
+    await expect(retryWorkspaceSave()).rejects.toThrow("422 bad");
+    expect(getWorkspaceSaveFailure()?.message).toBe("422 bad");
+    vi.spyOn(apiClient, "saveWorkspace").mockResolvedValue(body);
+    await ensureWorkspaceSaved(body);
+    expect(getWorkspaceSaveFailure()).toBeNull();
+  });
+});
+
+describe("autosave failure scoping (#218 review)", () => {
+  it("clears the failure when the workspace is reverted to the saved one", async () => {
+    const saved = ws("rev218", "/tmp/a.csv");
+    markWorkspaceSaved(saved);
+    const edited = { ...saved, label: { mode: "order" as const }, variables: [{ name: "v", expr: "1" } as never] };
+    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));
+    setCommittedWorkspace(edited);
+    await expect(ensureWorkspaceSaved(edited)).rejects.toThrow("503");
+    expect(getWorkspaceSaveFailure()?.orphaned).toBe(false);
+    setCommittedWorkspace(saved);
+    expect(getWorkspaceSaveFailure()).toBeNull();
+  });
+
+  it("never re-sends or silently drops another workspace's failure", async () => {
+    const a = ws("a218");
+    const b = ws("b218", "/tmp/b.csv");
+    const save = vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));
+    setCommittedWorkspace(a);
+    await expect(ensureWorkspaceSaved(a)).rejects.toThrow("503");
+    setCommittedWorkspace(b);
+    expect(getWorkspaceSaveFailure()).toMatchObject({ orphaned: true });
+    markWorkspaceLoaded(b);
+    expect(getWorkspaceSaveFailure()?.ws.name).toBe("a218");
+    save.mockClear();
+    await retryWorkspaceSave();
+    expect(save).not.toHaveBeenCalled();
+    dismissWorkspaceSaveFailure();
+    expect(getWorkspaceSaveFailure()).toBeNull();
+  });
+
+  it("flags a PUT of A that fails after switching to B as orphaned", async () => {
+    const a = ws("a218");
+    const b = ws("b218", "/tmp/b.csv");
+    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));
+    setCommittedWorkspace(b);
+    await expect(ensureWorkspaceSaved(a)).rejects.toThrow("503");
+    expect(getWorkspaceSaveFailure()).toMatchObject({ orphaned: true });
   });
 });

@@ -1,6 +1,7 @@
 import { AlignScreen } from "./screens/align/AlignScreen";
 import { SourcesScreen } from "./screens/sources/SourcesScreen";
 import { AgentBridge } from "./bench/agent/AgentBridge";
+import { SaveFailureBanner } from "./SaveFailureBanner";
 import { Workbench } from "./bench/Workbench";
 import { useAppDispatch, useAppState } from "./state/AppStore";
 import type { ScreenId } from "./state/reducer";
@@ -87,6 +88,8 @@ export function App() {
           </div>
         ) : null}
       </header>
+
+      <SaveFailureBanner />
 
       {screen === "sources" ? <SourcesScreen /> : null}
       {screen === "align" ? <AlignScreen /> : null}
