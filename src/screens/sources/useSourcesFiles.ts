@@ -205,7 +205,17 @@ export function useSourcesFiles({
   const saveAndNavigate = async (screen: "align" | "bench") => {
     // Never PUT a workspace built from an unloaded / empty sources state (MAT-149).
     if (sourcesLoading) return;
-    const ws = buildResult.workspace;
+    const built = buildResult.workspace;
+    // Keep what Sources does not own (variables, id_counters, ...) from the store.
+    const ws =
+      core.workspace?.name === built.name
+        ? {
+            ...core.workspace,
+            datasets: built.datasets,
+            label: built.label,
+            merges: built.merges,
+          }
+        : built;
     if (!ws.datasets.train.x.path || status.columnCount === 0 || status.parseError) {
       addError(
         status.parseError

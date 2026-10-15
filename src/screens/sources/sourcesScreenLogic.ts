@@ -429,7 +429,10 @@ export function trainStatus(
       : (trainX?.cols.length ?? 0);
   const hasPath = Boolean(trainX?.spec.path);
   const parseError = trainX?.parseError?.trim() || null;
-  const ready = hasPath && columnCount > 0 && !parseError;
+  // The file's own columns too: a stale preview shape of the previous train
+  // file must not make a freshly swapped, still-empty file navigable.
+  const ready =
+    hasPath && columnCount > 0 && (trainX?.cols.length ?? 0) > 0 && !parseError;
   const parseErrorHint = parseError ? trainParseErrorDisplay(parseError) : null;
 
   let emptyTrainHint: string | null = null;
@@ -555,4 +558,58 @@ export function showEmptyTrainBanner(
 /** Whether an openWorkspace error is the benign "workspace does not exist yet". */
 export function isUnknownWorkspaceError(msg: string): boolean {
   return /unknown workspace|not found/i.test(msg);
+}
+
+/** The Sources-owned part of a workspace (the rest is not Sources' to touch). */
+export type SourcesSpec = Pick<Workspace, "datasets" | "label" | "merges">;
+
+/**
+ * The Sources-owned fields to push into the app store as the user edits
+ * (#234), or null when nothing may be stored yet: still loading, build errors,
+ * no readable train file, a switch to another workspace in flight, or already
+ * in sync. Variables, steps, notes, memory, documents... stay the store's:
+ * the caller dispatches SET_SOURCES_SPEC, never a wholesale workspace.
+ */
+export function sourcesWorkspaceToSync(opts: {
+  built: Workspace;
+  current: Workspace | null;
+  canNavigate: boolean;
+  buildErrors: readonly string[];
+  /**
+   * What loading an already stored workspace produced (`loaded`, inspect
+   * fills defaults such as sep "auto" -> ",") next to the stored value it was
+   * built from (`stored`), both `sourcesSpecKey`s. Building `loaded` while
+   * the store still holds `stored` is not a user edit, so not written back;
+   * once the store moved (an edit synced), going back to `loaded` is an edit.
+   * Null for a workspace with no train file yet.
+   */
+  baseline?: { loaded: string; stored: string } | null;
+}): SourcesSpec | null {
+  const { built, current, canNavigate, buildErrors } = opts;
+  if (!canNavigate || buildErrors.length > 0) return null;
+  if (!current || current.name !== built.name) return null;
+  if (!built.datasets.train.x.path) return null;
+  const spec: SourcesSpec = {
+    datasets: built.datasets,
+    label: built.label,
+    merges: built.merges,
+  };
+  const key = sourcesSpecKey(spec);
+  const currentKey = sourcesSpecKey(current);
+  const { baseline } = opts;
+  if (baseline && key === baseline.loaded && currentKey === baseline.stored) {
+    return null;
+  }
+  return key === currentKey ? null : spec;
+}
+
+/** Stable key of the Sources-owned fields of a workspace. */
+export function sourcesSpecKey(
+  ws: Pick<Workspace, "datasets" | "label" | "merges">,
+): string {
+  return JSON.stringify({
+    datasets: ws.datasets,
+    label: ws.label,
+    merges: ws.merges,
+  });
 }
