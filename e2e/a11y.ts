@@ -9,7 +9,7 @@ const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
  * follow-up issue named in the PR; remove the entry when the rule is fixed.
  * Anything not listed here fails the spec.
  */
-export const KNOWN_VIOLATIONS: Record<string, string> = {};
+const KNOWN_VIOLATIONS: Record<string, string> = {};
 
 /**
  * Run axe (WCAG 2.1 A/AA) on the current page and assert there are no
