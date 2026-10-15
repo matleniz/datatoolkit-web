@@ -9,6 +9,7 @@ import {
   type WorkspaceSummaryEntry,
 } from "../../api/types";
 import { abandonPendingWorkspaceSave } from "../../state/AppStore";
+import { allowWorkspaceSave } from "../../state/workspaceSaveGate";
 import { engineMessage } from "./sourcesLogic";
 import {
   deleteConfirmMessage,
@@ -175,7 +176,16 @@ export function WorkspaceSidebar({
     }
     setBusy(true);
     try {
-      const ws = await apiClient.renameWorkspace(oldName, trimmed);
+      // Same ordering as delete: tombstone the old name and let the PUT on
+      // the wire land BEFORE the rename, or an autosave of the old name can
+      // land after it and resurrect the copy for a while (#244).
+      await abandonPendingWorkspaceSave([oldName]);
+      const ws = await apiClient
+        .renameWorkspace(oldName, trimmed)
+        .catch((err: unknown) => {
+          allowWorkspaceSave(oldName);
+          throw err;
+        });
       setSelected((prev) => {
         const next = { ...prev };
         delete next[oldName];
@@ -342,9 +352,7 @@ export function WorkspaceSidebar({
 
       {selectedNames.length > 0 ? (
         <div className="ws-bulk-bar">
-          <span className="ws-bulk-count">
-            {selectedNames.length} selected
-          </span>
+          <span className="ws-bulk-count">{selectedNames.length} selected</span>
           <button
             type="button"
             className="ws-action danger"

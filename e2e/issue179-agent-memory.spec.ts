@@ -147,7 +147,8 @@ test("issue 179: remember / forget from the bridge, Undo, the Agent memory view,
   await view.getByRole("button", { name: "Clear memory" }).click();
   await expect(view.getByText("No memory yet.")).toBeVisible();
   await saved(page);
-  expect((await stored(request)).memory ?? []).toEqual([]);
+  // `saved` only waits for the gate of the commit it can see: poll the stored copy (#244).
+  await expect.poll(async () => (await stored(request)).memory ?? []).toEqual([]);
 });
 
 test("issue 179: the agent (stub pack, real MCP tools) remembers through Studio and reads it back", async ({

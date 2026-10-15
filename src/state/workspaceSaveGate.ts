@@ -280,14 +280,35 @@ function queueWorkspaceSave(
       if (outcome === "saved" || serialized === lastSavedWorkspaceJson) {
         clearSaveFailureFor(ws.name);
       }
+      // The user went back to the previously saved copy while this PUT was on
+      // the wire: that commit saw "nothing to save" and queued nothing, so the
+      // engine would keep the edit that was just undone (#244).
+      if (
+        outcome === "saved" &&
+        committedWorkspace &&
+        committedWorkspace.name === ws.name &&
+        serializeWorkspace(committedWorkspace) !== serialized
+      ) {
+        void queueWorkspaceSave(committedWorkspace, epochAtStart);
+      }
     } catch (e) {
       // Never reject the chain: later saves must still run. The failure is
       // recorded for the UI and handed to callers that asked for it (#218).
-      setSaveFailure({
-        message: failureMessage(e),
-        ws,
-        orphaned: !!committedWorkspace && committedWorkspace.name !== ws.name,
-      });
+      // A PUT refused after the user edited this workspace again (or reverted
+      // it to the saved copy) says nothing about what is on screen: the
+      // newer commit has its own save, so recording this one would bring
+      // back a notice the revert just cleared (#244).
+      const superseded =
+        !!committedWorkspace &&
+        committedWorkspace.name === ws.name &&
+        serializeWorkspace(committedWorkspace) !== serialized;
+      if (!superseded) {
+        setSaveFailure({
+          message: failureMessage(e),
+          ws,
+          orphaned: !!committedWorkspace && committedWorkspace.name !== ws.name,
+        });
+      }
       failed = true;
       failure = e;
     }

@@ -80,6 +80,8 @@ test("#91: set_grid_view filters / sorts the grid view only; Undo restores it", 
   expect((await send({ sort: null })).ok).toBe(true);
   await expect(bar.locator("[data-view-count]")).toHaveText(/^\d+ of 41 rows$/);
   expect((await send({ filter: null })).ok).toBe(true);
+  // The total follows once the unfiltered frame has loaded (null until then).
+  await expect.poll(async () => (await published())?.total, { timeout: 15_000 }).toBe(41);
   expect(await published()).toMatchObject({ filter: null, total: 41 });
   await expect(bar).toHaveCount(0);
 

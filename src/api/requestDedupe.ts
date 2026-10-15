@@ -24,6 +24,21 @@ export class InFlightDedupe {
     return promise;
   }
 
+  /**
+   * Forget the in-flight GETs whose path starts with `prefix`: the next
+   * identical read goes out again instead of joining an answer that was
+   * computed before a write (#244). Writes keep their dedupe; callers already
+   * holding a promise keep it.
+   */
+  invalidateReads(prefix: string): void {
+    for (const key of this.inflight.keys()) {
+      const [method, path] = key.split("\0");
+      if (method === "GET" && path?.startsWith(prefix)) {
+        this.inflight.delete(key);
+      }
+    }
+  }
+
   clear(): void {
     this.inflight.clear();
   }

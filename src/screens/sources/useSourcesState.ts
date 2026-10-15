@@ -10,6 +10,7 @@ import {
 import { apiClient, serializeWorkspace } from "../../api/client";
 import type { Workspace, WorkspaceSummaryEntry } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
+import { createLatestWins } from "./latestWins";
 import { engineMessage, type WorkspaceSourcesState } from "./sourcesLogic";
 import {
   EMPTY_PREVIEW,
@@ -102,12 +103,22 @@ function useSourcesErrors(): [string[], SourcesErrors] {
 function useWorkspaceSummaries(workspace: Workspace | null) {
   const [summaries, setSummaries] = useState<WorkspaceSummaryEntry[]>([]);
   const [listError, setListError] = useState<string | null>(null);
+  const latest = useRef(createLatestWins());
+  // Every value applied from outside (sidebar patch / refresh, post-save
+  // refresh) supersedes the list fetches still on the wire.
+  const applySummaries = useCallback<
+    Dispatch<SetStateAction<WorkspaceSummaryEntry[]>>
+  >((next) => {
+    latest.current.next();
+    setSummaries(next);
+  }, []);
   useEffect(() => {
     let active = true;
+    const ticket = latest.current.next();
     apiClient
       .listWorkspaceSummaries()
       .then((list) => {
-        if (!active) return;
+        if (!active || !latest.current.isCurrent(ticket)) return;
         setSummaries(list);
         setListError(null);
       })
@@ -133,10 +144,11 @@ function useWorkspaceSummaries(workspace: Workspace | null) {
     let active = true;
     // AppStore's save effect runs after this one: read its gate next tick.
     const timer = window.setTimeout(() => {
+      const ticket = latest.current.next();
       void (window.__DTK_WORKSPACE_SAVED__ ?? Promise.resolve())
         .then(() => apiClient.listWorkspaceSummaries())
         .then((list) => {
-          if (active) setSummaries(list);
+          if (active && latest.current.isCurrent(ticket)) setSummaries(list);
         })
         .catch(() => {});
     }, 0);
@@ -146,7 +158,7 @@ function useWorkspaceSummaries(workspace: Workspace | null) {
     };
   }, [serialized]);
 
-  return { summaries, setSummaries, listError };
+  return { summaries, setSummaries: applySummaries, listError };
 }
 
 /** State, refs and persistence shared by the Sources screen handlers. */

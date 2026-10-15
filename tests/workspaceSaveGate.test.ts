@@ -17,6 +17,7 @@ import {
   isWorkspaceSaveSuppressed,
   markWorkspaceLoaded,
   markWorkspaceSaved,
+  queueWorkspaceSave,
   resetWorkspaceSaveGateForTests,
 } from "../src/state/workspaceSaveGate";
 
@@ -321,10 +322,56 @@ describe("autosave failure scoping (#218 review)", () => {
     expect(getWorkspaceSaveFailure()).toBeNull();
   });
 
+  it("ignores a failure that lands after the edit was reverted (#244)", async () => {
+    const saved = ws("race244", "/tmp/a.csv");
+    markWorkspaceSaved(saved);
+    const edited = { ...saved, variables: [{ name: "v", expr: "1" } as never] };
+    let fail: (e: Error) => void = () => undefined;
+    vi.spyOn(apiClient, "saveWorkspace").mockImplementation(
+      () => new Promise((_, reject) => (fail = reject)),
+    );
+    setCommittedWorkspace(edited);
+    const inFlight = ensureWorkspaceSaved(edited).catch(() => undefined);
+    await vi.waitFor(() => expect(apiClient.saveWorkspace).toHaveBeenCalled());
+    // The user reverts while that PUT is on the wire, then it is refused.
+    setCommittedWorkspace(saved);
+    fail(new Error("422"));
+    await inFlight;
+    expect(getWorkspaceSaveFailure()).toBeNull();
+  });
+
+  it("re-sends the saved copy when the edit was undone while its PUT was on the wire (#244)", async () => {
+    const base = ws("undo244", "/tmp/a.csv");
+    const edited = { ...base, variables: [{ name: "v", expr: "1" } as never] };
+    markWorkspaceSaved(base);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    const bodies: string[] = [];
+    vi.spyOn(apiClient, "saveWorkspace").mockImplementation(async (body) => {
+      bodies.push(serializeWorkspace(body));
+      if (bodies.length === 1) await gate;
+      return body;
+    });
+    setCommittedWorkspace(edited);
+    const first = queueWorkspaceSave(edited);
+    await vi.waitFor(() => expect(bodies).toHaveLength(1));
+    // Undo: the committed workspace is the last saved one again, so the
+    // autosave effect has nothing to queue.
+    setCommittedWorkspace(base);
+    release();
+    await first;
+    await vi.waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toBe(serializeWorkspace(base));
+    await ensureWorkspaceSaved(base);
+    expect(getLastSavedWorkspaceJson()).toBe(serializeWorkspace(base));
+  });
+
   it("never re-sends or silently drops another workspace's failure", async () => {
     const a = ws("a218");
     const b = ws("b218", "/tmp/b.csv");
-    const save = vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));
+    const save = vi
+      .spyOn(apiClient, "saveWorkspace")
+      .mockRejectedValue(new Error("503"));
     setCommittedWorkspace(a);
     await expect(ensureWorkspaceSaved(a)).rejects.toThrow("503");
     setCommittedWorkspace(b);

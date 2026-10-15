@@ -273,9 +273,17 @@ class HttpApiClient implements ApiClient {
       return this.execute<T>(method, path, headers, payload, signal);
     }
     const key = this.dedupe.key(method, path, bodyKey);
-    return this.dedupe.run(key, () =>
+    // A write to the workspace store makes every in-flight workspace read
+    // stale: a list requested right after a create / rename / delete must not
+    // join the answer computed before it (#244).
+    const writesStore = method !== "GET" && path.startsWith("/workspaces/");
+    if (writesStore) this.dedupe.invalidateReads("/workspaces");
+    const run = this.dedupe.run(key, () =>
       this.execute<T>(method, path, headers, payload),
     );
+    return writesStore
+      ? run.finally(() => this.dedupe.invalidateReads("/workspaces"))
+      : run;
   }
 
   private async execute<T>(

@@ -28,9 +28,13 @@ const trainX = (over: Partial<SourceFileItem> = {}): SourceFileItem => ({
 
 describe("trainParseErrorDisplay", () => {
   it("wraps kind mismatches and unnamed errors, keeps engine errors verbatim", () => {
-    expect(trainParseErrorDisplay("saved as csv but …")).toMatch(/^Stored train source/);
+    expect(trainParseErrorDisplay("saved as csv but …")).toMatch(
+      /^Stored train source/,
+    );
     expect(trainParseErrorDisplay("SourceError: bad")).toBe("SourceError: bad");
-    expect(trainParseErrorDisplay("boom")).toBe("Stored train source failed to parse: boom");
+    expect(trainParseErrorDisplay("boom")).toBe(
+      "Stored train source failed to parse: boom",
+    );
   });
 });
 
@@ -53,6 +57,19 @@ describe("trainStatus", () => {
     expect(s.navigateBlockReason).toBe(EMPTY_TRAIN_MESSAGE);
   });
 
+  it("needs the preview shape cleared to flag an empty file after a failed preview (#244)", () => {
+    const empty = trainX({ cols: [] });
+    const stale = {
+      ...EMPTY_PREVIEW,
+      trainShape: [20, 10] as [number, number],
+    };
+    // A previous file's shape hides the hint: the preview must drop it on error.
+    expect(trainStatus(empty, stale, false).emptyTrainHint).toBeNull();
+    expect(
+      trainStatus(empty, { ...stale, trainShape: null }, false).emptyTrainHint,
+    ).toBe(EMPTY_TRAIN_MESSAGE);
+  });
+
   it("surfaces a parse error as the block reason", () => {
     const s = trainStatus(trainX({ parseError: "boom" }), EMPTY_PREVIEW, false);
     expect(s.parseErrorHint).toBe("Stored train source failed to parse: boom");
@@ -62,8 +79,14 @@ describe("trainStatus", () => {
 
 describe("visibleEngineErrors", () => {
   it("hides errors already shown by the banners", () => {
-    const status = { emptyTrainHint: "e", parseErrorHint: "p", parseError: "raw" };
-    expect(visibleEngineErrors(["e", "p", "raw", "other"], status)).toEqual(["other"]);
+    const status = {
+      emptyTrainHint: "e",
+      parseErrorHint: "p",
+      parseError: "raw",
+    };
+    expect(visibleEngineErrors(["e", "p", "raw", "other"], status)).toEqual([
+      "other",
+    ]);
   });
 });
 
