@@ -321,6 +321,24 @@ describe("autosave failure scoping (#218 review)", () => {
     expect(getWorkspaceSaveFailure()).toBeNull();
   });
 
+  it("ignores a failure that lands after the edit was reverted (#244)", async () => {
+    const saved = ws("race244", "/tmp/a.csv");
+    markWorkspaceSaved(saved);
+    const edited = { ...saved, variables: [{ name: "v", expr: "1" } as never] };
+    let fail: (e: Error) => void = () => undefined;
+    vi.spyOn(apiClient, "saveWorkspace").mockImplementation(
+      () => new Promise((_, reject) => (fail = reject)),
+    );
+    setCommittedWorkspace(edited);
+    const inFlight = ensureWorkspaceSaved(edited).catch(() => undefined);
+    await vi.waitFor(() => expect(apiClient.saveWorkspace).toHaveBeenCalled());
+    // The user reverts while that PUT is on the wire, then it is refused.
+    setCommittedWorkspace(saved);
+    fail(new Error("422"));
+    await inFlight;
+    expect(getWorkspaceSaveFailure()).toBeNull();
+  });
+
   it("never re-sends or silently drops another workspace's failure", async () => {
     const a = ws("a218");
     const b = ws("b218", "/tmp/b.csv");
