@@ -8,6 +8,9 @@ import {
   commitWorkspaceSave,
   ensureWorkspaceSaved,
   getLastSavedWorkspaceJson,
+  getWorkspaceSaveFailure,
+  retryWorkspaceSave,
+  subscribeWorkspaceSaveFailure,
   getWorkspaceSaveEpoch,
   isWorkspaceSaveSuppressed,
   markWorkspaceLoaded,
@@ -264,5 +267,41 @@ describe("workspaceSaveGate (MAT-217)", () => {
     });
     expect(outcome).toBe("skipped");
     expect(save).not.toHaveBeenCalled();
+  });
+});
+
+describe("autosave failure surfacing (#218)", () => {
+  it("records a failed autosave, rejects ensureWorkspaceSaved, clears on retry", async () => {
+    const body = ws("fail218");
+    const save = vi
+      .spyOn(apiClient, "saveWorkspace")
+      .mockRejectedValueOnce(new Error("engine down: 503"))
+      .mockResolvedValue(body);
+    const seen: Array<string | null> = [];
+    const unsub = subscribeWorkspaceSaveFailure(() =>
+      seen.push(getWorkspaceSaveFailure()?.message ?? null),
+    );
+
+    await expect(ensureWorkspaceSaved(body)).rejects.toThrow("engine down: 503");
+    expect(getWorkspaceSaveFailure()?.message).toBe("engine down: 503");
+    expect(getLastSavedWorkspaceJson()).not.toBe(serializeWorkspace(body));
+
+    await retryWorkspaceSave();
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(getWorkspaceSaveFailure()).toBeNull();
+    expect(getLastSavedWorkspaceJson()).toBe(serializeWorkspace(body));
+    expect(seen).toEqual(["engine down: 503", null]);
+    unsub();
+  });
+
+  it("keeps the chain alive and the failure recorded when retry fails again", async () => {
+    const body = ws("fail218b");
+    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("422 bad"));
+    await expect(ensureWorkspaceSaved(body)).rejects.toThrow("422 bad");
+    await expect(retryWorkspaceSave()).rejects.toThrow("422 bad");
+    expect(getWorkspaceSaveFailure()?.message).toBe("422 bad");
+    vi.spyOn(apiClient, "saveWorkspace").mockResolvedValue(body);
+    await ensureWorkspaceSaved(body);
+    expect(getWorkspaceSaveFailure()).toBeNull();
   });
 });
