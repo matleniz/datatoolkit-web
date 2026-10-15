@@ -241,6 +241,17 @@ export async function postUiAck(token: string, ack: unknown): Promise<void> {
   }
 }
 
+const sourceWriteListeners = new Set<() => void>();
+
+/**
+ * Call `listener` after Studio wrote a file the engine may read as a source
+ * (an upload can replace one under the same name): cached frames are stale.
+ */
+export function onSourceFilesWritten(listener: () => void): () => void {
+  sourceWriteListeners.add(listener);
+  return () => sourceWriteListeners.delete(listener);
+}
+
 class HttpApiClient implements ApiClient {
   readonly baseUrl: string;
   private readonly dedupe = new InFlightDedupe();
@@ -591,12 +602,14 @@ class HttpApiClient implements ApiClient {
   }
 
   upload(filename: string, body: BodyInit): Promise<UploadResponse> {
-    return this.request(
+    return this.request<UploadResponse>(
       "PUT",
       `/uploads/${encodeURIComponent(filename)}`,
       undefined,
       body,
-    );
+    ).finally(() => {
+      for (const l of [...sourceWriteListeners]) l();
+    });
   }
 
   describeDocument(path: string, name?: string): Promise<Omit<WorkspaceDocument, "id">> {
