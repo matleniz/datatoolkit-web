@@ -28,7 +28,9 @@ npx --prefer-offline knip@6 --exclude types
 
 stage "4/4 e2e (playwright)"
 # Two free TCP ports on 127.0.0.1 (same one-liner as PR #155).
-eval "$(node -e 'const n=require("net");const a=n.createServer().listen(0,"127.0.0.1",()=>{const b=n.createServer().listen(0,"127.0.0.1",()=>{console.log("export DTK_E2E_API_PORT="+a.address().port+" DTK_E2E_WEB_PORT="+b.address().port);a.close();b.close()})})')"
+ports=$(node -e 'const n=require("net");const a=n.createServer().listen(0,"127.0.0.1",()=>{const b=n.createServer().listen(0,"127.0.0.1",()=>{console.log("export DTK_E2E_API_PORT="+a.address().port+" DTK_E2E_WEB_PORT="+b.address().port);a.close();b.close()})})')
+eval "$ports"
+: "${DTK_E2E_API_PORT:?port picker failed}" "${DTK_E2E_WEB_PORT:?port picker failed}"
 DTK_ENGINE_DIR="${DTK_ENGINE_DIR:-$HOME/datatoolkit}"
 export DTK_ENGINE_DIR
 npx playwright test
