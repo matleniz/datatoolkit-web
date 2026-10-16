@@ -354,5 +354,19 @@ export function ensureWorkspaceSaved(ws: Workspace | null): Promise<void> {
   return queueWorkspaceSave(ws, saveEpoch, { rethrow: true });
 }
 
+/**
+ * Resolve once the engine store holds the on-screen edits of workspace
+ * `name` (#248). Calls that read the stored file (duplicate, rename, export)
+ * await it first: the autosave is debounced, so an edit made a moment ago is
+ * not on disk yet. Rejects with the engine error when the PUT fails, so the
+ * caller does not act on a stale file (the save-failure notice is shown).
+ */
+export function flushWorkspaceSave(name: string): Promise<void> {
+  if (committedWorkspace && committedWorkspace.name === name) {
+    return ensureWorkspaceSaved(committedWorkspace);
+  }
+  return saveChain;
+}
+
 /** @internal AppStore's debounced-save effect reuses the same chain/queue. */
 export { queueWorkspaceSave };

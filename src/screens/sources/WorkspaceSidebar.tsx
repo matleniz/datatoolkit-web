@@ -9,7 +9,7 @@ import {
   type WorkspaceSummaryEntry,
 } from "../../api/types";
 import { abandonPendingWorkspaceSave } from "../../state/AppStore";
-import { allowWorkspaceSave } from "../../state/workspaceSaveGate";
+import { allowWorkspaceSave, flushWorkspaceSave } from "../../state/workspaceSaveGate";
 import { engineMessage } from "./sourcesLogic";
 import {
   deleteConfirmMessage,
@@ -179,6 +179,7 @@ export function WorkspaceSidebar({
       // Same ordering as delete: tombstone the old name and let the PUT on
       // the wire land BEFORE the rename, or an autosave of the old name can
       // land after it and resurrect the copy for a while (#244).
+      await flushWorkspaceSave(oldName);
       await abandonPendingWorkspaceSave([oldName]);
       const ws = await apiClient
         .renameWorkspace(oldName, trimmed)
@@ -220,6 +221,9 @@ export function WorkspaceSidebar({
     );
     setBusy(true);
     try {
+      // The autosave is debounced: put the on-screen edits on disk first or
+      // the copy is made from an older file (#248).
+      await flushWorkspaceSave(name);
       const ws = await apiClient.duplicateWorkspace(name, copyName);
       const found = summaries.find((s) => s.name === name);
       const src = found && !isCorruptEntry(found) ? found : undefined;
