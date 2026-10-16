@@ -234,6 +234,8 @@ ps1 one-liner with `-Uv`.
 project's fleet config, outside this repo); the e2e suite is run separately.
 `.github/workflows/ci.yml` runs the same checks; e2e stays local.
 
+The project CHECK (all of the above plus the full e2e) is `bash scripts/fleet-check.sh`.
+
 `eslint-plugin-sonarjs` enforces one rule, `sonarjs/cognitive-complexity` at 25
 (`error`): extract pure helpers rather than raising the ceiling.
 
