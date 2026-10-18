@@ -1,5 +1,5 @@
 import { apiClient } from "./api/client";
-import { isCorruptEntry, type Workspace } from "./api/types";
+import { errorText, isCorruptEntry, type Workspace } from "./api/types";
 
 const FILES = [
   "churn_train.csv",
@@ -79,24 +79,59 @@ async function createChurnWorkspace(): Promise<Workspace> {
   return saved;
 }
 
+export interface SkippedWorkspace {
+  name: string;
+  reason: string;
+}
+
+export interface InitialLoad {
+  workspace: Workspace;
+  /** Set when the remembered workspace could not be opened and was forgotten. */
+  skipped: SkippedWorkspace | null;
+}
+
 /**
  * Open the remembered workspace only if GET /workspaces lists it.
  * Otherwise seed the demo "churn" workspace without probing a missing name
  * (avoids GET /workspaces/churn → 404 on a fresh DTK_HOME).
+ *
+ * If opening the remembered workspace fails (HTTP error, invalid schema,
+ * deleted concurrently), forget it and fall back once to `churn`, then to the
+ * other valid entries, in list order. Each candidate is tried at most once;
+ * when all fail the last error is thrown.
  */
-export async function loadInitialWorkspace(): Promise<Workspace | null> {
+export async function loadInitialWorkspace(): Promise<InitialLoad> {
   const list = await apiClient.listWorkspaces();
   // A corrupt entry is listed but cannot be opened: never auto-open it.
-  const names = new Set(
-    list.filter((w) => !isCorruptEntry(w)).map((w) => w.name),
-  );
+  const valid = list.filter((w) => !isCorruptEntry(w)).map((w) => w.name);
+  const names = new Set(valid);
   const remembered = rememberedWorkspaceName();
+
+  let skipped: SkippedWorkspace | null = null;
   if (remembered && names.has(remembered)) {
-    return apiClient.getWorkspace(remembered);
+    try {
+      return { workspace: await apiClient.getWorkspace(remembered), skipped };
+    } catch (e) {
+      forgetWorkspaceName(remembered);
+      skipped = { name: remembered, reason: errorText(e) };
+      names.delete(remembered);
+    }
   }
-  if (names.has("churn")) {
-    return apiClient.getWorkspace("churn");
+
+  const candidates = [
+    ...(names.has("churn") ? ["churn"] : []),
+    // Only walk the other entries after a failure; a plain fresh start seeds churn.
+    ...(skipped ? valid.filter((n) => n !== "churn" && names.has(n)) : []),
+  ];
+  let lastError: unknown = null;
+  for (const name of candidates) {
+    try {
+      return { workspace: await apiClient.getWorkspace(name), skipped };
+    } catch (e) {
+      lastError = e;
+    }
   }
+  if (lastError) throw lastError;
   // Fresh store: create demo churn via upload + PUT (no GET 404).
-  return createChurnWorkspace();
+  return { workspace: await createChurnWorkspace(), skipped };
 }
