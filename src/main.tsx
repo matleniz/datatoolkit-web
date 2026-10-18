@@ -2,7 +2,7 @@ import { StrictMode, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
-import { loadInitialWorkspace } from "./bootstrap";
+import { loadInitialWorkspace, type SkippedWorkspace } from "./bootstrap";
 import { AppProvider, useAppDispatch } from "./state/AppStore";
 import { markWorkspaceLoaded } from "./state/workspaceSaveGate";
 import "./theme/tokens.css";
@@ -11,16 +11,16 @@ function Bootstrap({ children }: { children: ReactNode }) {
   const dispatch = useAppDispatch();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [skipped, setSkipped] = useState<SkippedWorkspace | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     loadInitialWorkspace()
-      .then((ws) => {
+      .then(({ workspace: ws, skipped: skippedWs }) => {
         if (cancelled) return;
-        if (ws) {
-          markWorkspaceLoaded(ws);
-          dispatch({ type: "SET_WORKSPACE", workspace: ws });
-        }
+        markWorkspaceLoaded(ws);
+        dispatch({ type: "SET_WORKSPACE", workspace: ws });
+        setSkipped(skippedWs);
         setReady(true);
       })
       .catch((e) => {
@@ -53,7 +53,22 @@ function Bootstrap({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  return children;
+  return (
+    <>
+      {skipped ? (
+        <div className="banner error-banner" role="status" data-workspace-skipped={skipped.name}>
+          <span>
+            Could not open workspace "{skipped.name}" ({skipped.reason}); opened
+            another one instead.
+          </span>
+          <button type="button" onClick={() => setSkipped(null)}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+      {children}
+    </>
+  );
 }
 
 const root = document.getElementById("root");
