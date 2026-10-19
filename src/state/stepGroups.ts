@@ -274,6 +274,17 @@ export function removeStepAt(list: StepList, index: number): StepList {
   return follow(steps, list.groups);
 }
 
+/** Group `groupId` removed with all its steps, in one change; the list itself when the id is unknown. */
+export function removeGroup(list: StepList, groupId: string): StepList {
+  const group = list.groups.find((g) => g.id === groupId);
+  if (!group) return list;
+  const gone = new Set(group.step_ids);
+  return follow(
+    list.steps.filter((s) => s.id === undefined || !gone.has(s.id)),
+    list.groups.filter((g) => g.id !== groupId),
+  );
+}
+
 /** The step at `index` replaced; it keeps its id (hence its group). */
 export function replaceStepAt(list: StepList, index: number, step: Step): StepList {
   const old = list.steps[index];
