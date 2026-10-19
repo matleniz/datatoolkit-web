@@ -79,6 +79,7 @@ describe("defaultExportOutDir", () => {
       label: { mode: "order" },
       merges: [],
       variables: [],
+      groups: [],
       steps: [],
     } as Workspace;
     expect(defaultExportOutDir(ws)).toBe("/tmp/dtk-abc/exports/parkinson");
@@ -93,6 +94,7 @@ describe("defaultExportOutDir", () => {
       label: { mode: "order" },
       merges: [],
       variables: [],
+      groups: [],
       steps: [],
     } as Workspace;
     expect(defaultExportOutDir(ws)).toBe("/tmp/exports/churn");

@@ -31,6 +31,7 @@ function ws(name: string, path = "/tmp/train.csv"): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 }

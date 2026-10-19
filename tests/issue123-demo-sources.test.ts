@@ -29,6 +29,7 @@ const churn: Workspace = {
     },
   ],
   variables: [],
+  groups: [],
   steps: [],
 };
 

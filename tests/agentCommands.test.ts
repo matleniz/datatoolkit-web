@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { JsonSchema, Step } from "../src/api/types";
+import type { JsonSchema, Step, Workspace } from "../src/api/types";
 import {
   describeOps,
   handleCommand,
@@ -11,7 +11,7 @@ import {
   type Touched,
 } from "../src/state/agentCommands";
 import { appReducer, emptyWorkspace, initialState, type AppAction, type AppState } from "../src/state/reducer";
-import { applyStepOps } from "../src/state/stepOps";
+import { applyStepOps, type StepOp } from "../src/state/stepOps";
 import { fillStepIds, withNewId } from "../src/state/stepIds";
 import { currentIdentityKey } from "../src/state/uiContext";
 
@@ -23,10 +23,14 @@ const drop: Step = { op: "drop_columns", target: "both", params: { columns: ["id
 const withoutIds = (steps: Step[]) => steps.map(({ id: _id, ...s }) => s);
 const MINTED = /^s[0-9a-f]{8}$/;
 
+/** A workspace as the store holds it (ids and groups filled), not a bare literal. */
+const loaded = (workspace: Workspace) =>
+  appReducer(initialState, { type: "SET_WORKSPACE", workspace }).workspace!;
+
 const start = (steps: Step[] = []): AppState => ({
   ...initialState,
   screen: "bench",
-  workspace: { ...emptyWorkspace("demo"), steps },
+  workspace: loaded({ ...emptyWorkspace("demo"), steps }),
 });
 
 /** A fake store: the reducer behind getState / dispatch, review answered by `answer`. */
@@ -102,10 +106,16 @@ const propose = (s: AppState, ops: unknown[], extra: Record<string, unknown> = {
   ...extra,
 });
 
+/** `applyStepOps` over steps with no groups yet (the groups are checked in stepGroups.test.ts). */
+const apply = (steps: Step[], ops: StepOp[]) => {
+  const out = applyStepOps({ steps: fillStepIds(steps), groups: [] }, ops);
+  return "error" in out ? out : { steps: out.steps };
+};
+
 describe("applyStepOps", () => {
   it("adds, replaces (keeping align) and removes in order", () => {
     const aligned: Step = { ...impute, align: true };
-    const out = applyStepOps([aligned, scale], [
+    const out = apply([aligned, scale], [
       { replace: { index: 0, step: { ...scale, op: "x" } } },
       { add: { step: drop } },
       { remove: { index: 1 } },
@@ -120,21 +130,21 @@ describe("applyStepOps", () => {
       { ...impute, id: "s1", align: true },
       { ...scale, id: "s2" },
     ];
-    const out = applyStepOps(steps, [
+    const out = apply(steps, [
       { replace: { id: "s1", step: { ...drop, id: "sother" } } },
       { remove: { id: "s2" } },
     ]);
     expect(out).toEqual({ steps: [{ ...drop, id: "s1", align: true }] });
-    expect(applyStepOps(steps, [{ remove: { id: "s9" } }])).toEqual({
+    expect(apply(steps, [{ remove: { id: "s9" } }])).toEqual({
       error: "op 0: no step s9",
     });
   });
 
   it("reports an out-of-range index", () => {
-    expect(applyStepOps([impute], [{ remove: { index: 3 } }])).toEqual({
+    expect(apply([impute], [{ remove: { index: 3 } }])).toEqual({
       error: "op 0: no step at index 3",
     });
-    expect(applyStepOps([], [{ replace: { index: 0, step: impute } }])).toHaveProperty("error");
+    expect(apply([], [{ replace: { index: 0, step: impute } }])).toHaveProperty("error");
   });
 });
 
@@ -227,7 +237,7 @@ describe("propose_steps", () => {
     expect(await handleCommand(other, h.deps)).toMatchObject({
       error: 'stale: workspace "elsewhere" is not open in Studio (open: "demo")',
     });
-    expect(withoutIds(h.state.workspace?.steps ?? [])).toEqual([...(steps ?? []), scale]);
+    expect(withoutIds(h.state.workspace?.steps ?? [])).toEqual(withoutIds([...(steps ?? []), scale]));
     expect(h.toasts).toEqual([]);
   });
 
@@ -235,7 +245,7 @@ describe("propose_steps", () => {
     const h = harness(start([impute]));
     const ack = await handleCommand(propose(h.state, [{ add: { step: scale } }, { remove: { index: 9 } }]), h.deps);
     expect(ack).toMatchObject({ ok: false, error: expect.stringMatching(/^bad_command: /) });
-    expect(h.state.workspace?.steps).toEqual([impute]);
+    expect(withoutIds(h.state.workspace?.steps ?? [])).toEqual([impute]);
     expect(h.reviews).toEqual([]);
   });
 
@@ -246,7 +256,7 @@ describe("propose_steps", () => {
       { id: "c1", summary: "remove step 2 (scale)", lines: ["remove step 2 (scale)"] },
     ]);
     expect(ack).toMatchObject({ ok: true, identity: currentIdentityKey(h.state) });
-    expect(h.state.workspace?.steps).toEqual([impute]);
+    expect(withoutIds(h.state.workspace?.steps ?? [])).toEqual([impute]);
     expect(h.toasts).toHaveLength(1);
   });
 
@@ -255,10 +265,10 @@ describe("propose_steps", () => {
     const h = harness(start([impute]), () => new Promise<boolean>((r) => (release = r)));
     const pending = handleCommand(propose(h.state, [{ add: { step: drop } }]), h.deps);
     await Promise.resolve();
-    expect(h.state.workspace?.steps).toEqual([impute]);
+    expect(withoutIds(h.state.workspace?.steps ?? [])).toEqual([impute]);
     release(false);
     expect(await pending).toEqual({ id: "c1", ok: false, error: "rejected" });
-    expect(h.state.workspace?.steps).toEqual([impute]);
+    expect(withoutIds(h.state.workspace?.steps ?? [])).toEqual([impute]);
     expect(h.toasts).toEqual([]);
   });
 
@@ -307,7 +317,7 @@ describe("stable step ids (datatoolkit-issues#153)", () => {
   it("the reducer fills ids on load, mints on ADD_STEP, keeps them on edit and undo", () => {
     let s = appReducer(initialState, {
       type: "SET_WORKSPACE",
-      workspace: { ...emptyWorkspace("demo"), steps: [impute, scale] },
+      workspace: loaded({ ...emptyWorkspace("demo"), steps: [impute, scale] }),
     });
     expect(s.workspace?.steps.map((x) => x.id)).toEqual(["s1", "s2"]);
     s = appReducer(s, { type: "ADD_STEP", step: drop });
@@ -454,9 +464,9 @@ describe("notes (datatoolkit-issues#152)", () => {
 
   it("a replace keeps the note unless the new step sets one", () => {
     const steps = [{ ...impute, id: "s1", note: "keep me" }];
-    const kept = applyStepOps(steps, [{ replace: { id: "s1", step: scale } }]);
+    const kept = apply(steps, [{ replace: { id: "s1", step: scale } }]);
     expect(kept).toEqual({ steps: [{ ...scale, id: "s1", note: "keep me" }] });
-    const cleared = applyStepOps(steps, [{ replace: { id: "s1", step: { ...scale, note: "" } } }]);
+    const cleared = apply(steps, [{ replace: { id: "s1", step: { ...scale, note: "" } } }]);
     expect(cleared).toEqual({ steps: [{ ...scale, id: "s1" }] });
     let s = start(steps);
     s = appReducer(s, { type: "REPLACE_STEP", index: 0, step: scale });
@@ -745,7 +755,7 @@ describe("touch and undo plumbing (#88)", () => {
     expect(h.touches).toEqual([{ steps: [1], columns: ["age"] }]);
     expect(h.undos).toEqual([[{ type: "UNDO_STEPS" }]]);
     h.undos[0]!.forEach(h.deps.dispatch);
-    expect(h.state.workspace?.steps).toEqual([impute]);
+    expect(withoutIds(h.state.workspace?.steps ?? [])).toEqual([impute]);
   });
 
   it("touches a replaced step but not the untouched ones", async () => {
@@ -1174,7 +1184,7 @@ describe("edit_step / fill_editor", () => {
     const ack = await send(h, { type: "edit_step", index: 1 });
     expect(ack).toMatchObject({ ok: true, identity: currentIdentityKey(h.state) });
     expect(h.state.editor).toMatchObject({ op: "scale", editIndex: 1 });
-    expect(h.state.workspace?.steps).toEqual([impute, scale]);
+    expect(withoutIds(h.state.workspace?.steps ?? [])).toEqual([impute, scale]);
     expect(h.touches).toEqual([{ steps: [1], columns: ["age"] }]);
     h.undos[0]!.forEach(h.deps.dispatch);
     expect(h.state.editor).toBeNull();
@@ -1219,7 +1229,7 @@ describe("edit_step / fill_editor", () => {
     expect(h.state.editor).toMatchObject({
       op: "impute", editIndex: 0, target: "train", params: { columns: ["age"], strategy: "mean" },
     });
-    expect(h.state.workspace?.steps).toEqual([impute]);
+    expect(withoutIds(h.state.workspace?.steps ?? [])).toEqual([impute]);
     h.undos.at(-1)!.forEach(h.deps.dispatch);
     expect(h.state.editor).toMatchObject({ target: "both", params: { columns: ["age"] } });
     expect(h.state.editor?.params.strategy).toBeUndefined();

@@ -49,6 +49,7 @@ function bareWorkspace(name: string, x: FileSourceSpec): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 }

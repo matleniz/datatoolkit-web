@@ -40,6 +40,7 @@ async function open(page: Page, path: string) {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
   await page.setViewportSize({ width: 1440, height: 900 });

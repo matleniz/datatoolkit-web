@@ -11,6 +11,7 @@ function ws(name: string): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 }

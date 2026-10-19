@@ -20,6 +20,7 @@ function ws(steps: number): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: Array.from({ length: steps }, (_, i) => ({
       op: "impute",
       target: "both" as const,

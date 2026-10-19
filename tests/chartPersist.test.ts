@@ -32,6 +32,7 @@ function ws(charts?: Workspace["charts"]): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
     ...(charts ? { charts } : {}),
   };

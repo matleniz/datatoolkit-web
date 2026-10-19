@@ -2,6 +2,7 @@ import type {
   ChartSpec,
   CsvSource,
   MemoryEntry,
+  Group,
   Step,
   VariableSpec,
   Workspace,
@@ -30,7 +31,17 @@ import { withColumnNote, withNote, withWorkspaceNote } from "./notes";
 import { withIdCounter } from "./idCounters";
 import { withMemoryEntry } from "./memory";
 import { withDocumentNote } from "./documents";
-import { applyStepOps, orderSteps, type StepOp } from "./stepOps";
+import { applyStepOps, type StepOp } from "./stepOps";
+import {
+  assertValidGroups,
+  fillSingletons,
+  insertStep,
+  orderList,
+  removeStepAt,
+  sameGroups,
+  setSteps,
+  validateGroups,
+} from "./stepGroups";
 import { fillStepIds, withNewId } from "./stepIds";
 import { EMPTY_GRID_VIEW, gridViewKey, type GridView } from "./gridView";
 import type { ToolViewState } from "./toolViews";
@@ -175,6 +186,7 @@ export function emptyWorkspace(name = "untitled"): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
     charts: [],
   };
@@ -215,8 +227,6 @@ export const initialState: AppState = {
   agentTouch: null,
 };
 
-export { orderSteps };
-
 export type AppAction =
   | { type: "SET_WORKSPACE"; workspace: Workspace | null }
   /**
@@ -240,6 +250,13 @@ export type AppAction =
   | { type: "CLOSE_GRID_FILTER" }
   | { type: "SET_PANEL_COLLAPSED"; side: PanelSide; collapsed: boolean }
   | { type: "SET_STEPS"; steps: Step[] }
+  /**
+   * The groups the engine stored for `base` (the workspace a PUT sent) when
+   * they differ from the sent ones (#249). Applies only if the open workspace
+   * still has those steps and groups; not an undoable change, and the save
+   * gate already counts it as saved.
+   */
+  | { type: "ADOPT_GROUPS"; base: Workspace; groups: Group[] }
   | { type: "TOGGLE_MULTI" }
   | {
       type: "PICK_COL";
@@ -756,11 +773,33 @@ function reduceToolState(
   }
 }
 
-/** A workspace as Studio holds it: charts hydrated, every step with an id (#153). */
+/**
+ * A workspace as Studio holds it: charts hydrated, every step with an id
+ * (#153) and in a group (#249; the engine answers a full partition, this
+ * covers an older engine and a workspace built locally).
+ */
 function loadedWorkspace(raw: Workspace): Workspace {
   const ws = hydrateWorkspaceCharts(raw);
   const steps = fillStepIds(ws.steps);
-  return steps === ws.steps ? ws : { ...ws, steps };
+  const groups = fillSingletons(steps, ws.groups ?? []);
+  return steps === ws.steps && groups === ws.groups ? ws : { ...ws, steps, groups };
+}
+
+/** The steps and groups of `ws`, to edit together. */
+const listOf = (ws: Workspace | null) => ({ steps: ws?.steps ?? [], groups: ws?.groups ?? [] });
+
+/**
+ * `ws` with its steps and groups replaced by `list`. In dev and test builds
+ * the result must be a valid partition: a path that forgets the groups fails
+ * loudly instead of reaching the engine as a 422.
+ */
+function withList(
+  state: AppState,
+  list: { steps: Step[]; groups: Group[] },
+  extra: Partial<AppState> = {},
+): AppState {
+  if (import.meta.env.DEV) assertValidGroups(list.steps, list.groups, "reducer");
+  return withWorkspace(state, { steps: list.steps, groups: list.groups }, extra);
 }
 
 /** Workspace documents (#178); recorded in the pipeline history. */
@@ -797,6 +836,7 @@ function reduceNotes(state: AppState, action: AppAction): AppState | undefined {
       if (at < 0) return state;
       const next = steps.slice();
       next[at] = withNote(steps[at]!, action.text);
+      // Same step ids: the groups stay as they are.
       return withWorkspace(state, { steps: next });
     }
     case "SET_COLUMN_NOTE":
@@ -851,85 +891,6 @@ function reduceWorkspace(
         label: action.label,
         merges: action.merges,
       });
-    case "SET_STEPS":
-      return withWorkspace(state, { steps: orderSteps(fillStepIds(action.steps)) });
-    case "ADD_STEP": {
-      const current = state.workspace?.steps ?? [];
-      return withWorkspace(
-        state,
-        { steps: orderSteps([...current, withNewId(action.step, current)]) },
-        {
-          editor: null,
-          viewVersion: null,
-          selection: { ...state.selection, row: null, cell: null },
-          benchError: null,
-        },
-      );
-    }
-    case "REPLACE_STEP": {
-      const old = state.workspace?.steps[action.index];
-      if (!old) return state;
-      // Same rule as a `replace` op: the slot keeps its id and `align` flag.
-      const out = applyStepOps(state.workspace?.steps ?? [], [
-        { replace: { index: action.index, step: action.step } },
-      ]);
-      if ("error" in out) return state;
-      const steps = out.steps;
-      return withWorkspace(
-        state,
-        { steps },
-        {
-          editor: null,
-          viewVersion: null,
-          selection: { ...state.selection, row: null, cell: null },
-          benchError: null,
-        },
-      );
-    }
-    case "REMOVE_STEP": {
-      const steps = (state.workspace?.steps ?? []).slice();
-      if (action.index < 0 || action.index >= steps.length) return state;
-      steps.splice(action.index, 1);
-      return withWorkspace(
-        state,
-        { steps: orderSteps(steps) },
-        {
-          editor: null,
-          viewVersion: null,
-          selection: { ...state.selection, cell: null },
-          benchError: null,
-        },
-      );
-    }
-    case "APPLY_STEP_BATCH": {
-      const out = applyStepOps(state.workspace?.steps ?? [], action.ops);
-      if ("error" in out) return state;
-      return withWorkspace(
-        state,
-        { steps: out.steps },
-        {
-          editor: null,
-          viewVersion: null,
-          selection: { ...state.selection, row: null, cell: null },
-          benchError: null,
-        },
-      );
-    }
-    case "ADD_ALIGN_STEP": {
-      if (!state.workspace) return state;
-      const current = state.workspace.steps;
-      const s = { ...withNewId(action.step, current), align: true };
-      const alignCount = current.filter((x) => x.align).length;
-      const steps = [...current];
-      steps.splice(alignCount, 0, s);
-      return withWorkspace(state, { steps });
-    }
-    case "REMOVE_STEP_BY_INDEX":
-      return withWorkspace(state, {
-        steps: (state.workspace?.steps ?? []).filter(
-          (_, i) => i !== action.index,
-        ),
-      });
     case "SET_TEST_DECIMAL": {
       if (!state.workspace || !state.workspace.datasets.test) return state;
       const testX = state.workspace.datasets.test.x;
@@ -983,6 +944,85 @@ function reduceWorkspace(
   }
 }
 
+/**
+ * The steps and their groups (#249): every action that changes `steps` goes
+ * through the `stepGroups` helpers, so the groups follow.
+ */
+function reduceSteps(state: AppState, action: AppAction): AppState | undefined {
+  switch (action.type) {
+    case "ADOPT_GROUPS": {
+      const ws = state.workspace;
+      if (!ws || ws.name !== action.base.name) return state;
+      if (!sameSteps(ws.steps, action.base.steps) || !sameGroups(ws.groups, action.base.groups)) return state;
+      if (validateGroups(ws.steps, action.groups)) return state;
+      return withWorkspace(state, { groups: action.groups });
+    }
+    case "SET_STEPS": {
+      const list = listOf(state.workspace);
+      return withList(state, orderList(setSteps(list, fillStepIds(action.steps))));
+    }
+    case "ADD_STEP": {
+      const list = listOf(state.workspace);
+      return withList(
+        state,
+        orderList(insertStep(list, withNewId(action.step, list.steps))),
+        {
+          editor: null,
+          viewVersion: null,
+          selection: { ...state.selection, row: null, cell: null },
+          benchError: null,
+        },
+      );
+    }
+    case "REPLACE_STEP": {
+      const old = state.workspace?.steps[action.index];
+      if (!old) return state;
+      // Same rule as a `replace` op: the slot keeps its id and `align` flag.
+      const out = applyStepOps(listOf(state.workspace), [
+        { replace: { index: action.index, step: action.step } },
+      ]);
+      if ("error" in out) return state;
+      return withList(state, out, {
+        editor: null,
+        viewVersion: null,
+        selection: { ...state.selection, row: null, cell: null },
+        benchError: null,
+      });
+    }
+    case "REMOVE_STEP": {
+      const list = listOf(state.workspace);
+      if (action.index < 0 || action.index >= list.steps.length) return state;
+      return withList(state, orderList(removeStepAt(list, action.index)), {
+        editor: null,
+        viewVersion: null,
+        selection: { ...state.selection, cell: null },
+        benchError: null,
+      });
+    }
+    case "APPLY_STEP_BATCH": {
+      const out = applyStepOps(listOf(state.workspace), action.ops);
+      if ("error" in out) return state;
+      return withList(state, out, {
+        editor: null,
+        viewVersion: null,
+        selection: { ...state.selection, row: null, cell: null },
+        benchError: null,
+      });
+    }
+    case "ADD_ALIGN_STEP": {
+      if (!state.workspace) return state;
+      const list = listOf(state.workspace);
+      const s = { ...withNewId(action.step, list.steps), align: true };
+      const alignCount = list.steps.filter((x) => x.align).length;
+      return withList(state, insertStep(list, s, alignCount));
+    }
+    case "REMOVE_STEP_BY_INDEX":
+      return withList(state, removeStepAt(listOf(state.workspace), action.index));
+    default:
+      return undefined;
+  }
+}
+
 /** Undo / redo: restore a steps snapshot and replay at the latest version. */
 function reduceStepHistory(
   state: AppState,
@@ -999,6 +1039,7 @@ function reduceStepHistory(
     state,
     {
       steps: moved.steps.steps,
+      groups: moved.steps.groups,
       notes: moved.steps.notes,
       memory: moved.steps.memory,
       documents: moved.steps.documents,
@@ -1021,6 +1062,7 @@ function reduceStepHistory(
  */
 const snapshot = (ws: Workspace): PipelineSnapshot => ({
   steps: ws.steps,
+  groups: ws.groups,
   notes: ws.notes,
   memory: ws.memory,
   documents: ws.documents,
@@ -1033,7 +1075,9 @@ function trackStepHistory(
   next: AppState,
   action: AppAction,
 ): AppState {
-  if (action.type === "UNDO_STEPS" || action.type === "REDO_STEPS") return next;
+  if (action.type === "UNDO_STEPS" || action.type === "REDO_STEPS" || action.type === "ADOPT_GROUPS") {
+    return next;
+  }
   const before = prev.workspace;
   const after = next.workspace;
   if (action.type === "SET_WORKSPACE") {
@@ -1049,6 +1093,7 @@ function trackStepHistory(
   if (!before || !after) return next;
   if (
     sameSteps(before.steps, after.steps) &&
+    before.groups === after.groups &&
     before.notes === after.notes &&
     before.memory === after.memory &&
     before.documents === after.documents &&
@@ -1069,6 +1114,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     reduceDock(state, action) ??
     reduceToolState(state, action) ??
     reduceWorkspace(state, action) ??
+    reduceSteps(state, action) ??
     reduceNotes(state, action) ??
     state;
   return trackStepHistory(state, next, action);

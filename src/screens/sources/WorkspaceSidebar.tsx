@@ -136,6 +136,7 @@ export function WorkspaceSidebar({
       label: { mode: "order" },
       merges: [],
       variables: [],
+      groups: [],
       steps: [],
     };
     try {

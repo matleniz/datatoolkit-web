@@ -72,6 +72,7 @@ async function createChurnWorkspace(): Promise<Workspace> {
       },
     ],
     variables: [],
+    groups: [],
     steps: [],
   };
   const saved = await apiClient.saveWorkspace(ws);

@@ -15,6 +15,7 @@ function baseWs(over: Partial<Workspace> = {}): Workspace {
     merges: [],
     variables: [],
     steps: [],
+    groups: [],
     ...over,
   };
 }

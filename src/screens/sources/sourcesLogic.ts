@@ -6,6 +6,7 @@ import type {
   EngineError,
   ExcelSource,
   FileSourceSpec,
+  Group,
   JsonSource,
   LabelJoin,
   MergeSpec,
@@ -14,6 +15,7 @@ import type {
   Step,
   Workspace,
 } from "../../api/types";
+import { fillSingletons } from "../../state/stepGroups";
 import type {
   FileRole,
   RecordPathInfo,
@@ -156,6 +158,8 @@ export interface WorkspaceBuildInput {
   mergeInTest?: boolean;
   testDecimal?: string | null;
   steps?: Step[];
+  /** Step groups carried over with the steps (#249); steps in none get a singleton. */
+  groups?: Group[];
   /** Saved charts carried over, like steps (MAT-185). */
   charts?: ChartSpec[];
   /** Not built from the sources, carried over as is: notes (#152), agent memory (#179), documents (#178). */
@@ -429,13 +433,15 @@ export function buildWorkspaceJson(
     ...(testXSpec ? { test: { x: testXSpec } } : {}),
   };
 
+  const steps = input.steps ?? [];
   const workspace: Workspace = {
     name: input.name,
     datasets,
     label: labelJoin,
     merges: merge.merges,
     variables: [],
-    steps: input.steps ?? [],
+    groups: fillSingletons(steps, input.groups ?? []),
+    steps,
     charts: input.charts ?? [],
     ...definedFields(input.carry ?? {}),
   };

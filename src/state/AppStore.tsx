@@ -25,6 +25,7 @@ import {
   queueWorkspaceSave,
   saveable,
   setCommittedWorkspace,
+  setGroupsAdopter,
 } from "./workspaceSaveGate";
 
 export {
@@ -72,6 +73,13 @@ export function AppProvider({
       delete window.__DTK_STATE__;
     };
   }, [dispatch, state]);
+
+  // The groups the engine normalised on a PUT come back into the store
+  // without a new save (#249).
+  useEffect(() => {
+    setGroupsAdopter((base, groups) => dispatch({ type: "ADOPT_GROUPS", base, groups }));
+    return () => setGroupsAdopter(null);
+  }, [dispatch]);
 
   // Persistence lives here, not in the reducer (which must stay pure).
   const wsName = state.workspace?.name;

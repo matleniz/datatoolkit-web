@@ -3,12 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   appReducer,
   initialState,
-  orderSteps,
   pickCol,
   type AppState,
   type ToolId,
 } from "../src/state/reducer";
 import type { Step } from "../src/api/types";
+import { orderList } from "../src/state/stepGroups";
+import { fillStepIds } from "../src/state/stepIds";
 
 function withDock(tools: ToolId[], extra?: Partial<AppState>): AppState {
   return {
@@ -110,6 +111,7 @@ describe("W3 variables / formula insert / export", () => {
         label: { mode: "order" },
         merges: [],
         variables: [],
+        groups: [],
         steps: [],
       },
     };
@@ -146,14 +148,14 @@ describe("W3 variables / formula insert / export", () => {
   });
 });
 
-describe("orderSteps", () => {
+describe("orderList", () => {
   it("keeps align steps first", () => {
     const steps: Step[] = [
       { op: "scale", target: "both", params: {} },
       { op: "rename", target: "test", params: {}, align: true },
       { op: "cast", target: "test", params: {}, align: true },
     ];
-    expect(orderSteps(steps).map((s) => s.op)).toEqual([
+    expect(orderList({ steps: fillStepIds(steps), groups: [] }).steps.map((s) => s.op)).toEqual([
       "rename",
       "cast",
       "scale",
@@ -190,13 +192,14 @@ describe("Stream W1 reducer actions", () => {
       label: { mode: "order" as const },
       merges: [],
       variables: [],
+      groups: [],
       steps: [
         { op: "rename", target: "test" as const, params: {}, align: true },
         { op: "scale", target: "both" as const, params: {} },
       ],
     };
 
-    let s: AppState = { ...initialState, workspace: ws };
+    let s: AppState = appReducer(initialState, { type: "SET_WORKSPACE", workspace: ws });
     s = appReducer(s, {
       type: "ADD_ALIGN_STEP",
       step: { op: "cast", target: "test", params: {} },
@@ -217,13 +220,14 @@ describe("Stream W1 reducer actions", () => {
       label: { mode: "order" as const },
       merges: [],
       variables: [],
+      groups: [],
       steps: [
         { op: "rename", target: "test" as const, params: {}, align: true },
         { op: "scale", target: "both" as const, params: {} },
       ],
     };
 
-    let s: AppState = { ...initialState, workspace: ws };
+    let s: AppState = appReducer(initialState, { type: "SET_WORKSPACE", workspace: ws });
     s = appReducer(s, { type: "REMOVE_STEP_BY_INDEX", index: 0 });
     expect(s.workspace?.steps.map((st) => st.op)).toEqual(["scale"]);
   });
@@ -238,10 +242,11 @@ describe("Stream W1 reducer actions", () => {
       label: { mode: "order" as const },
       merges: [],
       variables: [],
+      groups: [],
       steps: [],
     };
 
-    let s: AppState = { ...initialState, workspace: ws };
+    let s: AppState = appReducer(initialState, { type: "SET_WORKSPACE", workspace: ws });
     s = appReducer(s, { type: "SET_TEST_DECIMAL", decimal: "," });
     expect((s.workspace?.datasets.test?.x as { decimal?: string }).decimal).toBe(",");
 

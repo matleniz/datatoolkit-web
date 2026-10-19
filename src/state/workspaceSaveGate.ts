@@ -1,5 +1,6 @@
 import { apiClient, serializeWorkspace } from "../api/client";
-import type { Workspace } from "../api/types";
+import type { Group, Workspace } from "../api/types";
+import { sameGroups } from "./stepGroups";
 import { dropLegacyCharts } from "./chartStorage";
 
 /**
@@ -33,6 +34,22 @@ export interface WorkspaceSaveFailure {
 }
 
 let saveFailure: WorkspaceSaveFailure | null = null;
+
+/**
+ * Where the groups the engine answered to a PUT go when they differ from the
+ * ones sent (#249). AppStore registers one that dispatches ADOPT_GROUPS.
+ */
+let groupsAdopter: ((sent: Workspace, groups: Group[]) => void) | null = null;
+
+export function setGroupsAdopter(fn: typeof groupsAdopter): void {
+  groupsAdopter = fn;
+}
+
+/** The `groups` of a PUT answer, null when it carries none. */
+function echoedGroups(answer: unknown): Group[] | null {
+  const groups = (answer as { groups?: unknown } | null)?.groups;
+  return Array.isArray(groups) ? (groups as Group[]) : null;
+}
 const failureListeners = new Set<() => void>();
 
 function setSaveFailure(next: WorkspaceSaveFailure | null): void {
@@ -162,8 +179,9 @@ export async function commitWorkspaceSave(opts: {
     return "skipped";
   }
 
+  let answer: unknown;
   try {
-    await save(ws);
+    answer = await save(ws);
   } catch (e) {
     if (opts.rethrow && !isWorkspaceSaveSuppressed(ws.name)) throw e;
     return "skipped";
@@ -180,6 +198,14 @@ export async function commitWorkspaceSave(opts: {
   if (!isCurrent(epochAtStart)) return "skipped";
 
   lastSavedWorkspaceJson = serialized;
+  // The engine normalises the groups it stores. Studio mirrors the rules, so
+  // they normally come back unchanged; when they do not, adopt them and take
+  // the adopted workspace as the saved one, so no PUT echoes them back (#249).
+  const echoed = echoedGroups(answer);
+  if (echoed && !sameGroups(echoed, ws.groups)) {
+    lastSavedWorkspaceJson = serializeWorkspace({ ...ws, groups: echoed });
+    groupsAdopter?.(ws, echoed);
+  }
   dropLegacyCharts(ws.name);
   return "saved";
 }
@@ -193,6 +219,7 @@ export function resetWorkspaceSaveGateForTests(): void {
   committedWorkspace = null;
   saveFailure = null;
   failureListeners.clear();
+  groupsAdopter = null;
 }
 
 /** Workspace of the current React commit (set in a layout effect, before any

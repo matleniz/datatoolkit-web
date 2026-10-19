@@ -1011,7 +1011,10 @@ async function proposeSteps(
     const state = deps.getState();
     const stale = staleReason(state, cmd);
     if (stale) return { id, ok: false, ...stale };
-    const out = applyStepOps(state.workspace?.steps ?? [], cmd.ops);
+    const out = applyStepOps(
+      { steps: state.workspace?.steps ?? [], groups: state.workspace?.groups ?? [] },
+      cmd.ops,
+    );
     return "error" in out ? fail(id, `bad_command: ${out.error}`) : null;
   };
   // One review at a time, and no step edit under an open one (it would make

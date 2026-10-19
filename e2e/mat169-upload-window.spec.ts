@@ -100,6 +100,7 @@ test("MAT-169: 13-column file at 1440x900 renders all headers", async ({
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 

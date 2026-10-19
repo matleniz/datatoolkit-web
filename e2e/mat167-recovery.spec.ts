@@ -163,6 +163,7 @@ test("MAT-167: group_agg Aggs defaults to mean and highlights when cleared", asy
         label: { mode: "order" },
         merges: [],
         variables: [],
+        groups: [],
         steps: [],
       },
     });
@@ -269,6 +270,7 @@ test("MAT-167: opening legacy employees-json in workbench shows error, never han
         label: { mode: "order" },
         merges: [],
         variables: [],
+        groups: [],
         steps: [],
       },
     });
