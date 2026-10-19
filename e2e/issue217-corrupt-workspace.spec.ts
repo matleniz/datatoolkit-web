@@ -42,7 +42,7 @@ test("#217: corrupt workspace is listed, searchable and deletable", async ({
     expect(d.message()).not.toContain("undefined");
     void d.accept();
   });
-  await item.getByRole("button", { name: "Delete" }).click();
+  await item.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(item).toHaveCount(0, { timeout: 15_000 });
   expect(errors).toEqual([]);
 });
