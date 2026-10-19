@@ -39,6 +39,9 @@ function countPuts(page: Page, name: string): () => number {
   return () => n;
 }
 
+/** Let the page run `ms` (autosave debounce + a margin) so a stray PUT would show. */
+const idle = (page: Page, ms: number) => page.evaluate((t) => new Promise((r) => setTimeout(r, t)), ms);
+
 const impute: Step = { op: "impute", target: "both", params: { columns: ["age"], strategy: "median" } };
 const scale: Step = { op: "scale", target: "both", params: { columns: ["age"] } };
 const drop: Step = { op: "drop_columns", target: "both", params: { columns: ["signup_date"] } };
@@ -119,7 +122,7 @@ test("issue 249: add, delete in the middle, undo, reload — groups valid, no 42
   const reloaded = await local(page);
   expect(reloaded.steps.map((s) => s.id)).toEqual(screen.steps.map((s) => s.id));
   expect(reloaded.groups).toEqual(screen.groups);
-  await page.waitForTimeout(1500);
+  await idle(page, 1500);
   expect(puts()).toBe(putsBeforeIdle);
   expect(failures).toEqual([]);
 });
@@ -217,7 +220,7 @@ test("issue 249: parkison (63 steps) opens and saves as 63 singleton groups, not
   await page.goto("/");
   await expect(page.getByText("Loading workspace…")).toBeHidden({ timeout: 60_000 });
   await expect.poll(async () => (await local(page)).steps.length, { timeout: 30_000 }).toBe(63);
-  await page.waitForTimeout(2000);
+  await idle(page, 2000);
   expect(puts()).toBe(0); // loading alone writes nothing
   const opened = await local(page);
   expect(opened.groups).toHaveLength(63);
@@ -235,7 +238,7 @@ test("issue 249: parkison (63 steps) opens and saves as 63 singleton groups, not
   await page.evaluate((id) => window.__DTK_DISPATCH__!({ type: "SET_STEP_NOTE", id, text: "" }), first);
   await expect.poll(puts, { timeout: 15_000 }).toBe(2);
   await saved(page);
-  await page.waitForTimeout(1500);
+  await idle(page, 1500);
   expect(puts()).toBe(2); // one PUT per edit, none echoed back after the answer
 
   const after = onDisk("parkison") as Workspace & Record<string, unknown>;
