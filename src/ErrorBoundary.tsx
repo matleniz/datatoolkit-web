@@ -50,7 +50,10 @@ interface State {
 /**
  * Catches a render exception below it (a malformed engine payload, say) and
  * shows what happened instead of a blank page, with a way to reload and a way
- * to save the in-memory workspace (#221). The startup error screen
+ * to save the in-memory workspace (#221). It sits outside `AppProvider`
+ * because a reducer exception on a malformed payload is thrown by the provider
+ * itself; the export reads the last committed workspace kept by the save gate,
+ * not React state, so it works whatever broke. The startup error screen
  * (`BootstrapError`) is separate and unchanged.
  */
 export class ErrorBoundary extends Component<{ children: ReactNode }, State> {

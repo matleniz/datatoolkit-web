@@ -80,12 +80,12 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <AppProvider>
-      <Bootstrap>
-        <ErrorBoundary>
+    <ErrorBoundary>
+      <AppProvider>
+        <Bootstrap>
           <App />
-        </ErrorBoundary>
-      </Bootstrap>
-    </AppProvider>
+        </Bootstrap>
+      </AppProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );
