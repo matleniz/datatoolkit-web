@@ -65,12 +65,13 @@ export function GroupBlock({
             <span className="pipeline-title" title={group.name}>
               {group.name}
             </span>
+            {origin ? <span className="pipeline-group-origin">{origin}</span> : null}
           </span>
-          <span className="pipeline-sub pipeline-group-intent">{group.intent || " "}</span>
+          <span className="pipeline-sub pipeline-group-intent">{group.intent || "\u00a0"}</span>
           <span className="pipeline-meta">
-            <span className="pipeline-shape">{shape}</span>
+            {/* The shape is the one after the whole group: not shown while the view cuts it. */}
+            {row.partial ? null : <span className="pipeline-shape">{shape}</span>}
             <span className="pipeline-delta delta-muted">{groupCountLabel(row)}</span>
-            {origin ? <span className="pipeline-badge pipeline-group-origin">{origin}</span> : null}
           </span>
         </button>
         <button

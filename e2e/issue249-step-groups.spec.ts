@@ -150,7 +150,10 @@ test("issue 249: a multi-step group shrinks when a step leaves it, and undo give
   await expectConsistent(page, request, "churn");
   expect((await stored(request, "churn")).groups).toEqual(groups.map((g) => ({ ...g, produced_by: null })));
 
-  const scaleNode = page.locator(".pipeline-node", { hasText: "Scale" });
+  // The two-step group is one collapsed row since PR B: open it to reach its steps.
+  await page.getByRole("button", { name: "Expand group Clean age" }).click();
+  // (the group header also says "scale" in its intent: match the step by version)
+  const scaleNode = page.locator(".pipeline-node", { hasText: /^v2\s*Scale/ });
   await page
     .locator(".pipeline-node-rel", { has: scaleNode })
     .getByRole("button", { name: "Remove this step and replay" })

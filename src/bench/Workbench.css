@@ -1688,6 +1688,10 @@
   margin-left: 6px;
 }
 .pipeline-group-origin {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-right: 16px;
   font-size: 10px;
   font-style: italic;
+  color: var(--dtk-muted);
 }
