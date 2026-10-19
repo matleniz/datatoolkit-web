@@ -116,8 +116,8 @@ describe("fillSingletons (the engine's rule)", () => {
   it("wraps every step: s12 -> g12, named '<op> <target>', auto, no intent", () => {
     const steps = [step("s12", "impute"), step("sab12cd34", "scale")];
     expect(fillSingletons(steps, [])).toEqual([
-      { id: "g12", name: "impute both", intent: "", step_ids: ["s12"], origin: "auto" },
-      { id: "gab12cd34", name: "scale both", intent: "", step_ids: ["sab12cd34"], origin: "auto" },
+      { id: "g12", name: "impute both", intent: "", step_ids: ["s12"], origin: "auto", produced_by: null },
+      { id: "gab12cd34", name: "scale both", intent: "", step_ids: ["sab12cd34"], origin: "auto", produced_by: null },
     ]);
   });
   it("keeps existing groups and wraps the uncovered steps around them", () => {

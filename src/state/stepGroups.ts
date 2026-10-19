@@ -170,6 +170,9 @@ function singleton(step: Step, taken: Set<string>): Group {
     intent: "",
     step_ids: [step.id ?? ""],
     origin: "auto",
+    // The engine always answers the field; spelled out, the local group is
+    // byte-for-byte the stored one.
+    produced_by: null,
   };
 }
 
