@@ -499,4 +499,51 @@ describe("flushWorkspaceOnPageHide (#221)", () => {
     // The failure stays: a keepalive answer cannot be observed on unload.
     expect(getWorkspaceSaveFailure()).not.toBeNull();
   });
+
+  it("a later autosave PUT waits for the flush in flight (P1 lands before P2)", async () => {
+    const order: string[] = [];
+    let release!: () => void;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      await new Promise<void>((r) => (release = r));
+      order.push("P1");
+      return new Response("{}", { status: 200 });
+    });
+    vi.spyOn(apiClient, "saveWorkspace").mockImplementation(async (w) => {
+      order.push("P2");
+      return w;
+    });
+    const w = ws("flush_order");
+    markWorkspaceLoaded(w);
+    const p1 = { ...w, groups: [{ id: "g", name: "G", step_ids: [] }] } as unknown as Workspace;
+    setCommittedWorkspace(p1);
+    expect(flushWorkspaceOnPageHide()).toBe(true);
+    const p2 = { ...w, steps: [{ op: "drop_columns", target: "both", params: { columns: ["a"] } }] } as unknown as Workspace;
+    setCommittedWorkspace(p2);
+    const saved = queueWorkspaceSave(p2);
+    await Promise.resolve();
+    expect(order).toEqual([]);
+    release();
+    await saved;
+    expect(order).toEqual(["P1", "P2"]);
+  });
+
+  it("abandon (delete / rename) waits for the flush in flight", async () => {
+    let release!: () => void;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      await new Promise<void>((r) => (release = r));
+      return new Response("{}", { status: 200 });
+    });
+    const w = ws("flush_del");
+    markWorkspaceLoaded(w);
+    setCommittedWorkspace({ ...w, groups: [{ id: "g", name: "G", step_ids: [] }] } as unknown as Workspace);
+    expect(flushWorkspaceOnPageHide()).toBe(true);
+    let done = false;
+    const abandoned = abandonPendingWorkspaceSave([w.name]).then(() => (done = true));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(done).toBe(false);
+    release();
+    await abandoned;
+    expect(done).toBe(true);
+  });
 });

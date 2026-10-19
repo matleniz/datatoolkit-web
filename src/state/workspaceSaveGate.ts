@@ -268,15 +268,22 @@ export function flushWorkspaceOnPageHide(): boolean {
     }
     lastFlushedJson = serialized;
     const epoch = saveEpoch;
+    const savedAtSend = lastSavedWorkspaceJson;
     const keepalive = new TextEncoder().encode(serialized).length <= KEEPALIVE_MAX_BYTES;
-    fetch(`${API_BASE.replace(/\/$/, "")}/workspaces/${encodeURIComponent(ws.name)}`, {
+    const sent = fetch(`${API_BASE.replace(/\/$/, "")}/workspaces/${encodeURIComponent(ws.name)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: serialized,
       keepalive,
     })
       .then((res) => {
-        if (res.ok && epoch === saveEpoch && !isWorkspaceSaveSuppressed(ws.name)) {
+        // Only if no other save completed meanwhile: a newer answer wins.
+        if (
+          res.ok &&
+          epoch === saveEpoch &&
+          lastSavedWorkspaceJson === savedAtSend &&
+          !isWorkspaceSaveSuppressed(ws.name)
+        ) {
           lastSavedWorkspaceJson = serialized;
           clearSaveFailureFor(ws.name);
         } else {
@@ -286,6 +293,9 @@ export function flushWorkspaceOnPageHide(): boolean {
       .catch(() => {
         lastFlushedJson = null;
       });
+    // Later autosaves, deletes and renames wait for this request (they chain
+    // on / await `saveChain`), so a late flush cannot overwrite or resurrect.
+    saveChain = saveChain.then(() => sent);
     return true;
   } catch {
     return false;
