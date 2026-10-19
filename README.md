@@ -76,6 +76,12 @@ or `churn` if the engine store has it; on an empty store it uploads the demo
 churn CSVs from `public/fixtures/` and saves a `churn` workspace
 (`src/bootstrap.ts`).
 
+If the engine is unreachable (or `GET /api/workspaces` fails) at startup, Studio
+shows an error screen with the engine's message, a hint for how it is served
+(dev: start `dtk-api` on 8765; built app: `docker compose logs engine` or the
+`dtk-studio` terminal) and a Retry button; the app is mounted only once a
+workspace has loaded. Run mode is `import.meta.env.DEV`.
+
 ### Agent bridge (dev)
 
 Studio publishes its view (workspace, role, version, identity, selection, open
