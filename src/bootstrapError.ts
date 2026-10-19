@@ -12,3 +12,8 @@ export function engineDownHint(dev: boolean): string {
 
 /** Shown in the workspace list while listing workspaces fails. */
 export const ENGINE_UNREACHABLE_LIST = "Engine unreachable: cannot list workspaces.";
+
+/** Only a failed list needs a refetch when the tab wakes up (no polling). */
+export function shouldRefetchOnFocus(listError: string | null): boolean {
+  return listError !== null;
+}

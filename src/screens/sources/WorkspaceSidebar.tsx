@@ -39,6 +39,7 @@ export interface WorkspaceSidebarProps {
   summaries: WorkspaceSummaryEntry[];
   activeName: string;
   listError: string | null;
+  onRetryList: () => void;
   onSelect: (name: string) => void;
   onSummariesChange: (next: WorkspaceSummaryEntry[]) => void;
   /** After create: parent should select the new empty workspace. */
@@ -59,6 +60,7 @@ export function WorkspaceSidebar({
   summaries,
   activeName,
   listError,
+  onRetryList,
   onSelect,
   onSummariesChange,
   onCreated,
@@ -505,7 +507,12 @@ export function WorkspaceSidebar({
         })}
 
         {visible.length === 0 && summaries.length === 0 && listError ? (
-          <div className="ws-empty">{ENGINE_UNREACHABLE_LIST}</div>
+          <div className="ws-empty">
+            {ENGINE_UNREACHABLE_LIST}{" "}
+            <button type="button" className="ws-action" onClick={onRetryList}>
+              Retry
+            </button>
+          </div>
         ) : null}
         {visible.length === 0 && summaries.length === 0 && !listError ? (
           <div className="ws-empty">No workspaces yet.</div>

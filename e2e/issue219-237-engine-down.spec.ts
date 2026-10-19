@@ -35,10 +35,30 @@ test("#237: list fetch failing says the engine is unreachable and disables creat
   page,
 }) => {
   test.setTimeout(120_000);
-  await page.route(/\/api\/workspaces\/summaries$/, (route) => route.abort());
+  const summariesUrl = /\/api\/workspaces\/summaries$/;
+  await page.route(summariesUrl, (route) => route.abort());
   await page.goto("/");
   await expect(page.getByLabel("Sources screen")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("Engine unreachable: cannot list workspaces.")).toBeVisible();
   await expect(page.getByText("No workspaces yet.")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "+ New workspace" })).toBeDisabled();
+
+  // Engine back: Retry reloads the list and re-enables creation.
+  await page.unroute(summariesUrl);
+  await page.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByText("Engine unreachable: cannot list workspaces.")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "+ New workspace" })).toBeEnabled();
+});
+
+test("#237: list recovers on window focus without Retry", async ({ page }) => {
+  test.setTimeout(120_000);
+  const summariesUrl = /\/api\/workspaces\/summaries$/;
+  await page.route(summariesUrl, (route) => route.abort());
+  await page.goto("/");
+  await expect(page.getByText("Engine unreachable: cannot list workspaces.")).toBeVisible({
+    timeout: 60_000,
+  });
+  await page.unroute(summariesUrl);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByRole("button", { name: "+ New workspace" })).toBeEnabled();
 });

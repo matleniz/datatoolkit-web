@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { BootstrapError } from "../src/BootstrapError";
-import { ENGINE_UNREACHABLE_LIST, engineDownHint } from "../src/bootstrapError";
+import { ENGINE_UNREACHABLE_LIST, engineDownHint, shouldRefetchOnFocus } from "../src/bootstrapError";
 
 describe("engineDownHint", () => {
   it("dev names dtk-api on 8765, not Docker", () => {
@@ -31,4 +31,9 @@ describe("BootstrapError", () => {
 
 it("list-unreachable text is not the empty-state text", () => {
   expect(ENGINE_UNREACHABLE_LIST).not.toContain("No workspaces yet");
+});
+
+it("refetches on focus only while the list is in error", () => {
+  expect(shouldRefetchOnFocus("HTTP 500")).toBe(true);
+  expect(shouldRefetchOnFocus(null)).toBe(false);
 });
