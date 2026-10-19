@@ -209,6 +209,24 @@ export interface Step {
 }
 
 /**
+ * A contiguous run of steps that answers one intention (datatoolkit-issues#249).
+ * Groups partition the steps in step order; `stepGroups.ts` owns the rules.
+ */
+export interface Group {
+  /** `g` + lowercase alphanumerics / dashes, unique in the workspace. Opaque. */
+  id: string;
+  /** One line, 1 to 80 characters. */
+  name: string;
+  /** Why, in the user's words (up to 400 characters, may span lines). */
+  intent: string;
+  /** Step ids in step order, at least one. */
+  step_ids: string[];
+  origin: "auto" | "manual";
+  /** Informational label, e.g. "agent", "ui:add_column". */
+  produced_by?: string | null;
+}
+
+/**
  * Workspace and column notes (datatoolkit-issues#152). Column notes are keyed
  * by the column's origin name (its name in the sources or the name a step
  * created it with); the engine traces renames (`/workspace/column-notes`).
@@ -232,6 +250,11 @@ export interface Workspace {
   merges: MergeSpec[];
   variables: VariableSpec[];
   steps: Step[];
+  /**
+   * Step groups (#249): always present in Studio, sent on PUT, never on frame
+   * calls. The engine normalises them; Studio adopts what it answers.
+   */
+  groups: Group[];
   /**
    * Keep the label column last after every step (engine `label_last`,
    * datatoolkit-issues#196). Absent = false; feeds the frame, so it is part of
@@ -569,6 +592,21 @@ export class EngineError extends Error {
     this.name = "EngineError";
     this.type = type;
     this.status = status;
+  }
+}
+
+/**
+ * A 422 caused by the step groups (#249): the engine's `detail` names the
+ * rule, the group and the step when it has them (`stepGroups.ts` parses it).
+ */
+export class GroupInvariantError extends EngineError {
+  constructor(
+    type: string,
+    message: string,
+    readonly detail: { rule: string | null; groupId: string | null; stepId: string | null },
+  ) {
+    super(type, message, 422);
+    this.name = "GroupInvariantError";
   }
 }
 

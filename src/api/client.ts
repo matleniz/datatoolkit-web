@@ -24,6 +24,7 @@ import {
   WorkspaceSummaryEntry,
 } from "./types";
 import { gridViewBody, type GridView } from "../state/gridView";
+import { groupInvariantError } from "../state/stepGroups";
 import { scopeOf, trackRequest } from "./inflight";
 import { InFlightDedupe } from "./requestDedupe";
 
@@ -103,10 +104,11 @@ export function serializeWorkspace(ws: Workspace): string {
   return JSON.stringify(workspaceBody(ws));
 }
 
-/** PUT body: the stored workspace, saved charts, notes, agent memory, documents and id counters included (MAT-185, #152, #179, #178, #180). */
+/** PUT body: the stored workspace, saved charts, notes, agent memory, documents, id counters and step groups included (MAT-185, #152, #179, #178, #180, #249). */
 function workspaceBody(ws: Workspace): Record<string, unknown> {
   return {
     ...notesBody(ws),
+    groups: ws.groups,
     charts: ws.charts ?? [],
     ...(ws.memory?.length ? { memory: ws.memory } : {}),
     ...(ws.documents?.length ? { documents: ws.documents } : {}),
@@ -117,11 +119,21 @@ function workspaceBody(ws: Workspace): Record<string, unknown> {
 /**
  * Workspace sent to frame / analysis calls: saved charts, notes, the agent
  * memory and documents never feed a frame, so saving one does not change
- * those request bodies (MAT-175 identity, #152, #179, #178). Step.align is
- * front-only pipeline ordering.
+ * those request bodies (MAT-175 identity, #152, #179, #178). Neither do the
+ * step groups (#249): replay never reads them, and a preview over a prefix
+ * of the steps would contradict them. Step.align is front-only pipeline
+ * ordering.
  */
 function frameBody(ws: Workspace): Record<string, unknown> {
-  const { charts: _charts, notes: _notes, memory: _memory, documents: _documents, id_counters: _ids, ...rest } = ws;
+  const {
+    charts: _charts,
+    notes: _notes,
+    memory: _memory,
+    documents: _documents,
+    id_counters: _ids,
+    groups: _groups,
+    ...rest
+  } = ws;
   return {
     ...rest,
     steps: ws.steps.map((step) => {
@@ -386,6 +398,8 @@ class HttpApiClient implements ApiClient {
     const snippet = text.length > 200 ? `${text.slice(0, 200)}…` : text;
     if (!res.ok) {
       if (parsed && isErrorBody(data)) {
+        const groupError = groupInvariantError(res.status, data);
+        if (groupError) throw groupError;
         throw new EngineError(data.type, data.message, res.status);
       }
       const base = `HTTP ${res.status} ${res.statusText}`.trim();

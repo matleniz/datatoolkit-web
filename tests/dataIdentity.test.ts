@@ -16,6 +16,7 @@ function ws(steps: Workspace["steps"]): Workspace {
     merges: [],
     variables: [],
     steps,
+    groups: [],
   };
 }
 

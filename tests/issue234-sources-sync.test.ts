@@ -17,6 +17,7 @@ const ws = (name: string, path: string, target?: string): Workspace => ({
   label: { mode: "order" },
   merges: [],
   variables: [],
+  groups: [],
   steps: [],
   charts: [],
 });

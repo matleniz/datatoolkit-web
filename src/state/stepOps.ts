@@ -1,6 +1,7 @@
 import type { Step } from "../api/types";
 import { withNote } from "./notes";
 import { withNewId } from "./stepIds";
+import { insertStep, orderList, removeStepAt, replaceStepAt, type StepList } from "./stepGroups";
 
 /**
  * Which step an op targets: its stable id (datatoolkit-issues#153), or its
@@ -34,49 +35,47 @@ export function refIndex(steps: Step[], ref: StepRef): number {
 /** "s3" / "at index 2", for error lines. */
 const refText = (ref: StepRef) => ("id" in ref ? ref.id : `at index ${ref.index}`);
 
-/** Keep `align: true` steps first (prototype / FRONT-WEB alignment rule). */
-export function orderSteps(steps: Step[]): Step[] {
-  const align = steps.filter((s) => s.align);
-  const rest = steps.filter((s) => !s.align);
-  return [...align, ...rest];
-}
-
 /**
- * Steps after applying `ops`, or `{ error }` when one op is invalid (no such
- * step). Same rules as ADD_STEP (a new step gets a fresh id unless it carries
- * one) / REPLACE_STEP (keeps the `align` flag, the id and, unless the new
- * step sets one, the note) / REMOVE_STEP;
- * `orderSteps` runs once at the end.
+ * The step list after applying `ops`, or `{ error }` when one op is invalid
+ * (no such step). Same rules as ADD_STEP (a new step gets a fresh id unless
+ * it carries one) / REPLACE_STEP (keeps the `align` flag, the id and, unless
+ * the new step sets one, the note) / REMOVE_STEP; the groups follow each op
+ * (`stepGroups.ts`: an added step is a singleton group, a removed one leaves
+ * its group) and `orderList` (align steps first) runs once at the end.
  */
 export function applyStepOps(
-  steps: Step[],
+  list: StepList,
   ops: StepOp[],
-): { steps: Step[] } | { error: string } {
-  const next = steps.slice();
+): StepList | { error: string } {
+  let next = list;
   for (const [n, op] of ops.entries()) {
     if ("add" in op) {
-      next.push(withNewId(op.add.step, next));
+      next = insertStep(next, withNewId(op.add.step, next.steps));
       continue;
     }
     const ref = opRef(op)!;
-    const at = refIndex(next, ref);
+    const at = refIndex(next.steps, ref);
     if (at < 0) return { error: `op ${n}: no step ${refText(ref)}` };
     if ("replace" in op) {
-      const old = next[at]!;
+      const old = next.steps[at]!;
       const { align: _drop, id: _id, ...rest } = op.replace.step;
       // The note follows the slot unless the new step sets one (#152).
       const note = "note" in op.replace.step ? op.replace.step.note : old.note;
-      next[at] = withNote(
-        {
-          ...(old.id ? { id: old.id } : {}),
-          ...rest,
-          ...(old.align ? { align: true } : {}),
-        },
-        note,
+      next = replaceStepAt(
+        next,
+        at,
+        withNote(
+          {
+            ...(old.id ? { id: old.id } : {}),
+            ...rest,
+            ...(old.align ? { align: true } : {}),
+          },
+          note,
+        ),
       );
     } else {
-      next.splice(at, 1);
+      next = removeStepAt(next, at);
     }
   }
-  return { steps: orderSteps(next) };
+  return orderList(next);
 }

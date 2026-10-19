@@ -9,6 +9,7 @@ const ws: Workspace = {
   label: { mode: "order" },
   merges: [],
   variables: [],
+  groups: [],
   steps: [],
 };
 

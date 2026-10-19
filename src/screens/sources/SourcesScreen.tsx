@@ -32,6 +32,7 @@ function useBuildResult(core: SourcesCore) {
   const { activeWsName, workspace, src } = core;
   const { files, roles, labelMode, yJoin, yKey, targetCol, mergeKey, mergeInTest } = src;
   const steps = workspace?.steps;
+  const groups = workspace?.groups;
   const charts = workspace?.charts;
   const notes = workspace?.notes;
   const memory = workspace?.memory;
@@ -50,6 +51,7 @@ function useBuildResult(core: SourcesCore) {
         mergeKey,
         mergeInTest,
         steps: steps ?? [],
+        groups: groups ?? [],
         charts: charts ?? [],
         carry: { notes, memory, documents, label_last: labelLast },
       }),
@@ -64,6 +66,7 @@ function useBuildResult(core: SourcesCore) {
       mergeKey,
       mergeInTest,
       steps,
+      groups,
       charts,
       notes,
       memory,

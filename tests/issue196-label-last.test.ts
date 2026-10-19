@@ -14,6 +14,7 @@ function ws(extra: Partial<Workspace> = {}): Workspace {
     merges: [],
     variables: [],
     steps: [],
+    groups: [],
     ...extra,
   };
 }

@@ -175,6 +175,7 @@ export function churnWorkspace(): Workspace {
       },
     ],
     variables: [],
+    groups: [],
     steps: [],
   };
 }
@@ -192,6 +193,7 @@ export function titanicWorkspace(): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 }
@@ -208,6 +210,7 @@ export function stationsPartialWorkspace(): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 }
@@ -224,6 +227,7 @@ export function chipotlePricesWorkspace(): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 }
@@ -240,6 +244,7 @@ export function messySurveyWorkspace(): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 }
@@ -260,6 +265,7 @@ export function highMissingWorkspace(): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 }
@@ -283,6 +289,7 @@ export function adultAlignWorkspace(): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 }
@@ -303,6 +310,7 @@ export function titanicYFileWorkspace(): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 }
@@ -326,6 +334,7 @@ export function wideAlignWorkspace(): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 }
@@ -350,6 +359,7 @@ export function parkinsonLikeWorkspace(): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 }
@@ -369,6 +379,7 @@ export function patientsVisitsWorkspace(): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 }

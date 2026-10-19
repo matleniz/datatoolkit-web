@@ -18,7 +18,10 @@ function harness() {
     state: {
       ...initialState,
       screen: "bench",
-      workspace: { ...emptyWorkspace("demo"), steps: [impute] },
+      workspace: appReducer(initialState, {
+        type: "SET_WORKSPACE",
+        workspace: { ...emptyWorkspace("demo"), steps: [impute] },
+      }).workspace,
     } as AppState,
     posted: [] as (Ack | PendingAck)[],
     answers: new Map<string, (apply: boolean) => void>(),

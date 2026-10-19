@@ -25,6 +25,7 @@ function wideWorkspace(): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 }
@@ -41,6 +42,7 @@ function amesWorkspace(): Workspace {
     label: { mode: "order" },
     merges: [],
     variables: [],
+    groups: [],
     steps: [],
   };
 }

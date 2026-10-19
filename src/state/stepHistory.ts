@@ -1,4 +1,4 @@
-import type { IdCounters, MemoryEntry, Step, WorkspaceDocument, WorkspaceNotes } from "../api/types";
+import type { Group, IdCounters, MemoryEntry, Step, WorkspaceDocument, WorkspaceNotes } from "../api/types";
 
 /**
  * What one undo level restores: the steps, the notes (#152), the agent memory
@@ -6,6 +6,8 @@ import type { IdCounters, MemoryEntry, Step, WorkspaceDocument, WorkspaceNotes }
  */
 export interface PipelineSnapshot {
   steps: Step[];
+  /** Groups travel with the steps (#249): an undo never leaves one without its steps. */
+  groups: Group[];
   notes: WorkspaceNotes | undefined;
   memory: MemoryEntry[] | undefined;
   documents: WorkspaceDocument[] | undefined;
@@ -17,7 +19,7 @@ export interface PipelineSnapshot {
 
 /**
  * Undo / redo over the pipeline (datatoolkit-issues#16): snapshots of
- * `workspace.steps`, `.notes`, `.memory` and `.documents`, in memory, per
+ * `workspace.steps`, `.groups`, `.notes`, `.memory` and `.documents`, in memory, per
  * open workspace.
  */
 export interface StepHistory<T = PipelineSnapshot> {
