@@ -7,7 +7,9 @@ import {
   allowWorkspaceSave,
   commitWorkspaceSave,
   ensureWorkspaceSaved,
+  flushWorkspaceOnPageHide,
   flushWorkspaceSave,
+  KEEPALIVE_MAX_BYTES,
   getLastSavedWorkspaceJson,
   getWorkspaceSaveFailure,
   retryWorkspaceSave,
@@ -434,5 +436,67 @@ describe("flushWorkspaceSave (#248)", () => {
 
     await expect(flushWorkspaceSave("dup248")).rejects.toThrow("engine down: 503");
     expect(getWorkspaceSaveFailure()?.message).toBe("engine down: 503");
+  });
+});
+
+describe("flushWorkspaceOnPageHide (#221)", () => {
+  function okFetch() {
+    return vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+  }
+
+  it("sends exactly one keepalive PUT with the gate payload, none when nothing is pending", () => {
+    const f = okFetch();
+    const w = ws("flush_a");
+    markWorkspaceLoaded(w);
+    setCommittedWorkspace(w);
+    expect(flushWorkspaceOnPageHide()).toBe(false);
+    expect(f).not.toHaveBeenCalled();
+
+    const edited = { ...w, groups: [{ id: "g1", name: "G", step_ids: [] }] } as unknown as Workspace;
+    setCommittedWorkspace(edited);
+    expect(flushWorkspaceOnPageHide()).toBe(true);
+    // visibilitychange then pagehide: the same payload goes out once.
+    expect(flushWorkspaceOnPageHide()).toBe(false);
+    expect(f).toHaveBeenCalledTimes(1);
+    const [url, init] = f.mock.calls[0]!;
+    expect(String(url)).toMatch(/\/workspaces\/flush_a$/);
+    expect(init?.method).toBe("PUT");
+    expect(init?.keepalive).toBe(true);
+    expect(init?.body).toBe(serializeWorkspace(edited));
+    expect(String(init?.body)).toContain('"g1"');
+  });
+
+  it("falls back to a plain fetch above the keepalive limit and never throws", () => {
+    const f = okFetch();
+    const w = ws("flush_big");
+    markWorkspaceLoaded(w);
+    setCommittedWorkspace({ ...w, label: { mode: "order" }, notes: "x".repeat(KEEPALIVE_MAX_BYTES + 1) } as unknown as Workspace);
+    expect(flushWorkspaceOnPageHide()).toBe(true);
+    expect(f.mock.calls[0]![1]?.keepalive).toBe(false);
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+      throw new Error("sync boom");
+    });
+    setCommittedWorkspace(ws("flush_big", "/tmp/other.csv"));
+    expect(() => flushWorkspaceOnPageHide()).not.toThrow();
+  });
+
+  it("does not fire for a payload already failed and awaiting Retry, but does for a newer one", async () => {
+    const w = ws("flush_fail");
+    markWorkspaceLoaded(w);
+    const edited = { ...w, steps: [{ op: "drop_columns", target: "both", params: { columns: ["a"] } }] } as unknown as Workspace;
+    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("engine down"));
+    setCommittedWorkspace(edited);
+    await queueWorkspaceSave(edited).catch(() => undefined);
+    expect(getWorkspaceSaveFailure()?.message).toBe("engine down");
+
+    const f = okFetch();
+    expect(flushWorkspaceOnPageHide()).toBe(false);
+    expect(f).not.toHaveBeenCalled();
+
+    setCommittedWorkspace({ ...edited, steps: [] , groups: [{ id: "g", name: "G", step_ids: [] }] } as unknown as Workspace);
+    expect(flushWorkspaceOnPageHide()).toBe(true);
+    // The failure stays: a keepalive answer cannot be observed on unload.
+    expect(getWorkspaceSaveFailure()).not.toBeNull();
   });
 });

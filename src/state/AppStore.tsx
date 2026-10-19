@@ -21,6 +21,7 @@ import {
 } from "./reducer";
 import {
   getLastSavedWorkspaceJson,
+  flushWorkspaceOnPageHide,
   getWorkspaceSaveEpoch,
   queueWorkspaceSave,
   saveable,
@@ -80,6 +81,22 @@ export function AppProvider({
     setGroupsAdopter((base, groups) => dispatch({ type: "ADOPT_GROUPS", base, groups }));
     return () => setGroupsAdopter(null);
   }, [dispatch]);
+
+  // Edits inside the autosave debounce die with the tab: send them on the way
+  // out (#221). `visibilitychange` covers mobile / tab discard, where
+  // `pagehide` may never fire.
+  useEffect(() => {
+    const onHide = () => flushWorkspaceOnPageHide();
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") onHide();
+    };
+    window.addEventListener("pagehide", onHide);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", onHide);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
 
   // Persistence lives here, not in the reducer (which must stay pure).
   const wsName = state.workspace?.name;

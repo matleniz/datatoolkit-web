@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
 import { errorText } from "./api/types";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { BootstrapError } from "./BootstrapError";
 import { loadInitialWorkspace, type SkippedWorkspace } from "./bootstrap";
 import { AppProvider, useAppDispatch } from "./state/AppStore";
@@ -81,7 +82,9 @@ createRoot(root).render(
   <StrictMode>
     <AppProvider>
       <Bootstrap>
-        <App />
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
       </Bootstrap>
     </AppProvider>
   </StrictMode>,
