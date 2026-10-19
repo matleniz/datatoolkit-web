@@ -1,4 +1,4 @@
-import { apiClient, serializeWorkspace } from "../api/client";
+import { API_BASE, apiClient, serializeWorkspace } from "../api/client";
 import type { Group, Workspace } from "../api/types";
 import { sameGroups } from "./stepGroups";
 import { dropLegacyCharts } from "./chartStorage";
@@ -217,9 +217,89 @@ export function resetWorkspaceSaveGateForTests(): void {
   suppressedNames.clear();
   saveChain = Promise.resolve();
   committedWorkspace = null;
+  lastFlushedJson = null;
   saveFailure = null;
   failureListeners.clear();
   groupsAdopter = null;
+}
+
+/** The workspace of the current React commit (null before the first one). */
+export function getCommittedWorkspace(): Workspace | null {
+  return committedWorkspace;
+}
+
+/** Browsers cap the bodies of in-flight `keepalive` requests at 64 KiB; stay under it. */
+export const KEEPALIVE_MAX_BYTES = 60 * 1024;
+
+/** Last payload handed to `flushWorkspaceOnPageHide`, so hidden + pagehide send it once. */
+let lastFlushedJson: string | null = null;
+
+/**
+ * Page is going away (`pagehide`, tab hidden): the debounced autosave may not
+ * have run, and anything async dies with the page. Send the committed,
+ * unsaved workspace with a `keepalive` PUT, the same body the gate sends (#221).
+ *
+ * - Nothing pending (saved copy equal, not saveable, tombstoned): no request.
+ * - A save already failed and awaits Retry with this very payload: no request.
+ * - Body over `KEEPALIVE_MAX_BYTES`: a keepalive fetch would be rejected, so a
+ *   plain fetch is attempted instead; the browser may cancel it on unload.
+ * - Never throws, never awaits: unload is not delayed. A keepalive answer is
+ *   unobservable on unload, so the failure state is only cleared when the page
+ *   survives (tab merely hidden) and the engine answered 2xx.
+ *
+ * Returns true when a request was sent.
+ */
+export function flushWorkspaceOnPageHide(): boolean {
+  try {
+    const ws = committedWorkspace;
+    if (!saveable(ws) || isWorkspaceSaveSuppressed(ws.name)) return false;
+    const serialized = serializeWorkspace(ws);
+    if (serialized === lastSavedWorkspaceJson || serialized === lastFlushedJson) {
+      return false;
+    }
+    const f = saveFailure;
+    if (
+      f &&
+      !f.orphaned &&
+      f.ws.name === ws.name &&
+      serializeWorkspace(f.ws) === serialized
+    ) {
+      return false;
+    }
+    lastFlushedJson = serialized;
+    const epoch = saveEpoch;
+    const savedAtSend = lastSavedWorkspaceJson;
+    const keepalive = new TextEncoder().encode(serialized).length <= KEEPALIVE_MAX_BYTES;
+    const sent = fetch(`${API_BASE.replace(/\/$/, "")}/workspaces/${encodeURIComponent(ws.name)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: serialized,
+      keepalive,
+    })
+      .then((res) => {
+        // Only if no other save completed meanwhile: a newer answer wins.
+        if (
+          res.ok &&
+          epoch === saveEpoch &&
+          lastSavedWorkspaceJson === savedAtSend &&
+          !isWorkspaceSaveSuppressed(ws.name)
+        ) {
+          lastSavedWorkspaceJson = serialized;
+          clearSaveFailureFor(ws.name);
+        } else {
+          lastFlushedJson = null;
+        }
+      })
+      .catch(() => {
+        lastFlushedJson = null;
+      });
+    // Later autosaves, deletes and renames wait for this request (they chain
+    // on / await `saveChain`), so a late flush cannot overwrite or resurrect.
+    saveChain = saveChain.then(() => sent);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Workspace of the current React commit (set in a layout effect, before any
