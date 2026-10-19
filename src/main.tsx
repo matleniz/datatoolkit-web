@@ -58,8 +58,9 @@ function Bootstrap({ children }: { children: ReactNode }) {
       {skipped ? (
         <div className="banner error-banner" role="status" data-workspace-skipped={skipped.name}>
           <span>
-            Could not open workspace "{skipped.name}" ({skipped.reason}); opened
-            another one instead.
+            {skipped.corrupt
+              ? `Workspace "${skipped.name}" is unreadable (${skipped.reason}) and was not opened; opened another one instead. Delete it from the workspace list, or restore its file.`
+              : `Could not open workspace "${skipped.name}" (${skipped.reason}); opened another one instead.`}
           </span>
           <button type="button" onClick={() => setSkipped(null)}>
             Dismiss

@@ -83,6 +83,8 @@ async function createChurnWorkspace(): Promise<Workspace> {
 export interface SkippedWorkspace {
   name: string;
   reason: string;
+  /** The stored file is unreadable (listed as corrupt), as opposed to a failed open. */
+  corrupt?: boolean;
 }
 
 export interface InitialLoad {
@@ -102,14 +104,23 @@ export interface InitialLoad {
  * when all fail the last error is thrown.
  */
 export async function loadInitialWorkspace(): Promise<InitialLoad> {
+  // Read before the first await: React StrictMode runs the effect twice, and
+  // the first run forgets the name before the second run reads it.
+  const remembered = rememberedWorkspaceName();
   const list = await apiClient.listWorkspaces();
   // A corrupt entry is listed but cannot be opened: never auto-open it.
   const valid = list.filter((w) => !isCorruptEntry(w)).map((w) => w.name);
   const names = new Set(valid);
-  const remembered = rememberedWorkspaceName();
 
   let skipped: SkippedWorkspace | null = null;
-  if (remembered && names.has(remembered)) {
+  const corruptRemembered = remembered
+    ? list.find((w) => w.name === remembered && isCorruptEntry(w))
+    : undefined;
+  if (remembered && corruptRemembered && isCorruptEntry(corruptRemembered)) {
+    // The list already says it cannot be opened: skip the GET, say why.
+    forgetWorkspaceName(remembered);
+    skipped = { name: remembered, reason: corruptRemembered.error, corrupt: true };
+  } else if (remembered && names.has(remembered)) {
     try {
       return { workspace: await apiClient.getWorkspace(remembered), skipped };
     } catch (e) {

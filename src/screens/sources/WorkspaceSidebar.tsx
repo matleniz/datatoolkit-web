@@ -438,12 +438,18 @@ export function WorkspaceSidebar({
                   >
                     <span className="ws-item-name">{s.name}</span>
                     {isCorruptEntry(s) ? (
-                      <span
-                        className="ws-badge-corrupt"
-                        title={`Unreadable workspace file: ${s.error}`}
-                      >
-                        corrupt
-                      </span>
+                      <>
+                        <span
+                          className="ws-badge-corrupt"
+                          title={`Unreadable workspace file: ${s.error}`}
+                        >
+                          corrupt
+                        </span>
+                        <span className="ws-item-meta ws-corrupt-reason">
+                          Unreadable workspace file ({s.error}). Delete it or
+                          restore the file.
+                        </span>
+                      </>
                     ) : (
                       <>
                         <span className="ws-item-meta">

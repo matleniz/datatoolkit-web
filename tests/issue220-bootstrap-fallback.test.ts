@@ -74,3 +74,35 @@ describe("remembered workspace fallback (#220)", () => {
     expect(r.skipped).toBeNull();
   });
 });
+
+describe("corrupt remembered workspace (#236)", () => {
+  const bad = { name: "bad", corrupt: true as const, error: "WorkspaceCorruptError" };
+
+  it("skips a corrupt remembered workspace without a GET and says why", async () => {
+    store.set("dtk.lastWorkspace", "bad");
+    vi.spyOn(apiClient, "listWorkspaces").mockResolvedValue([bad, ws("churn")]);
+    const get = vi.spyOn(apiClient, "getWorkspace").mockImplementation(async (n) => ws(n));
+    const r = await loadInitialWorkspace();
+    expect(r.workspace.name).toBe("churn");
+    expect(r.skipped).toEqual({ name: "bad", reason: "WorkspaceCorruptError", corrupt: true });
+    expect(store.has("dtk.lastWorkspace")).toBe(false);
+    expect(get.mock.calls.map((c) => c[0])).toEqual(["churn"]);
+  });
+
+  it("needs no startup notice when the corrupt entries are not remembered", async () => {
+    store.set("dtk.lastWorkspace", "churn");
+    vi.spyOn(apiClient, "listWorkspaces").mockResolvedValue([bad, ws("churn")]);
+    vi.spyOn(apiClient, "getWorkspace").mockImplementation(async (n) => ws(n));
+    const r = await loadInitialWorkspace();
+    expect(r.skipped).toBeNull();
+  });
+
+  it("reports the corrupt remembered workspace to a concurrent second run (StrictMode)", async () => {
+    store.set("dtk.lastWorkspace", "bad");
+    vi.spyOn(apiClient, "listWorkspaces").mockResolvedValue([bad, ws("churn")]);
+    vi.spyOn(apiClient, "getWorkspace").mockImplementation(async (n) => ws(n));
+    const [a, b] = await Promise.all([loadInitialWorkspace(), loadInitialWorkspace()]);
+    expect(a.skipped?.name).toBe("bad");
+    expect(b.skipped?.name).toBe("bad");
+  });
+});
