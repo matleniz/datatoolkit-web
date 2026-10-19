@@ -6,6 +6,7 @@ import {
   keyJoinReport,
   keyJoinText,
   trainParseErrorDisplay,
+  targetInfoTone,
   trainStatus,
   visibleEngineErrors,
 } from "../src/screens/sources/sourcesScreenLogic";
@@ -142,5 +143,14 @@ describe("key join helpers", () => {
       "8 / 8 labels matched on id · 0 lost · 2 train rows without a label",
     );
     expect(keyJoinReport(result, "other")).toBeNull();
+  });
+});
+
+describe("targetInfoTone (#235)", () => {
+  it("is a calm hint while the target is not chosen yet", () => {
+    expect(targetInfoTone("yfile", false, null)).toBe("hint");
+    expect(targetInfoTone("column", false, null)).toBe("hint");
+    expect(targetInfoTone("yfile", true, null)).toBe("error");
+    expect(targetInfoTone("column", true, "plan")).toBe("success");
   });
 });

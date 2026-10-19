@@ -17,6 +17,7 @@ import {
   sourcesSpecKey,
   sourcesWorkspaceToSync,
   targetInfoText,
+  targetInfoTone,
   testShapeText,
   trainShapeText,
   trainStatus,
@@ -217,6 +218,7 @@ export function SourcesScreen() {
               resolvedTarget,
               preview.keyJoin,
             )}
+            infoTone={targetInfoTone(labelMode, Boolean(trainYFile), resolvedTarget)}
             patch={patch}
           />
           <SourcesMergeCard

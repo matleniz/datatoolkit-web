@@ -65,6 +65,8 @@ const INDEX_NAMES = new Set(["index", "idx", "unnamed: 0", ""]);
 
 /**
  * Heuristics to guess a role from a filename, mirroring prototype behaviour.
+ * The first file of an empty workspace (no file has a role yet) is always
+ * Train X: a lone file cannot be a merge / label / test file of anything.
  */
 export function guessFileRole(
   fileName: string,
@@ -72,6 +74,7 @@ export function guessFileRole(
 ): FileRole {
   const lower = fileName.toLowerCase();
   const assignedRoles = Object.values(existingRoles);
+  if (assignedRoles.length === 0) return "trainX";
 
   if (
     lower.includes("label") ||

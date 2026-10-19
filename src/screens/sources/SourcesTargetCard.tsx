@@ -20,6 +20,7 @@ interface SourcesTargetCardProps {
   labelLast: boolean;
   onLabelLast: (value: boolean) => void;
   infoText: string;
+  infoTone: "success" | "hint" | "error";
   patch: Patch;
 }
 
@@ -124,7 +125,7 @@ function ColumnTargetOptions({
 }
 
 export function SourcesTargetCard(props: SourcesTargetCardProps) {
-  const { labelMode, resolvedTarget, labelLast, onLabelLast, infoText, patch } = props;
+  const { labelMode, resolvedTarget, labelLast, onLabelLast, infoText, infoTone, patch } = props;
   return (
     <section className="sources-card-padded" aria-label="Target settings">
       <div className="sources-card-title">Target</div>
@@ -170,7 +171,7 @@ export function SourcesTargetCard(props: SourcesTargetCardProps) {
         Keep target column last
       </label>
 
-      <div className={`label-info ${resolvedTarget ? "success" : "error"}`}>
+      <div className={`label-info ${infoTone}`}>
         {infoText}
       </div>
     </section>
