@@ -3,7 +3,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { getCommittedWorkspace } from "./state/workspaceSaveGate";
 
 /** JSON of the in-memory workspace, or null when there is none or it cannot be serialized. */
-export function workspaceExportJson(): { name: string; json: string } | null {
+function workspaceExportJson(): { name: string; json: string } | null {
   try {
     const ws = getCommittedWorkspace();
     if (!ws) return null;
@@ -15,7 +15,7 @@ export function workspaceExportJson(): { name: string; json: string } | null {
 }
 
 /** Download the in-memory workspace as a JSON file; false when that was not possible. */
-export function downloadWorkspaceJson(): boolean {
+function downloadWorkspaceJson(): boolean {
   try {
     const out = workspaceExportJson();
     if (!out) return false;
