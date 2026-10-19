@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { BootstrapError } from "../src/BootstrapError";
-import { ENGINE_UNREACHABLE_LIST, engineDownHint, shouldRefetchOnFocus } from "../src/bootstrapError";
+import { ENGINE_UNREACHABLE_LIST, engineDownHint, shouldRefetchOnFocus } from "../src/engineDownHint";
 
 describe("engineDownHint", () => {
   it("dev names dtk-api on 8765, not Docker", () => {

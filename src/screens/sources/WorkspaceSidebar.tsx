@@ -10,7 +10,7 @@ import {
 } from "../../api/types";
 import { abandonPendingWorkspaceSave } from "../../state/AppStore";
 import { allowWorkspaceSave, flushWorkspaceSave } from "../../state/workspaceSaveGate";
-import { ENGINE_UNREACHABLE_LIST } from "../../bootstrapError";
+import { ENGINE_UNREACHABLE_LIST } from "../../engineDownHint";
 import { engineMessage } from "./sourcesLogic";
 import {
   deleteConfirmMessage,

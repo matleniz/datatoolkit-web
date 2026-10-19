@@ -1,4 +1,4 @@
-import { engineDownHint } from "./bootstrapError";
+import { engineDownHint } from "./engineDownHint";
 
 /** Full-page screen for a failed startup load; the app is not mounted. */
 export function BootstrapError({

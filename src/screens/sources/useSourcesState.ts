@@ -11,7 +11,7 @@ import { apiClient, serializeWorkspace } from "../../api/client";
 import type { Workspace, WorkspaceSummaryEntry } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { createLatestWins } from "./latestWins";
-import { shouldRefetchOnFocus } from "../../bootstrapError";
+import { shouldRefetchOnFocus } from "../../engineDownHint";
 import { engineMessage, type WorkspaceSourcesState } from "./sourcesLogic";
 import {
   EMPTY_PREVIEW,
