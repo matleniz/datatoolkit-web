@@ -148,9 +148,13 @@ function useWorkspaceSummaries(workspace: Workspace | null) {
       void (window.__DTK_WORKSPACE_SAVED__ ?? Promise.resolve())
         .then(() => apiClient.listWorkspaceSummaries())
         .then((list) => {
-          if (active && latest.current.isCurrent(ticket)) setSummaries(list);
+          if (!active || !latest.current.isCurrent(ticket)) return;
+          setSummaries(list);
+          setListError(null);
         })
-        .catch(() => {});
+        .catch((err: unknown) => {
+          if (active) setListError(engineMessage(err));
+        });
     }, 0);
     return () => {
       active = false;

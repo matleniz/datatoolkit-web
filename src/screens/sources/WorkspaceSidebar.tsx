@@ -10,6 +10,7 @@ import {
 } from "../../api/types";
 import { abandonPendingWorkspaceSave } from "../../state/AppStore";
 import { allowWorkspaceSave, flushWorkspaceSave } from "../../state/workspaceSaveGate";
+import { ENGINE_UNREACHABLE_LIST } from "../../bootstrapError";
 import { engineMessage } from "./sourcesLogic";
 import {
   deleteConfirmMessage,
@@ -503,7 +504,10 @@ export function WorkspaceSidebar({
           );
         })}
 
-        {visible.length === 0 && summaries.length === 0 ? (
+        {visible.length === 0 && summaries.length === 0 && listError ? (
+          <div className="ws-empty">{ENGINE_UNREACHABLE_LIST}</div>
+        ) : null}
+        {visible.length === 0 && summaries.length === 0 && !listError ? (
           <div className="ws-empty">No workspaces yet.</div>
         ) : null}
         {visible.length === 0 && summaries.length > 0 ? (
@@ -546,6 +550,8 @@ export function WorkspaceSidebar({
         <button
           type="button"
           className="btn-new-ws"
+          disabled={Boolean(listError)}
+          title={listError ? ENGINE_UNREACHABLE_LIST : undefined}
           onClick={() => setShowNew(true)}
         >
           + New workspace
