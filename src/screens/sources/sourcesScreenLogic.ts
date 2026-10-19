@@ -6,6 +6,7 @@ import {
   extractFilesFromWorkspace,
   formatDetectedFromSpec,
   guessFileRole,
+  MISSING_TARGET_MESSAGE,
   mapFileInspect,
   yLabelValueColumn,
   type FileRole,
@@ -553,6 +554,7 @@ export function visibleEngineErrors(
 ): string[] {
   return errors.filter(
     (err) =>
+      err !== MISSING_TARGET_MESSAGE &&
       err !== status.emptyTrainHint &&
       err !== status.parseErrorHint &&
       !(status.parseError && err === status.parseError),

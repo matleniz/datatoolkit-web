@@ -12,6 +12,7 @@ import {
 } from "../src/screens/sources/sourcesScreenLogic";
 import type { Result } from "../src/api/types";
 import {
+  MISSING_TARGET_MESSAGE,
   defaultJoinKey,
   effectiveJoinKey,
   type SourceFileItem,
@@ -88,6 +89,11 @@ describe("visibleEngineErrors", () => {
     expect(visibleEngineErrors(["e", "p", "raw", "other"], status)).toEqual([
       "other",
     ]);
+  });
+
+  it("#235: the missing-target message is a hint on the Target card, not a banner", () => {
+    const status = { emptyTrainHint: "e", parseErrorHint: "p", parseError: null };
+    expect(visibleEngineErrors([MISSING_TARGET_MESSAGE], status)).toEqual([]);
   });
 });
 

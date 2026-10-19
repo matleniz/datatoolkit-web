@@ -280,6 +280,10 @@ function checkOrderJoin(
   }
 }
 
+/** Build error while no target is chosen yet; the Target card shows it as a calm hint. */
+export const MISSING_TARGET_MESSAGE =
+  "Give a file the role “Train y”, or pick a column of train X as the target.";
+
 function buildYFile(
   input: WorkspaceBuildInput,
   trainX: SourceFileItem | undefined,
@@ -293,9 +297,7 @@ function buildYFile(
     labelJoin: { mode: "order" },
   };
   if (!trainY) {
-    out.errors.push(
-      "Give a file the role “Train y”, or pick a column of train X as the target.",
-    );
+    out.errors.push(MISSING_TARGET_MESSAGE);
     return out;
   }
   out.trainYSpec = structuredClone(trainY.spec);

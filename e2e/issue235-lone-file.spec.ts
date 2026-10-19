@@ -37,6 +37,7 @@ test("#235: a lone customers.csv is Train X with no role errors; a second file i
   );
   await expect(page.getByText(/Pick a Train X file/)).toHaveCount(0);
   await expect(page.getByText(/Train X required to configure merge/)).toHaveCount(0);
+  await expect(page.getByText(/Give a file the role “Train y”, or pick/)).toHaveCount(0);
   // What is still missing (a target) shows as a calm hint, not an error.
   await expect(page.locator(".label-info.error")).toHaveCount(0);
   await expect(page.locator(".label-info.hint")).toBeVisible();
