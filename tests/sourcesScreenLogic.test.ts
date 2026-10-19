@@ -6,11 +6,13 @@ import {
   keyJoinReport,
   keyJoinText,
   trainParseErrorDisplay,
+  targetInfoTone,
   trainStatus,
   visibleEngineErrors,
 } from "../src/screens/sources/sourcesScreenLogic";
 import type { Result } from "../src/api/types";
 import {
+  MISSING_TARGET_MESSAGE,
   defaultJoinKey,
   effectiveJoinKey,
   type SourceFileItem,
@@ -88,6 +90,11 @@ describe("visibleEngineErrors", () => {
       "other",
     ]);
   });
+
+  it("#235: the missing-target message is a hint on the Target card, not a banner", () => {
+    const status = { emptyTrainHint: "e", parseErrorHint: "p", parseError: null };
+    expect(visibleEngineErrors([MISSING_TARGET_MESSAGE], status)).toEqual([]);
+  });
 });
 
 describe("clearedByOptionsEdit", () => {
@@ -142,5 +149,14 @@ describe("key join helpers", () => {
       "8 / 8 labels matched on id · 0 lost · 2 train rows without a label",
     );
     expect(keyJoinReport(result, "other")).toBeNull();
+  });
+});
+
+describe("targetInfoTone (#235)", () => {
+  it("is a calm hint while the target is not chosen yet", () => {
+    expect(targetInfoTone("yfile", false, null)).toBe("hint");
+    expect(targetInfoTone("column", false, null)).toBe("hint");
+    expect(targetInfoTone("yfile", true, null)).toBe("error");
+    expect(targetInfoTone("column", true, "plan")).toBe("success");
   });
 });

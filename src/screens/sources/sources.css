@@ -588,6 +588,10 @@
   color: #2f6b3a;
 }
 
+.label-info.hint {
+  color: var(--dtk-muted);
+}
+
 .label-info.error {
   color: #8f3809;
 }

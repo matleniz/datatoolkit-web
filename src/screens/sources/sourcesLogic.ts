@@ -65,6 +65,8 @@ const INDEX_NAMES = new Set(["index", "idx", "unnamed: 0", ""]);
 
 /**
  * Heuristics to guess a role from a filename, mirroring prototype behaviour.
+ * The first file of an empty workspace (no file has a role yet) is always
+ * Train X: a lone file cannot be a merge / label / test file of anything.
  */
 export function guessFileRole(
   fileName: string,
@@ -72,6 +74,7 @@ export function guessFileRole(
 ): FileRole {
   const lower = fileName.toLowerCase();
   const assignedRoles = Object.values(existingRoles);
+  if (assignedRoles.length === 0) return "trainX";
 
   if (
     lower.includes("label") ||
@@ -277,6 +280,10 @@ function checkOrderJoin(
   }
 }
 
+/** Build error while no target is chosen yet; the Target card shows it as a calm hint. */
+export const MISSING_TARGET_MESSAGE =
+  "Give a file the role “Train y”, or pick a column of train X as the target.";
+
 function buildYFile(
   input: WorkspaceBuildInput,
   trainX: SourceFileItem | undefined,
@@ -290,9 +297,7 @@ function buildYFile(
     labelJoin: { mode: "order" },
   };
   if (!trainY) {
-    out.errors.push(
-      "Give a file the role “Train y”, or pick a column of train X as the target.",
-    );
+    out.errors.push(MISSING_TARGET_MESSAGE);
     return out;
   }
   out.trainYSpec = structuredClone(trainY.spec);

@@ -15,12 +15,43 @@ import {
 describe("sourcesLogic pure mapping", () => {
   it("guesses roles correctly from filenames", () => {
     expect(guessFileRole("churn_train.csv")).toBe("trainX");
-    expect(guessFileRole("churn_labels.csv")).toBe("trainY");
-    expect(guessFileRole("churn_test.csv")).toBe("testX");
-    expect(guessFileRole("customers_extra.csv")).toBe("merge");
+    expect(guessFileRole("churn_labels.csv", { f1: "trainX" })).toBe("trainY");
+    expect(guessFileRole("churn_test.csv", { f1: "trainX" })).toBe("testX");
+    expect(guessFileRole("customers_extra.csv", { f1: "trainX" })).toBe("merge");
     expect(guessFileRole("unrelated.csv", { f1: "trainX", f2: "testX" })).toBe(
       "ignore",
     );
+  });
+
+  it("#235: the first file of an empty workspace is Train X whatever its name", () => {
+    for (const name of [
+      "customers.csv",
+      "customers_extra.csv",
+      "churn_test.csv",
+      "churn_labels.csv",
+      "unrelated.csv",
+    ]) {
+      expect(guessFileRole(name)).toBe("trainX");
+      expect(guessFileRole(name, {})).toBe("trainX");
+    }
+  });
+
+  it("#235: later files keep the name-based guess", () => {
+    const one = { f1: "trainX" } as const;
+    expect(guessFileRole("customers.csv", one)).toBe("merge");
+    expect(guessFileRole("churn_labels.csv", one)).toBe("trainY");
+    const two = { f1: "trainX", f2: "merge" } as const;
+    expect(guessFileRole("unrelated.csv", two)).toBe("ignore");
+  });
+
+  it("#235: back to an empty workspace (train file deleted) guesses Train X again", () => {
+    const roles: Record<string, "trainX" | "merge"> = { f1: "trainX", f2: "merge" };
+    delete roles.f1;
+    // one file (the merge one) remains: a new upload is guessed by name, no silent role change
+    expect(guessFileRole("churn_train.csv", roles)).toBe("trainX");
+    expect(guessFileRole("unrelated.csv", roles)).toBe("trainX");
+    delete roles.f2;
+    expect(guessFileRole("customers.csv", roles)).toBe("trainX");
   });
 
   it("finds common columns", () => {

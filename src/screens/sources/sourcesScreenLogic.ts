@@ -6,6 +6,7 @@ import {
   extractFilesFromWorkspace,
   formatDetectedFromSpec,
   guessFileRole,
+  MISSING_TARGET_MESSAGE,
   mapFileInspect,
   yLabelValueColumn,
   type FileRole,
@@ -532,6 +533,20 @@ export function targetInfoText(
   return resolvedTarget ? `target = “${resolvedTarget}”` : "";
 }
 
+/**
+ * Tone of the Target card line: a target that is simply not chosen yet
+ * (no Train y file, no target column) is a calm hint, not an error (#235).
+ */
+export function targetInfoTone(
+  labelMode: WorkspaceSourcesState["labelMode"],
+  hasTrainY: boolean,
+  resolvedTarget: string | null,
+): "success" | "hint" | "error" {
+  if (resolvedTarget) return "success";
+  if (labelMode !== "yfile" || !hasTrainY) return "hint";
+  return "error";
+}
+
 /** Engine errors not already shown by the parse-error / empty-train banners. */
 export function visibleEngineErrors(
   errors: string[],
@@ -539,6 +554,7 @@ export function visibleEngineErrors(
 ): string[] {
   return errors.filter(
     (err) =>
+      err !== MISSING_TARGET_MESSAGE &&
       err !== status.emptyTrainHint &&
       err !== status.parseErrorHint &&
       !(status.parseError && err === status.parseError),
