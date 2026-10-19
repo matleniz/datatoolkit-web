@@ -159,6 +159,7 @@ export function SourcesScreen() {
         summaries={core.summaries}
         activeName={activeWsName}
         listError={core.listError}
+        onRetryList={core.reloadList}
         onSelect={(name) => void workspaces.select(name)}
         onSummariesChange={core.setSummaries}
         onCreated={workspaces.create}

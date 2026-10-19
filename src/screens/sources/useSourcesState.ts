@@ -11,6 +11,7 @@ import { apiClient, serializeWorkspace } from "../../api/client";
 import type { Workspace, WorkspaceSummaryEntry } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { createLatestWins } from "./latestWins";
+import { shouldRefetchOnFocus } from "../../engineDownHint";
 import { engineMessage, type WorkspaceSourcesState } from "./sourcesLogic";
 import {
   EMPTY_PREVIEW,
@@ -41,6 +42,7 @@ export interface SourcesCore {
   summaries: WorkspaceSummaryEntry[];
   setSummaries: Dispatch<SetStateAction<WorkspaceSummaryEntry[]>>;
   listError: string | null;
+  reloadList: () => void;
   activeWsName: string;
   setActiveWsName: Dispatch<SetStateAction<string>>;
   src: WorkspaceSourcesState;
@@ -112,24 +114,43 @@ function useWorkspaceSummaries(workspace: Workspace | null) {
     latest.current.next();
     setSummaries(next);
   }, []);
-  useEffect(() => {
-    let active = true;
+  const reloadList = useCallback(() => {
     const ticket = latest.current.next();
     apiClient
       .listWorkspaceSummaries()
       .then((list) => {
-        if (!active || !latest.current.isCurrent(ticket)) return;
+        if (!mounted.current || !latest.current.isCurrent(ticket)) return;
         setSummaries(list);
         setListError(null);
       })
       .catch((err: unknown) => {
-        if (!active) return;
+        if (!mounted.current) return;
         setListError(engineMessage(err));
       });
-    return () => {
-      active = false;
-    };
   }, []);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    reloadList();
+    return () => {
+      mounted.current = false;
+    };
+  }, [reloadList]);
+
+  // Engine back after a failed list: refetch when the tab regains focus
+  // (no polling).
+  useEffect(() => {
+    if (!shouldRefetchOnFocus(listError)) return;
+    const onWake = () => {
+      if (document.visibilityState === "visible") reloadList();
+    };
+    window.addEventListener("focus", onWake);
+    document.addEventListener("visibilitychange", onWake);
+    return () => {
+      window.removeEventListener("focus", onWake);
+      document.removeEventListener("visibilitychange", onWake);
+    };
+  }, [listError, reloadList]);
 
   // The sidebar cards (roles, shapes) go stale once autosave PUTs a changed
   // workspace: refetch after the save gate settles.
@@ -148,9 +169,13 @@ function useWorkspaceSummaries(workspace: Workspace | null) {
       void (window.__DTK_WORKSPACE_SAVED__ ?? Promise.resolve())
         .then(() => apiClient.listWorkspaceSummaries())
         .then((list) => {
-          if (active && latest.current.isCurrent(ticket)) setSummaries(list);
+          if (!active || !latest.current.isCurrent(ticket)) return;
+          setSummaries(list);
+          setListError(null);
         })
-        .catch(() => {});
+        .catch((err: unknown) => {
+          if (active) setListError(engineMessage(err));
+        });
     }, 0);
     return () => {
       active = false;
@@ -158,7 +183,7 @@ function useWorkspaceSummaries(workspace: Workspace | null) {
     };
   }, [serialized]);
 
-  return { summaries, setSummaries: applySummaries, listError };
+  return { summaries, setSummaries: applySummaries, listError, reloadList };
 }
 
 /** State, refs and persistence shared by the Sources screen handlers. */
@@ -220,7 +245,8 @@ export function useSourcesState(): SourcesCore {
     });
   }, [src, dispatch]);
 
-  const { summaries, setSummaries, listError } = useWorkspaceSummaries(workspace);
+  const { summaries, setSummaries, listError, reloadList } =
+    useWorkspaceSummaries(workspace);
 
   return {
     dispatch,
@@ -229,6 +255,7 @@ export function useSourcesState(): SourcesCore {
     summaries,
     setSummaries,
     listError,
+    reloadList,
     activeWsName,
     setActiveWsName,
     src,

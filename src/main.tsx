@@ -2,6 +2,8 @@ import { StrictMode, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
+import { errorText } from "./api/types";
+import { BootstrapError } from "./BootstrapError";
 import { loadInitialWorkspace, type SkippedWorkspace } from "./bootstrap";
 import { AppProvider, useAppDispatch } from "./state/AppStore";
 import { markWorkspaceLoaded } from "./state/workspaceSaveGate";
@@ -11,6 +13,7 @@ function Bootstrap({ children }: { children: ReactNode }) {
   const dispatch = useAppDispatch();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [skipped, setSkipped] = useState<SkippedWorkspace | null>(null);
 
   useEffect(() => {
@@ -21,17 +24,24 @@ function Bootstrap({ children }: { children: ReactNode }) {
         markWorkspaceLoaded(ws);
         dispatch({ type: "SET_WORKSPACE", workspace: ws });
         setSkipped(skippedWs);
+        setError(null);
         setReady(true);
       })
       .catch((e) => {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : String(e));
+        setError(errorText(e));
         setReady(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [dispatch]);
+  }, [dispatch, attempt]);
+
+  const retry = () => {
+    setReady(false);
+    setError(null);
+    setAttempt((n) => n + 1);
+  };
 
   if (!ready) {
     return (
@@ -40,18 +50,8 @@ function Bootstrap({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if (error) {
-    return (
-      <div style={{ padding: 24 }}>
-        <div style={{ color: "#7d1c22", marginBottom: 8 }}>
-          Engine unavailable: {error}
-        </div>
-        <div style={{ color: "#5b5850", fontSize: 12 }}>
-          Start dtk-api on port 8765, then reload. Shell UI still loads below.
-        </div>
-        {children}
-      </div>
-    );
+  if (error !== null) {
+    return <BootstrapError error={error} onRetry={retry} />;
   }
   return (
     <>

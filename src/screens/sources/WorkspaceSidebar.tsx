@@ -10,6 +10,7 @@ import {
 } from "../../api/types";
 import { abandonPendingWorkspaceSave } from "../../state/AppStore";
 import { allowWorkspaceSave, flushWorkspaceSave } from "../../state/workspaceSaveGate";
+import { ENGINE_UNREACHABLE_LIST } from "../../engineDownHint";
 import { engineMessage } from "./sourcesLogic";
 import {
   deleteConfirmMessage,
@@ -38,6 +39,7 @@ export interface WorkspaceSidebarProps {
   summaries: WorkspaceSummaryEntry[];
   activeName: string;
   listError: string | null;
+  onRetryList: () => void;
   onSelect: (name: string) => void;
   onSummariesChange: (next: WorkspaceSummaryEntry[]) => void;
   /** After create: parent should select the new empty workspace. */
@@ -58,6 +60,7 @@ export function WorkspaceSidebar({
   summaries,
   activeName,
   listError,
+  onRetryList,
   onSelect,
   onSummariesChange,
   onCreated,
@@ -503,7 +506,15 @@ export function WorkspaceSidebar({
           );
         })}
 
-        {visible.length === 0 && summaries.length === 0 ? (
+        {visible.length === 0 && summaries.length === 0 && listError ? (
+          <div className="ws-empty">
+            {ENGINE_UNREACHABLE_LIST}{" "}
+            <button type="button" className="ws-action" onClick={onRetryList}>
+              Retry
+            </button>
+          </div>
+        ) : null}
+        {visible.length === 0 && summaries.length === 0 && !listError ? (
           <div className="ws-empty">No workspaces yet.</div>
         ) : null}
         {visible.length === 0 && summaries.length > 0 ? (
@@ -546,6 +557,8 @@ export function WorkspaceSidebar({
         <button
           type="button"
           className="btn-new-ws"
+          disabled={Boolean(listError)}
+          title={listError ? ENGINE_UNREACHABLE_LIST : undefined}
           onClick={() => setShowNew(true)}
         >
           + New workspace
