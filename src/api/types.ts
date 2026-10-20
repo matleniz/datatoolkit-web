@@ -632,8 +632,17 @@ export class GroupInvariantError extends EngineError {
   }
 }
 
+/** Shown (as a neutral notice, not an error) when the user cancels a load (#250). */
+export const CANCELLED_MESSAGE = "Load cancelled";
+
+/** True for the `Cancelled` error a user-initiated Cancel produces. */
+export function isCancelled(e: unknown): boolean {
+  return e instanceof EngineError && e.type === "Cancelled";
+}
+
 /** What to show for a thrown value: the engine message, else its string form. */
 export function errorText(e: unknown): string {
+  if (isCancelled(e)) return CANCELLED_MESSAGE;
   return e instanceof EngineError ? e.message : String(e);
 }
 

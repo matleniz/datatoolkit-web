@@ -75,7 +75,7 @@ test("issue 247: Cancel aborts a slow load and says so", async ({ page }) => {
   const busy = page.locator('[data-busy="source"]');
   await expect(busy).toBeVisible({ timeout: 10_000 });
   await busy.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByText(/Request cancelled/).first()).toBeVisible();
+  await expect(page.getByText(/Load cancelled/).first()).toBeVisible();
   await expect(busy).toHaveCount(0);
 });
 

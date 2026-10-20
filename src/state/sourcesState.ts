@@ -42,6 +42,11 @@ export interface SourceFileItem {
    * must not treat the file as a healthy empty train.
    */
   parseError?: string | null;
+  /**
+   * Engine reason for a 0-byte upload (#239). `parseError` stays null for it
+   * (MAT-154 empty-train copy); the row warning reads this instead.
+   */
+  emptyReason?: string | null;
 }
 
 /** Front-only Sources UI state kept per workspace name. */

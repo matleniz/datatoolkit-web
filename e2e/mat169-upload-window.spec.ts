@@ -35,7 +35,7 @@ test("MAT-169: bad CSV row shows SourceError; on_bad_lines=skip opens workbench"
   await sourceFileInput(page).setInputFiles(badPath);
 
   const filesList = page.getByRole("region", { name: "Files list" });
-  await expect(filesList.getByText("bad_csv_row.csv")).toBeVisible({
+  await expect(filesList.locator(".file-name", { hasText: "bad_csv_row.csv" })).toBeVisible({
     timeout: 30_000,
   });
 

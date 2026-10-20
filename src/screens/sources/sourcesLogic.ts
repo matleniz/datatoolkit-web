@@ -1,4 +1,5 @@
 import { fmtCount } from "../../bench/format";
+import { CANCELLED_MESSAGE, isCancelled } from "../../api/types";
 import type {
   ChartSpec,
   CsvSource,
@@ -34,6 +35,7 @@ export type {
 
 /** Engine errors are `{type, message}`; anything else is stringified. */
 export function engineMessage(err: unknown): string {
+  if (isCancelled(err)) return CANCELLED_MESSAGE;
   if (err && typeof err === "object") {
     const e = err as Partial<EngineError>;
     const msg = typeof e.message === "string" ? e.message : "";

@@ -9,7 +9,7 @@ import {
 
 import { BusyIndicator } from "../../BusyIndicator";
 import { apiClient } from "../../api/client";
-import type { ColumnProfile, Step } from "../../api/types";
+import { CANCELLED_MESSAGE, type ColumnProfile, type Step } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { colAlerts, isOutlierValue, missPct, profileBars } from "../alerts";
 import { cellTone, type DisplayCol, type DisplayRow } from "../diff";
@@ -290,6 +290,23 @@ function rowNumClass(selected: boolean, removed: boolean): string {
 }
 
 /** W2 — data grid with horizontally windowed columns (MAT-152). */
+/** The bench load error; a user Cancel reads as a neutral notice (#250). */
+function BenchErrorBanner({ message }: { message: string | null }) {
+  if (!message) return null;
+  if (message === CANCELLED_MESSAGE) {
+    return (
+      <div className="banner" role="status">
+        {message}
+      </div>
+    );
+  }
+  return (
+    <div className="banner error-banner" role="alert">
+      {message}
+    </div>
+  );
+}
+
 export function Grid() {
   const { selection, targetColumn, benchError, editor, agentTouch, role } = useAppState();
   const dispatch = useAppDispatch();
@@ -630,11 +647,7 @@ export function Grid() {
         </div>
       ) : null}
 
-      {benchError ? (
-        <div className="banner error-banner" role="alert">
-          {benchError}
-        </div>
-      ) : null}
+      <BenchErrorBanner message={benchError} />
 
       <div
         className="grid"

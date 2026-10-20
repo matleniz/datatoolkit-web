@@ -1,5 +1,10 @@
 import { apiClient } from "../../api/client";
-import type { FileSourceSpec, Result, Workspace } from "../../api/types";
+import {
+  isCancelled,
+  type FileSourceSpec,
+  type Result,
+  type Workspace,
+} from "../../api/types";
 import {
   emptyWorkspaceSources,
   engineMessage,
@@ -250,6 +255,7 @@ export async function enrichFileItem(
     const colList = await apiClient.sourceColumns(spec);
     cols = colList.map((c) => c.name);
   } catch (err: unknown) {
+    if (isCancelled(err)) throw err;
     parseError = engineMessage(err);
     cols = [];
   }
@@ -263,6 +269,7 @@ export async function enrichFileItem(
     rowCount = preview.shape[0];
     detected = formatDetectedFromSpec(spec, preview.shape);
   } catch (err: unknown) {
+    if (isCancelled(err)) throw err;
     if (!parseError) parseError = engineMessage(err);
     detected = formatDetectedFromSpec(spec, null);
   }
@@ -317,6 +324,7 @@ export async function inspectUploadedFile(
     const colList = await apiClient.sourceColumns(spec);
     cols = colList.map((c) => c.name);
   } catch (err: unknown) {
+    if (isCancelled(err)) throw err;
     parseError = engineMessage(err);
   }
 
@@ -330,6 +338,7 @@ export async function inspectUploadedFile(
     );
     shape = preview.shape;
   } catch (err: unknown) {
+    if (isCancelled(err)) throw err;
     if (!parseError) parseError = engineMessage(err);
   }
 
@@ -352,6 +361,7 @@ export async function inspectUploadedFile(
     // 0-byte files stay on the MAT-154 empty-train path even if the
     // engine also raises SourceError while reading them.
     parseError: file.size === 0 ? null : parseError,
+    emptyReason: file.size === 0 ? parseError ?? "file is empty" : null,
   };
   return {
     item,
@@ -359,6 +369,28 @@ export async function inspectUploadedFile(
     colCount: cols.length > 0 ? cols.length : (shape?.[1] ?? 0),
     role: guessFileRole(file.name, roles),
   };
+}
+
+export interface FileWarning {
+  /** Short verdict shown on the file row. */
+  title: "Empty file" | "Not a readable table";
+  /** The engine's message, verbatim. */
+  reason: string;
+}
+
+/**
+ * Row warning for a file the engine cannot use as a table (#239): empty, or
+ * unreadable (binary, wrong format). Null for a healthy file. A file with a
+ * warning is never a ready Train X (see `trainStatus`).
+ */
+export function fileWarning(file: SourceFileItem): FileWarning | null {
+  const detail = file.parseError?.trim();
+  if (detail) {
+    const empty = /file is empty/i.test(detail);
+    return { title: empty ? "Empty file" : "Not a readable table", reason: detail };
+  }
+  const emptyReason = file.emptyReason?.trim();
+  return emptyReason ? { title: "Empty file", reason: emptyReason } : null;
 }
 
 /** Kinds that often need a manual pick / override of their load options. */

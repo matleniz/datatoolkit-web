@@ -220,7 +220,7 @@ test("MAT-167: legacy employees-json recovers via Re-inspect and grid loads", as
   await expect(page.getByRole("button", { name: "Open workbench" })).toBeDisabled();
 
   await page.getByRole("button", { name: "Re-inspect" }).click();
-  await expect(page.getByText(/record_path "employees"/)).toBeVisible({
+  await expect(page.getByText(/record_path "employees"/).first()).toBeVisible({
     timeout: 30_000,
   });
   await expect(page.getByText(STORED_FAIL)).toHaveCount(0, { timeout: 30_000 });
