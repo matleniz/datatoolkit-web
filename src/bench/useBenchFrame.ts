@@ -276,6 +276,8 @@ export function useBenchFrame(
   useEffect(() => {
     const gen = ++fetchGen.current;
     const alive = () => gen === fetchGen.current;
+    // A page requested by an older generation no longer owns the lock (#250).
+    setLoadingMore(false);
     const fail = (message: string | null) =>
       dispatch({ type: "SET_BENCH_ERROR", message });
 
@@ -467,9 +469,10 @@ export function useBenchFrame(
           dispatch({ type: "SET_BENCH_ERROR", message: errorText(e) });
       })
       .finally(() => {
-        // Always release: a reload that raced this page must not leave
-        // loadMore locked for good (#246). The reload resets the frame itself.
-        setLoadingMore(false);
+        // Only the current generation releases the lock: a stale page must not
+        // reopen it while the new generation loads (#250). A new generation
+        // resets the lock itself, so a stale page never leaves it locked (#246).
+        if (gen === fetchGen.current) setLoadingMore(false);
       });
   }, [workspace, role, version, loading, loadingMore, dispatch]);
 

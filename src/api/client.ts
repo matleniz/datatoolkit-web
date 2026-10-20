@@ -27,7 +27,7 @@ import {
 } from "./types";
 import { gridViewBody, type GridView } from "../state/gridView";
 import { groupInvariantError } from "../state/stepGroups";
-import { scopeOf, trackRequest } from "./inflight";
+import { scopeOf, trackRequest, type BusyScope } from "./inflight";
 import { nextWriteSeq, WRITE_SEQ_HEADER } from "./writeSeq";
 import { InFlightDedupe } from "./requestDedupe";
 
@@ -324,12 +324,39 @@ class HttpApiClient implements ApiClient {
     // join the answer computed before it (#244).
     const writesStore = method !== "GET" && path.startsWith("/workspaces/");
     if (writesStore) this.dedupe.invalidateReads("/workspaces");
-    const run = this.dedupe.run(key, () =>
-      this.execute<T>(method, path, headers, payload),
-    );
+    const scope = scopeOf(method, path);
+    const run = scope
+      ? this.joinShared<T>(scope, key, method, path, headers, payload)
+      : this.dedupe.run(key, () => this.execute<T>(method, path, headers, payload));
     return writesStore
       ? run.finally(() => this.dedupe.invalidateReads("/workspaces"))
       : run;
+  }
+
+  /**
+   * A tracked request shared between identical callers. Each caller is tracked
+   * (and cancellable) on its own: Cancel rejects only that caller, and the
+   * fetch is aborted once every sharer has cancelled (#250).
+   */
+  private joinShared<T>(
+    scope: BusyScope,
+    key: string,
+    method: string,
+    path: string,
+    headers: Record<string, string>,
+    payload: BodyInit | undefined,
+  ): Promise<T> {
+    const sub = this.dedupe.join(key, (signal) =>
+      this.execute<T>(method, path, headers, payload, signal, false),
+    );
+    return new Promise<T>((resolve, reject) => {
+      const untrack = trackRequest(scope, () => {
+        sub.leave();
+        untrack();
+        reject(new EngineError("Cancelled", "Request cancelled."));
+      });
+      sub.promise.then(resolve, reject).finally(untrack);
+    });
   }
 
   private async execute<T>(
@@ -338,8 +365,9 @@ class HttpApiClient implements ApiClient {
     headers: Record<string, string>,
     payload: BodyInit | undefined,
     signal?: AbortSignal,
+    track = true,
   ): Promise<T> {
-    const scope = scopeOf(method, path);
+    const scope = track ? scopeOf(method, path) : null;
     const ac = new AbortController();
     let cancelled = false;
     if (signal) {

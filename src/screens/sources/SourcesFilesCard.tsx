@@ -7,6 +7,7 @@ import {
   type FileRole,
   type SourceFileItem,
 } from "./sourcesLogic";
+import { fileWarning } from "./sourcesScreenLogic";
 import { SourceOptionsEditor } from "./SourceOptionsEditor";
 import { SourcesDocuments } from "./SourcesDocuments";
 
@@ -55,16 +56,24 @@ interface FileBlockProps {
 }
 
 /**
- * A file that failed to load shows the engine's reason on its own row. The
- * Train X file reports it in the Result card instead, so a failing test /
- * label / merge file is no longer silent (#246).
+ * A file the engine cannot use as a table shows a warning on its own row: the
+ * verdict ("Empty file" / "Not a readable table") and the engine's message
+ * verbatim underneath (#239, #246). The Train X result card carries the
+ * blocking alert, so there the row notice is a status, not a second alert.
  */
 function FileLoadError({ file, role }: { file: SourceFileItem; role: FileRole | "ignore" }) {
-  const detail = file.parseError?.trim();
-  if (!detail || role === "trainX") return null;
+  const warning = fileWarning(file);
+  if (!warning) return null;
   return (
-    <div className="engine-error-box" role="alert" data-file-load-error={file.id}>
-      {file.name} could not be loaded: {detail}
+    <div
+      className="engine-error-box file-warning"
+      role={role === "trainX" ? "status" : "alert"}
+      data-file-load-error={file.id}
+    >
+      <strong>
+        {file.name}: {warning.title}
+      </strong>
+      <div className="file-warning-reason">{warning.reason}</div>
     </div>
   );
 }

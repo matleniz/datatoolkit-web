@@ -662,6 +662,14 @@
   font-size: 12px;
 }
 
+.engine-notice-box {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #eef0f3;
+  color: #3d4654;
+  font-size: 12px;
+}
+
 .sources-recovery-actions {
   display: flex;
   gap: 8px;

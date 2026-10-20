@@ -1,3 +1,4 @@
+import { CANCELLED_MESSAGE } from "../../api/types";
 import type { SourceFileItem } from "./sourcesLogic";
 import {
   showEmptyTrainBanner,
@@ -26,11 +27,17 @@ function ErrorBanners({
   const { parseErrorHint, emptyTrainHint } = status;
   return (
     <>
-      {visibleEngineErrors(engineErrors, status).map((err, i) => (
-        <div key={i} className="engine-error-box" role="alert">
-          {err}
-        </div>
-      ))}
+      {visibleEngineErrors(engineErrors, status).map((err, i) =>
+        err === CANCELLED_MESSAGE ? (
+          <div key={i} className="engine-notice-box" role="status">
+            {err}
+          </div>
+        ) : (
+          <div key={i} className="engine-error-box" role="alert">
+            {err}
+          </div>
+        ),
+      )}
       {parseErrorHint ? (
         <div
           className="engine-error-box"
