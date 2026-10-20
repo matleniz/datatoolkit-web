@@ -6,6 +6,7 @@ import {
   ErrorBody,
   ExportManifest,
   ExportRequest,
+  isStaleWriteBody,
   JsonSchema,
   KeyInfo,
   PreviewStep,
@@ -13,6 +14,7 @@ import {
   Role,
   SourceColumn,
   SourceSpec,
+  StaleWriteError,
   Step,
   TransformInfo,
   UploadResponse,
@@ -26,6 +28,7 @@ import {
 import { gridViewBody, type GridView } from "../state/gridView";
 import { groupInvariantError } from "../state/stepGroups";
 import { scopeOf, trackRequest } from "./inflight";
+import { nextWriteSeq, WRITE_SEQ_HEADER } from "./writeSeq";
 import { InFlightDedupe } from "./requestDedupe";
 
 interface ApiClient {
@@ -293,8 +296,9 @@ class HttpApiClient implements ApiClient {
     body?: unknown,
     rawBody?: BodyInit,
     signal?: AbortSignal,
+    extraHeaders?: Record<string, string>,
   ): Promise<T> {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { ...extraHeaders };
     let payload: BodyInit | undefined = rawBody;
     let bodyKey = "";
     if (body !== undefined) {
@@ -398,6 +402,7 @@ class HttpApiClient implements ApiClient {
     const snippet = text.length > 200 ? `${text.slice(0, 200)}…` : text;
     if (!res.ok) {
       if (parsed && isErrorBody(data)) {
+        if (isStaleWriteBody(res.status, data)) throw new StaleWriteError(data.message);
         const groupError = groupInvariantError(res.status, data);
         if (groupError) throw groupError;
         throw new EngineError(data.type, data.message, res.status);
@@ -488,6 +493,7 @@ class HttpApiClient implements ApiClient {
       workspaceBody(ws),
       undefined,
       signal,
+      { [WRITE_SEQ_HEADER]: String(nextWriteSeq()) },
     );
   }
 

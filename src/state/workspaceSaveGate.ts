@@ -1,5 +1,6 @@
 import { API_BASE, apiClient, serializeWorkspace } from "../api/client";
-import type { Group, Workspace } from "../api/types";
+import { isStaleWriteBody, StaleWriteError, type Group, type Workspace } from "../api/types";
+import { nextWriteSeq, WRITE_SEQ_HEADER } from "../api/writeSeq";
 import { sameGroups } from "./stepGroups";
 import { dropLegacyCharts } from "./chartStorage";
 
@@ -183,6 +184,12 @@ export async function commitWorkspaceSave(opts: {
   try {
     answer = await save(ws);
   } catch (e) {
+    // A newer write of this tab already landed (#263): this one is obsolete,
+    // not failed. No banner, no retry, never recorded as saved.
+    if (e instanceof StaleWriteError) {
+      console.debug(`[workspace] stale save of ${ws.name} dropped: ${e.message}`);
+      return "skipped";
+    }
     if (opts.rethrow && !isWorkspaceSaveSuppressed(ws.name)) throw e;
     return "skipped";
   }
@@ -272,11 +279,20 @@ export function flushWorkspaceOnPageHide(): boolean {
     const keepalive = new TextEncoder().encode(serialized).length <= KEEPALIVE_MAX_BYTES;
     const sent = fetch(`${API_BASE.replace(/\/$/, "")}/workspaces/${encodeURIComponent(ws.name)}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        [WRITE_SEQ_HEADER]: String(nextWriteSeq()),
+      },
       body: serialized,
       keepalive,
     })
-      .then((res) => {
+      .then(async (res) => {
+        if (!res.ok && res.status === 409) {
+          const body: unknown = await res.json().catch(() => null);
+          if (isStaleWriteBody(res.status, body)) {
+            console.debug(`[workspace] stale flush of ${ws.name} dropped`);
+          }
+        }
         // Only if no other save completed meanwhile: a newer answer wins.
         if (
           res.ok &&

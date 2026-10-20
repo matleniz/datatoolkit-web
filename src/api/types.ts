@@ -596,6 +596,24 @@ export class EngineError extends Error {
 }
 
 /**
+ * 409 `stale_write` (#263): a newer workspace PUT of this session was already
+ * accepted, so the engine wrote nothing for this one.
+ */
+export class StaleWriteError extends EngineError {
+  constructor(message: string) {
+    super("StaleWriteError", message, 409);
+    this.name = "StaleWriteError";
+  }
+}
+
+/** True for a 409 whose engine body is `StaleWriteError` / rule `stale_write`. */
+export function isStaleWriteBody(status: number, body: unknown): boolean {
+  if (status !== 409) return false;
+  const b = body as { type?: unknown; detail?: { rule?: unknown } | null };
+  return b?.type === "StaleWriteError" && b.detail?.rule === "stale_write";
+}
+
+/**
  * A 422 caused by the step groups (#249): the engine's `detail` names the
  * rule, the group and the step when it has them (`stepGroups.ts` parses it).
  */
