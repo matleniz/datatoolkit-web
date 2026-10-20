@@ -1,6 +1,11 @@
 import type { ChangeEvent } from "react";
 import { apiClient } from "../../api/client";
-import type { FileSourceSpec } from "../../api/types";
+import {
+  isUploadTooLarge,
+  uploadErrorText,
+  type FileSourceSpec,
+  type UploadResponse,
+} from "../../api/types";
 import { markWorkspaceSaved } from "../../state/AppStore";
 import {
   engineMessage,
@@ -86,6 +91,7 @@ export function useSourcesFiles({
     setOptionsOpen,
     setOptionsBusy,
     fileInputRef,
+    setUploadError,
     optionsGenRef,
   } = core;
   const { pushError, addError, dropErrors, guarded } = core.errors;
@@ -104,8 +110,17 @@ export function useSourcesFiles({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setUploadError(null);
     await guarded(async () => {
-      const uploadRes = await apiClient.upload(file.name, file);
+      let uploadRes: UploadResponse;
+      try {
+        uploadRes = await apiClient.upload(file.name, file);
+      } catch (err: unknown) {
+        // Over the engine cap: say so next to the button, not in the Result card (#299).
+        if (!isUploadTooLarge(err)) throw err;
+        setUploadError(uploadErrorText(file.name, err));
+        return;
+      }
       const res = await inspectUploadedFile(
         file,
         uploadRes.path,

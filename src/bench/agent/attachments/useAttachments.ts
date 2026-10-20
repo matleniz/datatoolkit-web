@@ -1,6 +1,7 @@
 import { useCallback, useReducer, useRef } from "react";
 
 import { apiClient } from "../../../api/client";
+import { isUploadTooLarge, uploadErrorText } from "../../../api/types";
 import { attachmentReducer, NO_ATTACHMENTS, type Attachment } from "./attachmentState";
 import { attachFile } from "./attachFlow";
 import { detachAttachment, registerAttachment } from "./attachmentContract";
@@ -37,9 +38,13 @@ export function useAttachments(token: string, session: string): Attachments {
               dispatch({ type: "ready", id, serverId: att.id, kind: att.kind });
             }
           })
-          .catch((err: unknown) =>
-            dispatch({ type: "failed", id, error: err instanceof Error ? err.message : String(err) }),
-          )
+          .catch((err: unknown) => {
+            const tooLarge = isUploadTooLarge(err);
+            const error = tooLarge
+              ? uploadErrorText(file.name, err)
+              : err instanceof Error ? err.message : String(err);
+            dispatch({ type: "failed", id, error, tooLarge });
+          })
           .finally(() => removed.current.delete(id));
       }
     },

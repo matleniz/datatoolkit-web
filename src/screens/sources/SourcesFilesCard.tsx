@@ -147,6 +147,8 @@ interface SourcesFilesCardProps {
   optionsBusy: Record<string, boolean>;
   fileInputId: string;
   fileInputRef: RefObject<HTMLInputElement>;
+  /** Why the last upload was refused (413, #299); null hides the line. */
+  uploadError: string | null;
   onPickRole: (fileId: string, role: FileRole) => void;
   onToggleOptions: (fileId: string) => void;
   onSpecChange: (fileId: string, spec: FileSourceSpec) => void;
@@ -161,6 +163,7 @@ export function SourcesFilesCard({
   optionsBusy,
   fileInputId,
   fileInputRef,
+  uploadError,
   onPickRole,
   onToggleOptions,
   onSpecChange,
@@ -203,6 +206,11 @@ export function SourcesFilesCard({
         >
           + Add a file (csv, parquet, excel, json)
         </label>
+        {uploadError ? (
+          <span className="files-upload-error" role="alert">
+            {uploadError}
+          </span>
+        ) : null}
       </div>
 
       <SourcesDocuments />

@@ -193,6 +193,7 @@ export function SourcesScreen() {
           optionsBusy={core.optionsBusy}
           fileInputId={fileInputId}
           fileInputRef={core.fileInputRef}
+          uploadError={core.uploadError}
           onPickRole={fileActions.pickRole}
           onToggleOptions={fileActions.toggleOptions}
           onSpecChange={fileActions.specOptionsChange}

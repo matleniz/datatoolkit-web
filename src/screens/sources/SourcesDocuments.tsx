@@ -1,7 +1,7 @@
 import { useId, useState, type DragEvent } from "react";
 
 import { apiClient, documentFileUrl } from "../../api/client";
-import type { WorkspaceDocument } from "../../api/types";
+import { isUploadTooLarge, uploadErrorText, type WorkspaceDocument } from "../../api/types";
 import { formatSize } from "../../bench/agent/attachments/attachmentState";
 import { NoteButton } from "../../bench/notes/NotePopover";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
@@ -42,7 +42,9 @@ export function SourcesDocuments() {
     const current = [...documents];
     try {
       for (const file of files) {
-        const { path } = await apiClient.upload(file.name, file);
+        const { path } = await apiClient.upload(file.name, file).catch((e: unknown) => {
+          throw isUploadTooLarge(e) ? new Error(uploadErrorText(file.name, e)) : e;
+        });
         const doc = await keptDocument(
           current,
           { name: file.name, path },

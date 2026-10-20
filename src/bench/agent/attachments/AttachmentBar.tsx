@@ -38,6 +38,11 @@ export function AttachmentBar({ attachments, disabled }: { attachments: Attachme
   );
 }
 
+function chipStatus(item: Attachment): string {
+  if (item.status === "failed") return item.tooLarge ? "too large" : "failed";
+  return item.status === "ready" ? "ready" : "uploading…";
+}
+
 function Chip({ item, onRemove }: { item: Attachment; onRemove: () => void }) {
   return (
     <span
@@ -47,7 +52,7 @@ function Chip({ item, onRemove }: { item: Attachment; onRemove: () => void }) {
     >
       <span className="agent-attach-name">{item.name}</span>
       <span className="agent-attach-meta">
-        {formatSize(item.size)} · {item.status === "failed" ? "failed" : item.status === "ready" ? "ready" : "uploading…"}
+        {formatSize(item.size)} · {chipStatus(item)}
       </span>
       <button type="button" aria-label={`Remove ${item.name}`} onClick={onRemove}>
         ×
