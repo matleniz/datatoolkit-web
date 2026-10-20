@@ -197,8 +197,9 @@ export function PipelineBar() {
   const editing = useGroupEditing(workspace?.groups ?? [], dispatch);
   const { picked, setPicked, setForm, refocus } = editing;
   const canGroup = canEdit;
+  const canPick = canEdit && editing.selecting;
   const pickBox = (row: { group: { id: string; name: string } }, label: string) =>
-    canGroup ? (
+    canPick ? (
       <input
         type="checkbox"
         className="pipeline-pick"

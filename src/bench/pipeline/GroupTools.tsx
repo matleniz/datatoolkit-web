@@ -5,10 +5,22 @@ type Editing = ReturnType<typeof useGroupEditing>;
 
 /** "Group N rows" / "Clear" and the reason when the ticked rows cannot be grouped (#249). */
 export function GroupToolbar({ editing }: { editing: Editing }) {
-  const { picked, setPicked, setForm, refocus, pickedSteps, firstStepOf } = editing;
-  if (picked.size === 0) return null;
+  const { selecting, setSelecting, canSelect, picked, setPicked, setForm, refocus, pickedSteps, firstStepOf } = editing;
+  if (!selecting) {
+    return canSelect ? (
+      <button
+        type="button"
+        className="pipeline-group-select"
+        title="Tick neighbouring rows and make them one group"
+        onClick={() => setSelecting(true)}
+      >
+        Group rows…
+      </button>
+    ) : null;
+  }
   let hint = "These rows are not side by side. Select neighbouring rows to group them.";
-  if (pickedSteps !== null) hint = "Rows side by side: they will become one group.";
+  if (picked.size === 0) hint = "Tick two or more neighbouring rows.";
+  else if (pickedSteps !== null) hint = "Rows side by side: they will become one group.";
   else if (picked.size < 2) hint = "Select at least two rows to group them.";
   return (
     <div className="pipeline-group-tools">
@@ -28,9 +40,10 @@ export function GroupToolbar({ editing }: { editing: Editing }) {
         onClick={() => {
           refocus.current = firstStepOf(picked);
           setPicked(new Set());
+          setSelecting(false);
         }}
       >
-        Clear
+        Cancel
       </button>
       <span id="pipeline-group-hint" className="hint" role="status">
         {hint}
