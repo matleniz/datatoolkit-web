@@ -16,6 +16,8 @@ import { BusyIndicator } from "../../BusyIndicator";
 import { useInFlight } from "../../useInFlight";
 import { useWorkbenchData, type PipelineShape } from "../WorkbenchData";
 import { PipelineHistory } from "./PipelineHistory";
+import { GroupBlock } from "./GroupBlock";
+import { groupRows, pruneExpanded, toggleExpanded } from "./groupRows";
 import { rawNodeSubLabel } from "./rawNodeSubLabel";
 import { NoteButton } from "../notes/NotePopover";
 import { StepMenu, type StepMenuState } from "./StepMenu";
@@ -178,6 +180,18 @@ export function PipelineBar() {
   const [menu, setMenu] = useState<StepMenuState | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
 
+  const rows = groupRows(steps, workspace?.groups ?? [], vi);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const [expandedFor, setExpandedFor] = useState(workspace?.name);
+  // Expanded state is UI-only: forgotten with a workspace switch, and per
+  // group id when the group goes away.
+  if (expandedFor !== workspace?.name) {
+    setExpandedFor(workspace?.name);
+    setExpanded(new Set());
+  }
+  const live = pruneExpanded(expanded, workspace?.groups ?? []);
+  if (live !== expanded) setExpanded(live);
+
   const rawShape = shapes[0];
   const nodes: PipelineNodeData[] = [
     {
@@ -203,6 +217,110 @@ export function PipelineBar() {
     if (err) break;
   }
 
+  const renderNode = (n: PipelineNodeData, arrow: boolean) => (
+      <div key={n.key} className="pipeline-node-wrap">
+        {arrow ? <Arrow /> : null}
+        <div className="pipeline-node-rel">
+          <button
+            type="button"
+            className={nodeClass(n)}
+            style={{
+              opacity: n.version > vi ? 0.5 : 1,
+            }}
+            title={n.tip}
+            data-agent-touched={
+              n.stepIndex !== null && agentTouch?.steps.includes(n.stepIndex) ? "1" : undefined
+            }
+            onClick={() =>
+              dispatch({
+                type: "SET_VIEW_VERSION",
+                version: n.version === last ? null : n.version,
+              })
+            }
+            onContextMenu={(e) => {
+              if (!canEdit || n.stepIndex === null) return;
+              e.preventDefault();
+              setMenu({ index: n.stepIndex, x: e.clientX, y: e.clientY });
+            }}
+          >
+            <span
+              className="pipeline-stage-bar"
+              style={{
+                background: n.error
+                  ? "#a3242c"
+                  : STAGE_COLOR[n.stage as keyof typeof STAGE_COLOR],
+              }}
+            />
+            <span className="pipeline-node-top">
+              <span className="pipeline-ver">{n.ver}</span>
+              <span className="pipeline-title">{n.title}</span>
+            </span>
+            <span className="pipeline-sub">{n.sub}</span>
+            <span className="pipeline-meta">
+              <span className="pipeline-shape">{n.shape}</span>
+              {n.delta ? (
+                <span className={`pipeline-delta ${n.deltaClass}`}>
+                  {n.delta}
+                </span>
+              ) : null}
+              <span className="pipeline-badge">{n.badge}</span>
+            </span>
+          </button>
+          {n.stepIndex === null ? (
+            <NoteButton
+              className="pipeline-note"
+              label="the workspace"
+              text={workspace?.notes?.workspace ?? null}
+              onSave={(text) => dispatch({ type: "SET_WORKSPACE_NOTE", text })}
+            />
+          ) : (
+            <StepNoteButton step={steps[n.stepIndex]!} index={n.stepIndex} />
+          )}
+          {canEdit && n.stepIndex !== null ? (
+            <button
+              type="button"
+              className="pipeline-edit"
+              aria-label="Edit this step"
+              title="Edit step (Apply replaces it and the pipeline replays)"
+              onClick={() =>
+                dispatch({ type: "EDIT_STEP", index: n.stepIndex! })
+              }
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                <path
+                  d="M1.5 8.5l.6-2.4L6.6 1.6l1.8 1.8-4.5 4.5z"
+                  fill="none"
+                  stroke="#5b5850"
+                  strokeWidth="1.2"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          ) : null}
+          {n.canDelete && n.stepIndex !== null ? (
+            <button
+              type="button"
+              className="pipeline-remove"
+              aria-label="Remove this step and replay"
+              title="Remove step (the pipeline replays)"
+              onClick={() =>
+                dispatch({ type: "REMOVE_STEP", index: n.stepIndex! })
+              }
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                <path
+                  d="M2 2l6 6M8 2l-6 6"
+                  stroke="#5b5850"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          ) : null}
+        </div>
+      </div>
+  );
+
   return (
     <section
       className="pipeline-bar"
@@ -211,109 +329,27 @@ export function PipelineBar() {
       data-owner="W2"
     >
       <div className="pipeline-nodes">
-        {nodes.map((n, i) => (
-          <div key={n.key} className="pipeline-node-wrap">
-            {i > 0 ? <Arrow /> : null}
-            <div className="pipeline-node-rel">
-              <button
-                type="button"
-                className={nodeClass(n)}
-                style={{
-                  opacity: n.version > vi ? 0.5 : 1,
-                }}
-                title={n.tip}
-                data-agent-touched={
-                  n.stepIndex !== null && agentTouch?.steps.includes(n.stepIndex) ? "1" : undefined
-                }
-                onClick={() =>
-                  dispatch({
-                    type: "SET_VIEW_VERSION",
-                    version: n.version === last ? null : n.version,
-                  })
-                }
-                onContextMenu={(e) => {
-                  if (!canEdit || n.stepIndex === null) return;
-                  e.preventDefault();
-                  setMenu({ index: n.stepIndex, x: e.clientX, y: e.clientY });
-                }}
-              >
-                <span
-                  className="pipeline-stage-bar"
-                  style={{
-                    background: n.error
-                      ? "#a3242c"
-                      : STAGE_COLOR[n.stage as keyof typeof STAGE_COLOR],
-                  }}
-                />
-                <span className="pipeline-node-top">
-                  <span className="pipeline-ver">{n.ver}</span>
-                  <span className="pipeline-title">{n.title}</span>
-                </span>
-                <span className="pipeline-sub">{n.sub}</span>
-                <span className="pipeline-meta">
-                  <span className="pipeline-shape">{n.shape}</span>
-                  {n.delta ? (
-                    <span className={`pipeline-delta ${n.deltaClass}`}>
-                      {n.delta}
-                    </span>
-                  ) : null}
-                  <span className="pipeline-badge">{n.badge}</span>
-                </span>
-              </button>
-              {n.stepIndex === null ? (
-                <NoteButton
-                  className="pipeline-note"
-                  label="the workspace"
-                  text={workspace?.notes?.workspace ?? null}
-                  onSave={(text) => dispatch({ type: "SET_WORKSPACE_NOTE", text })}
-                />
-              ) : (
-                <StepNoteButton step={steps[n.stepIndex]!} index={n.stepIndex} />
-              )}
-              {canEdit && n.stepIndex !== null ? (
-                <button
-                  type="button"
-                  className="pipeline-edit"
-                  aria-label="Edit this step"
-                  title="Edit step (Apply replaces it and the pipeline replays)"
-                  onClick={() =>
-                    dispatch({ type: "EDIT_STEP", index: n.stepIndex! })
-                  }
-                >
-                  <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-                    <path
-                      d="M1.5 8.5l.6-2.4L6.6 1.6l1.8 1.8-4.5 4.5z"
-                      fill="none"
-                      stroke="#5b5850"
-                      strokeWidth="1.2"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-              ) : null}
-              {n.canDelete && n.stepIndex !== null ? (
-                <button
-                  type="button"
-                  className="pipeline-remove"
-                  aria-label="Remove this step and replay"
-                  title="Remove step (the pipeline replays)"
-                  onClick={() =>
-                    dispatch({ type: "REMOVE_STEP", index: n.stepIndex! })
-                  }
-                >
-                  <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-                    <path
-                      d="M2 2l6 6M8 2l-6 6"
-                      stroke="#5b5850"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ))}
+        {renderNode(nodes[0]!, false)}
+        {rows.map((row) => {
+          if (row.start >= nodes.length - 1) return null;
+          const rowNodes = nodes.slice(1 + row.start, 1 + row.start + row.count);
+          if (row.singleton) return renderNode(rowNodes[0]!, true);
+          return (
+            <GroupBlock
+              key={row.group.id}
+              row={row}
+              vi={vi}
+              expanded={expanded.has(row.group.id) || rowNodes.some((n) => n.error)}
+              error={rowNodes.some((n) => n.error)}
+              canDelete={canDelete}
+              shape={rowNodes.at(-1)?.shape ?? "—"}
+              arrow={<Arrow />}
+              onToggle={() => setExpanded((e) => toggleExpanded(e, row.group.id))}
+            >
+              {rowNodes.map((n) => renderNode(n, true))}
+            </GroupBlock>
+          );
+        })}
 
         {pendingStep && preview ? (
           <>

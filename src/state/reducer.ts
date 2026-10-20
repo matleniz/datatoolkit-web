@@ -37,6 +37,7 @@ import {
   fillSingletons,
   insertStep,
   orderList,
+  removeGroup,
   removeStepAt,
   sameGroups,
   setSteps,
@@ -338,6 +339,8 @@ export type AppAction =
   /** Replace the step at `index` (keeps its `align` flag) and replay. */
   | { type: "REPLACE_STEP"; index: number; step: Step }
   | { type: "REMOVE_STEP"; index: number }
+  /** Remove a whole step group (its steps and the group) in one undoable change (#249). */
+  | { type: "REMOVE_GROUP"; id: string }
   /** Several step edits as ONE undo entry (agent bridge, #63); no-op if one op is invalid. */
   | { type: "APPLY_STEP_BATCH"; ops: StepOp[] }
   /** Pipeline history only (datatoolkit-issues#16); no-op while editing a step. */
@@ -993,6 +996,16 @@ function reduceSteps(state: AppState, action: AppAction): AppState | undefined {
       const list = listOf(state.workspace);
       if (action.index < 0 || action.index >= list.steps.length) return state;
       return withList(state, orderList(removeStepAt(list, action.index)), {
+        editor: null,
+        viewVersion: null,
+        selection: { ...state.selection, cell: null },
+        benchError: null,
+      });
+    }
+    case "REMOVE_GROUP": {
+      const list = listOf(state.workspace);
+      if (!list.groups.some((g) => g.id === action.id)) return state;
+      return withList(state, orderList(removeGroup(list, action.id)), {
         editor: null,
         viewVersion: null,
         selection: { ...state.selection, cell: null },

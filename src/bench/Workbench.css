@@ -1663,3 +1663,35 @@
   background: var(--dtk-bg-subtle);
   border-radius: 4px;
 }
+
+/* Step groups (#249): the header of a group of several steps. */
+.pipeline-group {
+  align-items: center;
+}
+.pipeline-group-head {
+  background: #f6f4ee;
+  border-style: solid;
+  box-shadow: 3px 3px 0 -1px #e8e5db;
+}
+.pipeline-group-head.partial {
+  border-style: dashed;
+}
+.pipeline-group-bar {
+  background: #8a867a;
+}
+.pipeline-group-steps {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding-left: 2px;
+  border-left: 2px solid #dcd9d0;
+  margin-left: 6px;
+}
+.pipeline-group-origin {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-right: 16px;
+  font-size: 10px;
+  font-style: italic;
+  color: var(--dtk-muted);
+}
