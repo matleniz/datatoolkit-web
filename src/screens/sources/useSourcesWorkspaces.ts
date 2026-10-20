@@ -10,6 +10,7 @@ import {
   allowWorkspaceSave,
   flushWorkspaceSave,
   markWorkspaceLoaded,
+  renameWorkspaceSaveFailure,
 } from "../../state/workspaceSaveGate";
 import {
   emptyWorkspaceSources,
@@ -216,6 +217,7 @@ export function useSourcesWorkspaces(core: SourcesCore): SourcesWorkspaceActions
     // duplicate still loading when the user renames immediately).
     selectGenRef.current += 1;
     void abandonPendingWorkspaceSave([oldName]);
+    renameWorkspaceSaveFailure(oldName, ws.name);
     const cached = filesByWorkspace[oldName] ??
       (oldName === activeWsName ? src : null);
     dispatch({ type: "CLEAR_WORKSPACE_FILES", name: oldName });

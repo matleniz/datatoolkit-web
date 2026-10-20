@@ -1,7 +1,8 @@
 import { useState, useSyncExternalStore } from "react";
 import {
   dismissWorkspaceSaveFailure,
-  getWorkspaceSaveFailure,
+  getLiveSaveFailure,
+  getOrphanedSaveFailures,
   retryWorkspaceSave,
   subscribeWorkspaceSaveFailure,
 } from "./state/workspaceSaveGate";
@@ -10,10 +11,14 @@ import {
 export function SaveFailureBanner() {
   const failure = useSyncExternalStore(
     subscribeWorkspaceSaveFailure,
-    getWorkspaceSaveFailure,
+    getLiveSaveFailure,
+  );
+  const orphans = useSyncExternalStore(
+    subscribeWorkspaceSaveFailure,
+    getOrphanedSaveFailures,
   );
   const [retrying, setRetrying] = useState(false);
-  if (!failure) return null;
+  if (!failure && orphans.length === 0) return null;
 
   const retry = () => {
     setRetrying(true);
@@ -23,26 +28,32 @@ export function SaveFailureBanner() {
       .finally(() => setRetrying(false));
   };
 
-  if (failure.orphaned) {
-    return (
-      <div className="banner error-banner" role="alert" data-save-failed="orphaned">
-        <span>
-          Not saved: edits to workspace "{failure.ws.name}" were lost
-          ({failure.message})
-        </span>
-        <button type="button" onClick={dismissWorkspaceSaveFailure}>
-          Dismiss
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="banner error-banner" role="alert" data-save-failed="">
-      <span>Not saved: {failure.message}</span>
-      <button type="button" disabled={retrying} onClick={retry}>
-        {retrying ? "Retrying…" : "Retry"}
-      </button>
-    </div>
+    <>
+      {orphans.map((o) => (
+        <div
+          key={o.ws.name}
+          className="banner error-banner"
+          role="alert"
+          data-save-failed="orphaned"
+          data-workspace={o.ws.name}
+        >
+          <span>
+            Not saved: edits to workspace "{o.ws.name}" were lost ({o.message})
+          </span>
+          <button type="button" onClick={() => dismissWorkspaceSaveFailure(o.ws.name)}>
+            Dismiss
+          </button>
+        </div>
+      ))}
+      {failure ? (
+        <div className="banner error-banner" role="alert" data-save-failed="">
+          <span>Not saved: {failure.message}</span>
+          <button type="button" disabled={retrying} onClick={retry}>
+            {retrying ? "Retrying…" : "Retry"}
+          </button>
+        </div>
+      ) : null}
+    </>
   );
 }

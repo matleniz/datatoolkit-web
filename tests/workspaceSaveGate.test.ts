@@ -12,6 +12,9 @@ import {
   KEEPALIVE_MAX_BYTES,
   getLastSavedWorkspaceJson,
   getWorkspaceSaveFailure,
+  getLiveSaveFailure,
+  getOrphanedSaveFailures,
+  renameWorkspaceSaveFailure,
   retryWorkspaceSave,
   dismissWorkspaceSaveFailure,
   setCommittedWorkspace,
@@ -396,6 +399,77 @@ describe("autosave failure scoping (#218 review)", () => {
     setCommittedWorkspace(b);
     await expect(ensureWorkspaceSaved(a)).rejects.toThrow("503");
     expect(getWorkspaceSaveFailure()).toMatchObject({ orphaned: true });
+  });
+});
+
+describe("orphaned notices and rename (#243)", () => {
+  it("keeps one orphaned notice per workspace until each is dismissed", async () => {
+    const a = ws("a243");
+    const b = ws("b243", "/tmp/b.csv");
+    const c = ws("c243", "/tmp/c.csv");
+    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));
+    setCommittedWorkspace(a);
+    await expect(ensureWorkspaceSaved(a)).rejects.toThrow("503");
+    setCommittedWorkspace(b);
+    // A new failure for B must not erase the notice for A.
+    await expect(ensureWorkspaceSaved(b)).rejects.toThrow("503");
+    expect(getLiveSaveFailure()?.ws.name).toBe("b243");
+    expect(getOrphanedSaveFailures().map((f) => f.ws.name)).toEqual(["a243"]);
+    setCommittedWorkspace(c);
+    expect(getOrphanedSaveFailures().map((f) => f.ws.name)).toEqual(["a243", "b243"]);
+    expect(getLiveSaveFailure()).toBeNull();
+
+    dismissWorkspaceSaveFailure("a243");
+    expect(getOrphanedSaveFailures().map((f) => f.ws.name)).toEqual(["b243"]);
+    dismissWorkspaceSaveFailure("b243");
+    expect(getOrphanedSaveFailures()).toEqual([]);
+  });
+
+  it("a saved copy of a workspace supersedes only its own orphaned notice", async () => {
+    const a = ws("a243");
+    const b = ws("b243", "/tmp/b.csv");
+    const c = ws("c243", "/tmp/c.csv");
+    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));
+    setCommittedWorkspace(a);
+    await expect(ensureWorkspaceSaved(a)).rejects.toThrow("503");
+    setCommittedWorkspace(b);
+    await expect(ensureWorkspaceSaved(b)).rejects.toThrow("503");
+    setCommittedWorkspace(c);
+    markWorkspaceSaved(a);
+    expect(getOrphanedSaveFailures().map((f) => f.ws.name)).toEqual(["b243"]);
+  });
+
+  it("deleting a workspace drops its own orphaned notice only", async () => {
+    const a = ws("a243");
+    const b = ws("b243", "/tmp/b.csv");
+    const c = ws("c243", "/tmp/c.csv");
+    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));
+    setCommittedWorkspace(a);
+    await expect(ensureWorkspaceSaved(a)).rejects.toThrow("503");
+    setCommittedWorkspace(b);
+    await expect(ensureWorkspaceSaved(b)).rejects.toThrow("503");
+    setCommittedWorkspace(c);
+    await abandonPendingWorkspaceSave(["a243"]);
+    expect(getOrphanedSaveFailures().map((f) => f.ws.name)).toEqual(["b243"]);
+  });
+
+  it("carries a pending failure to the new name of a renamed workspace", async () => {
+    const a = ws("a243");
+    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));
+    setCommittedWorkspace(a);
+    await expect(ensureWorkspaceSaved(a)).rejects.toThrow("503");
+
+    renameWorkspaceSaveFailure("a243", "a243-2");
+    expect(getLiveSaveFailure()?.ws.name).toBe("a243-2");
+    // The renamed workspace comes on screen: never reported as lost.
+    setCommittedWorkspace({ ...a, name: "a243-2" });
+    expect(getOrphanedSaveFailures()).toEqual([]);
+    expect(getLiveSaveFailure()).toMatchObject({ orphaned: false });
+  });
+
+  it("rename without a pending failure for that name changes nothing", () => {
+    renameWorkspaceSaveFailure("a243", "a243-2");
+    expect(getWorkspaceSaveFailure()).toBeNull();
   });
 });
 
