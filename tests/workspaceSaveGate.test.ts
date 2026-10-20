@@ -439,6 +439,20 @@ describe("orphaned notices and rename (#243)", () => {
     expect(getOrphanedSaveFailures().map((f) => f.ws.name)).toEqual(["b243"]);
   });
 
+  it("deleting a workspace drops its own orphaned notice only", async () => {
+    const a = ws("a243");
+    const b = ws("b243", "/tmp/b.csv");
+    const c = ws("c243", "/tmp/c.csv");
+    vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));
+    setCommittedWorkspace(a);
+    await expect(ensureWorkspaceSaved(a)).rejects.toThrow("503");
+    setCommittedWorkspace(b);
+    await expect(ensureWorkspaceSaved(b)).rejects.toThrow("503");
+    setCommittedWorkspace(c);
+    await abandonPendingWorkspaceSave(["a243"]);
+    expect(getOrphanedSaveFailures().map((f) => f.ws.name)).toEqual(["b243"]);
+  });
+
   it("carries a pending failure to the new name of a renamed workspace", async () => {
     const a = ws("a243");
     vi.spyOn(apiClient, "saveWorkspace").mockRejectedValue(new Error("503"));

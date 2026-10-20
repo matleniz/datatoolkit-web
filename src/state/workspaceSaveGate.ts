@@ -201,7 +201,10 @@ export function abandonPendingWorkspaceSave(
 ): Promise<void> {
   if (names) {
     for (const n of names) {
-      if (n) suppressedNames.add(n);
+      if (!n) continue;
+      suppressedNames.add(n);
+      // Deleted (or renamed away) on purpose: "edits were lost" is moot (#243).
+      dismissWorkspaceSaveFailure(n);
     }
   } else {
     saveEpoch += 1;
