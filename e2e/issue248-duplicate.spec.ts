@@ -35,7 +35,7 @@ test("issue 248: duplicate right after an edit, open the copy, reload", async ({
   });
 
   // Edit, then click Duplicate before the debounced autosave fires.
-  await page.evaluate(async () => {
+  await page.evaluate(() => {
     const st = window.__DTK_STATE__!().workspace!;
     window.__DTK_DISPATCH__!({
       type: "SET_STEPS",
@@ -44,9 +44,15 @@ test("issue 248: duplicate right after an edit, open the copy, reload", async ({
         { id: "s248b", op: "drop_columns", target: "both", params: { columns: ["sessions"] } },
       ],
     });
-    // Let React commit the edit (a user click always follows a commit) but
-    // stay well inside the 250 ms autosave debounce.
-    await new Promise((r) => requestAnimationFrame(() => r(null)));
+  });
+  // A user click always follows a React commit. `__DTK_STATE__` is re-bound in
+  // a passive effect, which runs after the layout effect that publishes the
+  // committed workspace to the save gate: once it shows the edit, Duplicate
+  // can flush it. (A frame wait is not enough: it can fire before the commit.)
+  await page.waitForFunction(() =>
+    window.__DTK_STATE__!().workspace!.steps.some((s) => s.id === "s248b"),
+  );
+  await page.evaluate(() => {
     const button = Array.from(
       document.querySelectorAll<HTMLButtonElement>(
         '.ws-item[data-workspace="dup248"] button',
