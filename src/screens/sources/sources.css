@@ -802,6 +802,10 @@
 .sources-document-note + .sources-document-btn {
   margin-left: auto;
 }
+.files-upload-error {
+  color: var(--dtk-error-fg);
+  font-size: 12px;
+}
 .sources-documents-error {
   color: var(--dtk-error-fg);
   font-size: 12px;

@@ -16,12 +16,14 @@ export interface Attachment {
   /** `table` | `text` | `other`, as classified by the engine. */
   kind?: string;
   error?: string;
+  /** Failed with a 413: the file is over the engine cap (#299). */
+  tooLarge?: boolean;
 }
 
 export type AttachmentAction =
   | { type: "add"; id: string; name: string; size: number }
   | { type: "ready"; id: string; serverId: string; kind?: string }
-  | { type: "failed"; id: string; error: string }
+  | { type: "failed"; id: string; error: string; tooLarge?: boolean }
   | { type: "remove"; id: string }
   | { type: "reset" };
 
@@ -37,7 +39,7 @@ export function attachmentReducer(state: Attachment[], action: AttachmentAction)
       );
     case "failed":
       return state.map((a) =>
-        a.id === action.id ? { ...a, status: "failed", error: action.error } : a,
+        a.id === action.id ? { ...a, status: "failed", error: action.error, tooLarge: action.tooLarge } : a,
       );
     case "remove":
       return state.filter((a) => a.id !== action.id);

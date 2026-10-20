@@ -62,6 +62,9 @@ export interface SourcesCore {
   optionsBusy: Record<string, boolean>;
   setOptionsBusy: Dispatch<SetStateAction<Record<string, boolean>>>;
   fileInputRef: MutableRefObject<HTMLInputElement | null>;
+  /** Why the last "Add a file" upload was refused (413, #299), shown by the button. */
+  uploadError: string | null;
+  setUploadError: Dispatch<SetStateAction<string | null>>;
   optionsGenRef: MutableRefObject<Record<string, number>>;
   persistSkip: MutableRefObject<boolean>;
   activeNameRef: MutableRefObject<string>;
@@ -215,6 +218,7 @@ export function useSourcesState(): SourcesCore {
   const [optionsBusy, setOptionsBusy] = useState<Record<string, boolean>>({});
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const optionsGenRef = useRef<Record<string, number>>({});
   const persistSkip = useRef(true);
   const activeNameRef = useRef(activeWsName);
@@ -226,6 +230,7 @@ export function useSourcesState(): SourcesCore {
       setSrc(next);
       setPreview(EMPTY_PREVIEW);
       setEngineErrors([]);
+      setUploadError(null);
     },
     [setEngineErrors],
   );
@@ -272,6 +277,8 @@ export function useSourcesState(): SourcesCore {
     optionsBusy,
     setOptionsBusy,
     fileInputRef,
+    uploadError,
+    setUploadError,
     optionsGenRef,
     persistSkip,
     activeNameRef,

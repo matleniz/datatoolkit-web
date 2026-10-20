@@ -62,6 +62,8 @@ const webServers = [
       DTK_CORS_ORIGINS: corsOrigins,
       // Agent panel e2e (#67): scripted pack, no network, no key.
       DTK_AGENT_PACK: process.env.DTK_AGENT_PACK ?? "stub",
+      // Low upload cap so the 413 spec (#299) stays small; fixtures are < 1 MiB.
+      DTK_MAX_UPLOAD_MB: process.env.DTK_MAX_UPLOAD_MB ?? "4",
     },
   },
   {

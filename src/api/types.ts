@@ -640,6 +640,20 @@ export function isCancelled(e: unknown): boolean {
   return e instanceof EngineError && e.type === "Cancelled";
 }
 
+/** 413 from `PUT /uploads/{name}`: the body is over the engine cap (`DTK_MAX_UPLOAD_MB`, #299). */
+export function isUploadTooLarge(e: unknown): e is EngineError {
+  return e instanceof EngineError && e.type === "UploadTooLargeError";
+}
+
+/**
+ * What to show when uploading `fileName` failed: an over-the-cap file is named
+ * with the engine's message (it gives the limit and the variable to raise),
+ * anything else is the plain error text (#299).
+ */
+export function uploadErrorText(fileName: string, e: unknown): string {
+  return isUploadTooLarge(e) ? `Cannot add “${fileName}”: ${e.message}` : errorText(e);
+}
+
 /** What to show for a thrown value: the engine message, else its string form. */
 export function errorText(e: unknown): string {
   if (isCancelled(e)) return CANCELLED_MESSAGE;
