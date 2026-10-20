@@ -21,8 +21,10 @@ test("issue 263: a late older PUT is refused (409) and the newer content stays o
 }) => {
   test.setTimeout(120_000);
   const errors: string[] = [];
+  const debugs: string[] = [];
   page.on("console", (m) => {
     if (m.type() === "error") errors.push(m.text());
+    if (m.type() === "debug") debugs.push(m.text());
   });
   await openWorkbench(page, true);
 
@@ -37,7 +39,7 @@ test("issue 263: a late older PUT is refused (409) and the newer content stays o
     const body = JSON.parse(req.postData() ?? "{}") as Workspace;
     puts.push({
       seq: req.headers()["x-dtk-write-seq"] ?? "",
-      note: body.notes?.workspace,
+      note: body.notes?.workspace ?? undefined,
     });
     if (!first) {
       first = route; // older PUT: held on the wire
@@ -75,7 +77,7 @@ test("issue 263: a late older PUT is refused (409) and the newer content stays o
     detail: { rule: "stale_write" },
   });
 
-  await page.waitForTimeout(500);
+  await expect.poll(() => debugs.some((d) => d.includes("stale save of churn dropped"))).toBe(true);
   expect((await stored(request)).notes?.workspace).toBe("NEWER note");
   await expect(page.getByRole("alert")).toHaveCount(0);
   // Chromium itself logs every 4xx fetch; the app must add no error of its own.
