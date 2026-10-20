@@ -12,21 +12,6 @@ const big = (name: string) => ({
   mimeType: "text/csv",
   buffer: Buffer.alloc(Math.ceil((CAP_MB + 1) * 1024 * 1024), "a"),
 });
-const ENGINE = `http://127.0.0.1:${process.env.DTK_E2E_API_PORT ?? "8766"}`;
-
-/**
- * The engine answers 413 on Content-Length without reading the body, so the
- * Vite dev proxy often hits ECONNRESET and answers an empty 500 instead
- * (datatoolkit-issues#302). Until the engine drains the body, the uploads of
- * these specs go to the engine directly; the 413 itself is the real one.
- */
-async function uploadsBypassProxy(page: Page): Promise<void> {
-  await page.route("**/api/uploads/**", (route) => {
-    const { pathname, search } = new URL(route.request().url());
-    return route.continue({ url: `${ENGINE}${pathname}${search}` });
-  });
-}
-
 const capText = new RegExp(`over the ${CAP_MB} MiB limit; raise it with the DTK_MAX_UPLOAD_MB variable`);
 
 async function createWorkspace(page: Page, name: string): Promise<void> {
@@ -39,7 +24,6 @@ async function createWorkspace(page: Page, name: string): Promise<void> {
 }
 
 test("issue 299: a source file over the cap shows the engine message by Add a file", async ({ page }) => {
-  await uploadsBypassProxy(page);
   await createWorkspace(page, "too-large");
   const res = page.waitForResponse((r) => r.url().includes("/api/uploads/") && r.request().method() === "PUT");
   await sourceFileInput(page).setInputFiles(big("huge.csv"));
@@ -58,7 +42,6 @@ test("issue 299: a source file over the cap shows the engine message by Add a fi
 });
 
 test("issue 299: a document over the cap shows the engine message in Documents", async ({ page }) => {
-  await uploadsBypassProxy(page);
   await page.goto("/");
   await expect(page.getByText("Sources of “churn”")).toBeVisible({ timeout: 60_000 });
   const section = page.getByRole("region", { name: "Documents" });
@@ -77,7 +60,6 @@ test("issue 299: an agent attachment over the cap is marked too large", async ({
     headers: { Authorization: `Bearer ${process.env.DTK_UI_TOKEN}` },
   });
   test.skip(probe.status() === 404, "engine without the agent chat routes (#67)");
-  await uploadsBypassProxy(page);
   await openWorkbench(page, true);
   await page.getByRole("button", { name: "Agent", exact: true }).click();
   const panel = page.getByRole("complementary", { name: "Agent" });
