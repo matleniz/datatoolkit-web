@@ -34,7 +34,15 @@ export interface WorkspaceSaveFailure {
   orphaned: boolean;
 }
 
+/** The failure of the workspace on screen (Retry applies to it). */
 let saveFailure: WorkspaceSaveFailure | null = null;
+/**
+ * Workspaces whose edits were lost (#243): one entry per name, kept until the
+ * user dismisses it or a saved copy of that name supersedes it. A new failure
+ * for another workspace never replaces them. Replaced, never mutated, so it
+ * can serve as a useSyncExternalStore snapshot.
+ */
+let orphanedFailures: readonly WorkspaceSaveFailure[] = [];
 
 /**
  * Where the groups the engine answered to a PUT go when they differ from the
@@ -53,14 +61,40 @@ function echoedGroups(answer: unknown): Group[] | null {
 }
 const failureListeners = new Set<() => void>();
 
-function setSaveFailure(next: WorkspaceSaveFailure | null): void {
-  if (saveFailure === null && next === null) return;
-  saveFailure = next;
+function notifyFailureListeners(): void {
   for (const l of failureListeners) l();
 }
 
-/** Last autosave failure, until a save succeeds (issue #218). */
+/** Record `next` (an orphaned one joins the list, replacing the same name). */
+function setSaveFailure(next: WorkspaceSaveFailure | null): void {
+  if (next?.orphaned) {
+    orphanedFailures = [
+      ...orphanedFailures.filter((f) => f.ws.name !== next.ws.name),
+      next,
+    ];
+    if (saveFailure?.ws.name === next.ws.name) saveFailure = null;
+  } else {
+    if (saveFailure === null && next === null) return;
+    saveFailure = next;
+  }
+  notifyFailureListeners();
+}
+
+/**
+ * Current autosave failure until a save succeeds (issue #218); when none is
+ * live, the latest orphaned one. See `getOrphanedSaveFailures` for all of them.
+ */
 export function getWorkspaceSaveFailure(): WorkspaceSaveFailure | null {
+  return saveFailure ?? orphanedFailures[orphanedFailures.length - 1] ?? null;
+}
+
+/** Every workspace whose edits were lost and not yet acknowledged (#243). */
+export function getOrphanedSaveFailures(): readonly WorkspaceSaveFailure[] {
+  return orphanedFailures;
+}
+
+/** The failure of the workspace on screen, not an orphaned one. */
+export function getLiveSaveFailure(): WorkspaceSaveFailure | null {
   return saveFailure;
 }
 
@@ -73,17 +107,40 @@ export function subscribeWorkspaceSaveFailure(l: () => void): () => void {
 
 /** Clear the failure only when it belongs to `name` (a save of another workspace says nothing about it). */
 function clearSaveFailureFor(name: string): void {
-  if (saveFailure && !saveFailure.orphaned && saveFailure.ws.name === name) {
-    setSaveFailure(null);
-  } else if (saveFailure?.orphaned && saveFailure.ws.name === name) {
-    // The orphaned edits of this very name are superseded by a saved copy.
-    setSaveFailure(null);
-  }
+  const hadLive = saveFailure?.ws.name === name;
+  // The orphaned edits of this very name are superseded by a saved copy.
+  const rest = orphanedFailures.filter((f) => f.ws.name !== name);
+  if (!hadLive && rest.length === orphanedFailures.length) return;
+  if (hadLive) saveFailure = null;
+  orphanedFailures = rest;
+  notifyFailureListeners();
 }
 
-/** Acknowledge an orphaned failure (the user was told edits were not saved). */
-export function dismissWorkspaceSaveFailure(): void {
-  setSaveFailure(null);
+/**
+ * Acknowledge an orphaned failure (the user was told edits were not saved):
+ * the one of workspace `name`, or all of them without argument.
+ */
+export function dismissWorkspaceSaveFailure(name?: string): void {
+  if (name === undefined) {
+    saveFailure = null;
+    orphanedFailures = [];
+  } else {
+    if (!orphanedFailures.some((f) => f.ws.name === name)) return;
+    orphanedFailures = orphanedFailures.filter((f) => f.ws.name !== name);
+  }
+  notifyFailureListeners();
+}
+
+/**
+ * Workspace `oldName` was renamed to `newName` (the engine did it): a pending
+ * failure of the old name now belongs to the new one, and is never reported
+ * as lost (#243). An orphaned notice of the old name stays as it was.
+ */
+export function renameWorkspaceSaveFailure(oldName: string, newName: string): void {
+  const f = saveFailure;
+  if (!f || f.ws.name !== oldName) return;
+  saveFailure = { ...f, ws: { ...f.ws, name: newName } };
+  notifyFailureListeners();
 }
 
 function failureMessage(e: unknown): string {
@@ -247,6 +304,7 @@ export function resetWorkspaceSaveGateForTests(): void {
   committedWorkspace = null;
   lastFlushedJson = null;
   saveFailure = null;
+  orphanedFailures = [];
   failureListeners.clear();
   groupsAdopter = null;
 }
@@ -349,6 +407,7 @@ export function setCommittedWorkspace(ws: Workspace | null): void {
   if (!f || f.orphaned || !ws) return;
   if (ws.name !== f.ws.name) {
     // Left the workspace with unsaved edits: tell, never silently drop.
+    saveFailure = null;
     setSaveFailure({ ...f, orphaned: true });
   } else if (serializeWorkspace(ws) === lastSavedWorkspaceJson) {
     // Edits reverted to what is on disk: nothing is unsaved any more.

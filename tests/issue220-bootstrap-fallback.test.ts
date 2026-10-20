@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiClient } from "../src/api/client";
 import { EngineError, type Workspace } from "../src/api/types";
-import { loadInitialWorkspace } from "../src/bootstrap";
+import { loadInitialWorkspace, skippedWorkspaceOf } from "../src/bootstrap";
 
 function ws(name: string): Workspace {
   return {
@@ -64,6 +64,27 @@ describe("remembered workspace fallback (#220)", () => {
     await expect(loadInitialWorkspace()).rejects.toThrow("cannot read x");
     expect(get).toHaveBeenCalledTimes(3);
     expect(store.has("dtk.lastWorkspace")).toBe(false);
+  });
+
+  it("tags the thrown error with the skipped workspace, so Retry can keep naming it (#262)", async () => {
+    store.set("dtk.lastWorkspace", "bad");
+    engine(["bad", "churn", "x"], ["bad", "churn", "x"]);
+    const err = await loadInitialWorkspace().catch((e: unknown) => e);
+    expect(skippedWorkspaceOf(err)).toEqual({ name: "bad", reason: "cannot read bad" });
+    // The retry has no remembered name any more: nothing skipped, still failing.
+    const again = await loadInitialWorkspace().catch((e: unknown) => e);
+    expect(skippedWorkspaceOf(again)).toBeNull();
+  });
+
+  it("tags the error of a corrupt remembered workspace when the fallback fails too (#262)", async () => {
+    store.set("dtk.lastWorkspace", "bad");
+    vi.spyOn(apiClient, "listWorkspaces").mockResolvedValue([
+      { name: "bad", corrupt: true, error: "invalid JSON" } as never,
+      ws("churn"),
+    ]);
+    vi.spyOn(apiClient, "getWorkspace").mockRejectedValue(new EngineError("Boom", "nope", 500));
+    const err = await loadInitialWorkspace().catch((e: unknown) => e);
+    expect(skippedWorkspaceOf(err)).toMatchObject({ name: "bad", corrupt: true });
   });
 
   it("reports no skipped workspace on a healthy start", async () => {

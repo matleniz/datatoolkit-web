@@ -87,6 +87,16 @@ export interface SkippedWorkspace {
   corrupt?: boolean;
 }
 
+const skippedByError = new WeakMap<object, SkippedWorkspace>();
+
+/**
+ * The workspace `loadInitialWorkspace` skipped before it failed altogether
+ * (#262): the error screen keeps naming it, also across Retry.
+ */
+export function skippedWorkspaceOf(e: unknown): SkippedWorkspace | null {
+  return typeof e === "object" && e !== null ? (skippedByError.get(e) ?? null) : null;
+}
+
 export interface InitialLoad {
   workspace: Workspace;
   /** Set when the remembered workspace could not be opened and was forgotten. */
@@ -101,7 +111,8 @@ export interface InitialLoad {
  * If opening the remembered workspace fails (HTTP error, invalid schema,
  * deleted concurrently), forget it and fall back once to `churn`, then to the
  * other valid entries, in list order. Each candidate is tried at most once;
- * when all fail the last error is thrown.
+ * when all fail the last error is thrown, tagged with the skipped workspace
+ * (`skippedWorkspaceOf`).
  */
 export async function loadInitialWorkspace(): Promise<InitialLoad> {
   // Read before the first await: React StrictMode runs the effect twice, and
@@ -143,7 +154,13 @@ export async function loadInitialWorkspace(): Promise<InitialLoad> {
       lastError = e;
     }
   }
-  if (lastError) throw lastError;
-  // Fresh store: create demo churn via upload + PUT (no GET 404).
-  return { workspace: await createChurnWorkspace(), skipped };
+  try {
+    if (lastError) throw lastError;
+    // Fresh store: create demo churn via upload + PUT (no GET 404).
+    return { workspace: await createChurnWorkspace(), skipped };
+  } catch (e) {
+    const error = typeof e === "object" && e !== null ? e : new Error(String(e));
+    if (skipped) skippedByError.set(error, skipped);
+    throw error;
+  }
 }
