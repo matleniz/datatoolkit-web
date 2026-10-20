@@ -52,24 +52,35 @@ More in [Run without Docker](#run-without-docker-uv).
 
 ## Requirements
 
-- Node **22+** (`engines.node` is `>=22`; the Docker build uses `node:22-alpine`)
-- Engine API from `~/datatoolkit` (optional for unit tests; required for live data)
+- Node **22+** (`engines.node` is `>=22`; CI and the Docker build use Node 22)
+- [uv](https://docs.astral.sh/uv/) and the engine repo (optional for unit
+  tests; required for live data)
 
 ## Run
 
+From zero, for development (the engine is expected at `~/datatoolkit`, the
+default of `e2e/engine.ts`; set `DTK_ENGINE_DIR` for e2e if it lives elsewhere):
+
 ```bash
-# terminal 1 — engine HTTP API
-cd ~/datatoolkit
-uv run --extra api dtk-api --port 8765
+git clone https://github.com/matleniz/datatoolkit ~/datatoolkit
+git clone https://github.com/matleniz/datatoolkit-web && cd datatoolkit-web
+npm install
+
+# terminal 1 — engine HTTP API (uv creates the venv on first run)
+(cd ~/datatoolkit && uv run --extra api dtk-api --port 8765)
 
 # terminal 2 — Vite front (proxies /api → :8765)
-cd /path/to/datatoolkit-web
-npm install
 npm run dev
 ```
 
-Open http://localhost:5173 (Vite's default host and port). Override the API
-base with `VITE_API_URL` (default `/api`, see `.env.example`).
+No clone needed to just use Studio: the one-liners above (Docker or uv).
+
+Open http://localhost:5173 (Vite's default host and port). `dtk-api` on another
+port: start it with `--port <n>` and run Vite with `DTK_API_PORT=<n> npm run
+dev` (also read by `npm run preview`; it changes the proxy target
+`http://127.0.0.1:<n>`; unset = 8765). `VITE_API_URL` (default `/api`, see
+`.env.example`) only changes the URL prefix the app calls. `npm run e2e` has
+its own `DTK_E2E_API_PORT`.
 
 On start, Studio reopens the last workspace (`localStorage["dtk.lastWorkspace"]`)
 or `churn` if the engine store has it; on an empty store it uploads the demo
@@ -78,7 +89,7 @@ churn CSVs from `public/fixtures/` and saves a `churn` workspace
 
 If the engine is unreachable (or `GET /api/workspaces` fails) at startup, Studio
 shows an error screen with the engine's message, a hint for how it is served
-(dev: start `dtk-api` on 8765; built app: `docker compose logs engine` or the
+(dev: start `dtk-api` on 8765, or on `DTK_API_PORT`; built app: `docker compose logs engine` or the
 `dtk-studio` terminal) and a Retry button; the app is mounted only once a
 workspace has loaded. Run mode is `import.meta.env.DEV`.
 
@@ -120,11 +131,24 @@ Studio", then follows the command status (`applied after your review` /
 [{command, summary}]`) so the agent can see what awaits the user. The footer shows the session's cumulative
 tokens and a Stop button while a turn runs. With no pack the panel says why.
 
-The engine picks the pack from `DTK_AGENT_PACK` (`agent-sdk`, `stub`, unset =
-off): `dtk-studio --agent` (pack `agent-sdk`, needs the engine extra
-`agent-sdk`), or `DTK_AGENT_PACK=agent-sdk uv run --extra api --extra agent-sdk
-dtk-api` next to `npm run dev`. `npm run e2e` runs the engine with the
+The engine picks the pack from `DTK_AGENT_PACK`; see
+[Agent packs](#agent-packs). In dev: `DTK_AGENT_PACK=agent-sdk uv run --extra
+api --extra agent-sdk dtk-api` (or `dtk-api --agent`) next to `npm run dev`;
+all-in-one: `dtk-studio --agent`. `npm run e2e` runs the engine with the
 scripted `stub` pack.
+
+#### Agent packs
+
+One variable, `DTK_AGENT_PACK`, for every way of running (names from the
+engine's `chat_packs.py`, the `dtk-api --agent` help and `docker/entrypoint.sh`):
+
+| Pack | Dev (`dtk-api`) | `dtk-studio --agent` | Docker (`DTK_AGENT=1`) |
+|---|---|---|---|
+| `agent-sdk` | yes: `DTK_AGENT_PACK=agent-sdk` or `dtk-api --agent`; needs engine extra `agent-sdk` | yes, the default of `--agent` (sets `DTK_AGENT_PACK`) | no: the entrypoint refuses it |
+| `api-anthropic` | yes (`ANTHROPIC_API_KEY`) | `--agent api-anthropic` | yes, the default when `DTK_AGENT_PACK` is unset |
+| `api-openai` | yes (`DTK_OPENAI_*`) | `--agent api-openai` | yes |
+| `stub` | yes (scripted; used by `npm run e2e`) | `--agent stub` | yes (the `smoke` job) |
+| unset / `off` | agent off | agent off (no `--agent`) | agent off: `DTK_AGENT` is the switch, `DTK_AGENT_PACK` alone is ignored |
 
 ## Run with Docker
 
@@ -168,7 +192,7 @@ DTK_AGENT=1 DTK_UI_TOKEN=$(openssl rand -hex 16) ANTHROPIC_API_KEY=sk-... docker
 |---|---|---|
 | `DTK_AGENT` | engine | `1` / `true` / `yes` / `on` turns the chat on |
 | `DTK_UI_TOKEN` | engine, web | Bridge token, required when `DTK_AGENT` is on (the engine exits 64 without it). The web container writes it into `index.html` as `<meta name="dtk-ui-token">` at start (`docker/40-dtk-ui-token.sh`), never at build; unset = no meta, bridge off. URL-safe characters only |
-| `DTK_AGENT_PACK` | engine | Default pack: `api-anthropic` (default), `api-openai` or `stub` |
+| `DTK_AGENT_PACK` | engine | Default pack: `api-anthropic` (default), `api-openai` or `stub` (table: [Agent packs](#agent-packs)) |
 | `ANTHROPIC_API_KEY`, `DTK_ANTHROPIC_BASE_URL`, `DTK_ANTHROPIC_MODEL` | engine | `api-anthropic` |
 | `DTK_OPENAI_BASE_URL`, `DTK_OPENAI_API_KEY`, `DTK_OPENAI_MODEL` | engine | `api-openai`. A model on the host is `http://host.docker.internal:11434/v1` (on Linux add `extra_hosts: ["host.docker.internal:host-gateway"]` to `engine` in an override file) |
 | `DTK_UI_ALLOWED_HOSTS`, `DTK_CORS_ORIGINS` | engine | Not needed behind this nginx (same origin, `Host` forwarded); only when Studio is reached under another hostname or through TLS in front |

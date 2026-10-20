@@ -1,9 +1,10 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { resolveApiTarget } from "./scripts/apiTarget";
 import { uiTokenMeta } from "./scripts/uiToken";
 
-const apiTarget = "http://127.0.0.1:8765";
+const apiTarget = resolveApiTarget();
 
 export default defineConfig({
   plugins: [react(), uiTokenMeta(apiTarget)],
