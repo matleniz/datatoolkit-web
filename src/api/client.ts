@@ -86,6 +86,13 @@ interface ApiClient {
   describeDocument(path: string, name?: string): Promise<Omit<WorkspaceDocument, "id">>;
 }
 
+/** The `StaleWriteError` for a 409 `stale_write` body (#263), else null. */
+function staleWriteError(status: number, data: ErrorBody): StaleWriteError | null {
+  if (!isStaleWriteBody(status, data)) return null;
+  const last = (data as { detail?: { last_seq?: unknown } }).detail?.last_seq;
+  return new StaleWriteError(data.message, typeof last === "number" ? last : null);
+}
+
 function isErrorBody(value: unknown): value is ErrorBody {
   return (
     typeof value === "object" &&
@@ -406,10 +413,8 @@ class HttpApiClient implements ApiClient {
     const snippet = text.length > 200 ? `${text.slice(0, 200)}…` : text;
     if (!res.ok) {
       if (parsed && isErrorBody(data)) {
-        if (isStaleWriteBody(res.status, data)) {
-          const last = (data as { detail?: { last_seq?: unknown } }).detail?.last_seq;
-          throw new StaleWriteError(data.message, typeof last === "number" ? last : null);
-        }
+        const stale = staleWriteError(res.status, data);
+        if (stale) throw stale;
         const groupError = groupInvariantError(res.status, data);
         if (groupError) throw groupError;
         throw new EngineError(data.type, data.message, res.status);
