@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
-import { Bootstrap } from "./Bootstrap";
+import { Bootstrap } from "./BootstrapGate";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { AppProvider } from "./state/AppStore";
 import "./theme/tokens.css";

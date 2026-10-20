@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiClient } from "../src/api/client";
 import { EngineError, type Workspace } from "../src/api/types";
-import { Bootstrap } from "../src/Bootstrap";
+import { Bootstrap } from "../src/BootstrapGate";
 import { SaveFailureBanner } from "../src/SaveFailureBanner";
 import { AppProvider } from "../src/state/AppStore";
 import {
