@@ -6,6 +6,7 @@ import {
   ErrorBody,
   ExportManifest,
   ExportRequest,
+  isStaleWriteBody,
   JsonSchema,
   KeyInfo,
   PreviewStep,
@@ -13,6 +14,7 @@ import {
   Role,
   SourceColumn,
   SourceSpec,
+  StaleWriteError,
   Step,
   TransformInfo,
   UploadResponse,
@@ -26,6 +28,7 @@ import {
 import { gridViewBody, type GridView } from "../state/gridView";
 import { groupInvariantError } from "../state/stepGroups";
 import { scopeOf, trackRequest } from "./inflight";
+import { nextWriteSeq, WRITE_SEQ_HEADER } from "./writeSeq";
 import { InFlightDedupe } from "./requestDedupe";
 
 interface ApiClient {
@@ -81,6 +84,13 @@ interface ApiClient {
   upload(filename: string, body: BodyInit): Promise<UploadResponse>;
   /** `POST /documents/describe`: a document entry (no id) for an uploaded file (#178). */
   describeDocument(path: string, name?: string): Promise<Omit<WorkspaceDocument, "id">>;
+}
+
+/** The `StaleWriteError` for a 409 `stale_write` body (#263), else null. */
+function staleWriteError(status: number, data: ErrorBody): StaleWriteError | null {
+  if (!isStaleWriteBody(status, data)) return null;
+  const last = (data as { detail?: { last_seq?: unknown } }).detail?.last_seq;
+  return new StaleWriteError(data.message, typeof last === "number" ? last : null);
 }
 
 function isErrorBody(value: unknown): value is ErrorBody {
@@ -293,8 +303,9 @@ class HttpApiClient implements ApiClient {
     body?: unknown,
     rawBody?: BodyInit,
     signal?: AbortSignal,
+    extraHeaders?: Record<string, string>,
   ): Promise<T> {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { ...extraHeaders };
     let payload: BodyInit | undefined = rawBody;
     let bodyKey = "";
     if (body !== undefined) {
@@ -347,7 +358,11 @@ class HttpApiClient implements ApiClient {
       if (cancelled) {
         throw new EngineError("Cancelled", "Request cancelled.");
       }
-      if (!(e instanceof DOMException && e.name === "AbortError")) {
+      // A stale write is expected and dropped by the save gate (#263).
+      if (
+        !(e instanceof DOMException && e.name === "AbortError") &&
+        !(e instanceof StaleWriteError)
+      ) {
         console.error(`[engine] ${method} ${path} failed`, e);
       }
       throw e;
@@ -398,6 +413,8 @@ class HttpApiClient implements ApiClient {
     const snippet = text.length > 200 ? `${text.slice(0, 200)}…` : text;
     if (!res.ok) {
       if (parsed && isErrorBody(data)) {
+        const stale = staleWriteError(res.status, data);
+        if (stale) throw stale;
         const groupError = groupInvariantError(res.status, data);
         if (groupError) throw groupError;
         throw new EngineError(data.type, data.message, res.status);
@@ -488,6 +505,7 @@ class HttpApiClient implements ApiClient {
       workspaceBody(ws),
       undefined,
       signal,
+      { [WRITE_SEQ_HEADER]: String(nextWriteSeq()) },
     );
   }
 
