@@ -1690,8 +1690,88 @@
 .pipeline-group-origin {
   flex-shrink: 0;
   margin-left: auto;
-  padding-right: 16px;
   font-size: 10px;
   font-style: italic;
   color: var(--dtk-muted);
+}
+.pipeline-group-count {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pipeline-group-toggle[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pipeline-group-rename,
+.pipeline-group-ungroup {
+  opacity: 1;
+}
+.pipeline-group-ungroup {
+  right: 17px;
+}
+
+/* Manual grouping (#249): the row checkbox, the toolbar, the name / intent form. */
+.pipeline-pick {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  z-index: 1;
+  accent-color: #1d5b86;
+}
+.pipeline-group-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: 12px;
+  font-size: 12px;
+}
+.pipeline-group-tools .hint {
+  color: var(--dtk-muted);
+  max-width: 220px;
+}
+.pipeline-group-form {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 16px;
+  z-index: 20;
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid #c9c5ba;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+.pipeline-group-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.pipeline-group-form input,
+.pipeline-group-form textarea {
+  font: inherit;
+  font-weight: 400;
+  padding: 4px 6px;
+  border: 1px solid #c9c5ba;
+  border-radius: 4px;
+}
+.pipeline-group-form .form-error {
+  margin: 0;
+  color: #a3242c;
+  font-size: 12px;
+}
+.pipeline-group-form .form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 
 import type { Role, Step } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
@@ -17,6 +17,8 @@ import { useInFlight } from "../../useInFlight";
 import { useWorkbenchData, type PipelineShape } from "../WorkbenchData";
 import { PipelineHistory } from "./PipelineHistory";
 import { GroupBlock } from "./GroupBlock";
+import { GroupFormHost, GroupToolbar } from "./GroupTools";
+import { useGroupEditing } from "./useGroupEditing";
 import { groupRows, pruneExpanded, toggleExpanded } from "./groupRows";
 import { rawNodeSubLabel } from "./rawNodeSubLabel";
 import { NoteButton } from "../notes/NotePopover";
@@ -192,6 +194,21 @@ export function PipelineBar() {
   const live = pruneExpanded(expanded, workspace?.groups ?? []);
   if (live !== expanded) setExpanded(live);
 
+  const editing = useGroupEditing(workspace?.groups ?? [], dispatch);
+  const { picked, setPicked, setForm, refocus } = editing;
+  const canGroup = canEdit;
+  const canPick = canEdit && editing.selecting;
+  const pickBox = (row: { group: { id: string; name: string } }, label: string) =>
+    canPick ? (
+      <input
+        type="checkbox"
+        className="pipeline-pick"
+        aria-label={`Select ${label} for grouping`}
+        checked={picked.has(row.group.id)}
+        onChange={() => setPicked((p) => toggleExpanded(p, row.group.id))}
+      />
+    ) : null;
+
   const rawShape = shapes[0];
   const nodes: PipelineNodeData[] = [
     {
@@ -217,10 +234,11 @@ export function PipelineBar() {
     if (err) break;
   }
 
-  const renderNode = (n: PipelineNodeData, arrow: boolean) => (
-      <div key={n.key} className="pipeline-node-wrap">
+  const renderNode = (n: PipelineNodeData, arrow: boolean, pick: ReactNode = null, firstStep?: string) => (
+      <div key={n.key} className="pipeline-node-wrap" data-row-first-step={firstStep}>
         {arrow ? <Arrow /> : null}
         <div className="pipeline-node-rel">
+          {pick}
           <button
             type="button"
             className={nodeClass(n)}
@@ -333,7 +351,14 @@ export function PipelineBar() {
         {rows.map((row) => {
           if (row.start >= nodes.length - 1) return null;
           const rowNodes = nodes.slice(1 + row.start, 1 + row.start + row.count);
-          if (row.singleton) return renderNode(rowNodes[0]!, true);
+          if (row.singleton) {
+            return renderNode(
+              rowNodes[0]!,
+              true,
+              pickBox(row, `step ${row.start + 1}`),
+              row.group.step_ids[0],
+            );
+          }
           return (
             <GroupBlock
               key={row.group.id}
@@ -345,6 +370,21 @@ export function PipelineBar() {
               shape={rowNodes.at(-1)?.shape ?? "—"}
               arrow={<Arrow />}
               onToggle={() => setExpanded((e) => toggleExpanded(e, row.group.id))}
+              pick={pickBox(row, `group ${row.group.name}`)}
+              onRename={
+                canGroup
+                  ? () =>
+                      setForm({ kind: "rename", id: row.group.id, name: row.group.name, intent: row.group.intent })
+                  : null
+              }
+              onUngroup={
+                canGroup
+                  ? () => {
+                      refocus.current = row.group.step_ids[0] ?? null;
+                      dispatch({ type: "UNGROUP", id: row.group.id });
+                    }
+                  : null
+              }
             >
               {rowNodes.map((n) => renderNode(n, true))}
             </GroupBlock>
@@ -372,7 +412,10 @@ export function PipelineBar() {
         >
           + Step
         </button>
+        <GroupToolbar editing={editing} />
       </div>
+
+      <GroupFormHost editing={editing} />
 
       {menu && canEdit ? (
         <StepMenu

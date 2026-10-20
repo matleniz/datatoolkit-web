@@ -1,7 +1,7 @@
 import type { Step } from "../api/types";
 import { withNote } from "./notes";
 import { withNewId } from "./stepIds";
-import { insertStep, orderList, removeStepAt, replaceStepAt, type StepList } from "./stepGroups";
+import { groupSteps, insertStep, orderList, removeStepAt, replaceStepAt, type GroupMeta, type StepList } from "./stepGroups";
 
 /**
  * Which step an op targets: its stable id (datatoolkit-issues#153), or its
@@ -42,15 +42,24 @@ const refText = (ref: StepRef) => ("id" in ref ? ref.id : `at index ${ref.index}
  * the new step sets one, the note) / REMOVE_STEP; the groups follow each op
  * (`stepGroups.ts`: an added step is a singleton group, a removed one leaves
  * its group) and `orderList` (align steps first) runs once at the end.
+ *
+ * With `group`, the steps the batch ADDS become one group (one action = one
+ * group, #249). A replaced step keeps its id and so its own group; a batch
+ * that adds nothing, or whose added steps do not end up side by side, makes no
+ * group (they stay singletons).
  */
 export function applyStepOps(
   list: StepList,
   ops: StepOp[],
+  group?: GroupMeta,
 ): StepList | { error: string } {
   let next = list;
+  const added: string[] = [];
   for (const [n, op] of ops.entries()) {
     if ("add" in op) {
-      next = insertStep(next, withNewId(op.add.step, next.steps));
+      const step = withNewId(op.add.step, next.steps);
+      next = insertStep(next, step);
+      if (step.id) added.push(step.id);
       continue;
     }
     const ref = opRef(op)!;
@@ -77,5 +86,11 @@ export function applyStepOps(
       next = removeStepAt(next, at);
     }
   }
-  return orderList(next);
+  const ordered = orderList(next);
+  if (!group) return ordered;
+  // Steps a later op of the same batch removed are gone.
+  const alive = added.filter((id) => ordered.steps.some((s) => s.id === id));
+  if (alive.length === 0) return ordered;
+  const grouped = groupSteps(ordered, alive, group);
+  return "error" in grouped ? ordered : grouped;
 }
