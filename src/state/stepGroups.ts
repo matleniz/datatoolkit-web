@@ -314,6 +314,83 @@ export function moveGroup(list: StepList, groupId: string, to: number): StepList
   return orderList({ steps, groups });
 }
 
+/** What a new group carries besides its steps. */
+export interface GroupMeta {
+  name: string;
+  intent?: string;
+  origin: Group["origin"];
+  produced_by?: string | null;
+}
+
+/**
+ * The steps `ids` (in any order) made one group, the group's own slot in the
+ * list. Needs `ids` to be a contiguous run of `list.steps` and the name to be
+ * valid; a group the run cuts keeps what is left of it (its id on the first
+ * run, a fresh id on the second). `{ error }` otherwise.
+ */
+export function groupSteps(list: StepList, ids: string[], meta: GroupMeta): StepList | { error: string } {
+  const named = validateGroupName(meta.name);
+  if ("error" in named) return named;
+  const intent = (meta.intent ?? "").trim();
+  if (intent.length > GROUP_INTENT_MAX) {
+    return { error: `A group intent has at most ${GROUP_INTENT_MAX} characters (got ${intent.length}).` };
+  }
+  const at = ids.map((id) => list.steps.findIndex((s) => s.id === id));
+  if (ids.length === 0 || at.some((i) => i < 0) || new Set(at).size !== at.length) {
+    return { error: "Those steps are not all in the pipeline." };
+  }
+  if (Math.max(...at) - Math.min(...at) + 1 !== at.length) {
+    return { error: "Only neighbouring steps can be grouped." };
+  }
+  const inRun = new Set(ids);
+  const id = newGroupId(list.groups.map((g) => g.id));
+  const groups = [
+    ...list.groups.map((g) => ({ ...g, step_ids: g.step_ids.filter((sid) => !inRun.has(sid)) })),
+    { id, name: named.name, intent, step_ids: ids, origin: meta.origin, produced_by: meta.produced_by ?? null },
+  ];
+  return { steps: list.steps, groups: rebuild(list.steps, groups) };
+}
+
+/** Group `groupId` dissolved: each of its steps is a singleton group again (the engine's ids and names). */
+export function ungroup(list: StepList, groupId: string): StepList {
+  if (!list.groups.some((g) => g.id === groupId)) return list;
+  return { steps: list.steps, groups: rebuild(list.steps, list.groups.filter((g) => g.id !== groupId)) };
+}
+
+/**
+ * Group `groupId` renamed and re-described. A user edit: the origin becomes
+ * `manual` (the contract's "manual: group / ungroup / rename"), `produced_by`
+ * stays. The list itself when nothing changes; `{ error }` for a bad name.
+ */
+export function renameGroup(
+  list: StepList,
+  groupId: string,
+  name: string,
+  intent: string,
+): StepList | { error: string } {
+  const old = list.groups.find((g) => g.id === groupId);
+  if (!old) return list;
+  const named = validateGroupName(name);
+  if ("error" in named) return named;
+  const text = intent.trim();
+  if (text.length > GROUP_INTENT_MAX) {
+    return { error: `A group intent has at most ${GROUP_INTENT_MAX} characters (got ${text.length}).` };
+  }
+  if (old.name === named.name && old.intent === text) return list;
+  const next: Group = { ...old, name: named.name, intent: text, origin: "manual" };
+  return { steps: list.steps, groups: list.groups.map((g) => (g === old ? next : g)) };
+}
+
+/**
+ * The step ids of the rows `groupIds` (singleton or whole groups, in step
+ * order) when they sit side by side and number two or more; null otherwise.
+ */
+export function contiguousRowSteps(groups: Group[], groupIds: ReadonlySet<string>): string[] | null {
+  const at = groups.flatMap((g, i) => (groupIds.has(g.id) ? [i] : []));
+  if (at.length < 2 || at.length !== groupIds.size || at.at(-1)! - at[0]! + 1 !== at.length) return null;
+  return at.flatMap((i) => groups[i]!.step_ids);
+}
+
 /** Same groups: same ids, names, intents, origins and steps (a missing `produced_by` is a null one). */
 export function sameGroups(a: Group[], b: Group[]): boolean {
   const canon = (g: Group) => ({ ...g, produced_by: g.produced_by ?? null });

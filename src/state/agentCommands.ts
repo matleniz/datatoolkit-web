@@ -20,6 +20,7 @@ import { TOOL_IDS, type ToolId } from "./dockTypes";
 import { appReducer, type AppAction, type AppState } from "./reducer";
 import { applyStepOps, opRef, refIndex, type StepOp, type StepRef } from "./stepOps";
 import { newStepId } from "./stepIds";
+import { validateGroupName, type GroupMeta } from "./stepGroups";
 import { NOTE_MAX, columnNoteKey, noteText } from "./notes";
 import { parseForget, parseRemember, runMemoryCommand, type MemoryCommand } from "./memoryCommands";
 import {
@@ -52,6 +53,8 @@ export type AgentCommand =
        * stale.
        */
       base_steps?: Record<string, Step>;
+      /** The group the steps this proposal adds go into (#249); the name and the intent are the agent's. */
+      group?: { name: string; intent?: string };
     }
   | { type: "open_window"; tool: ToolId; params: Record<string, unknown> }
   | { type: "select_columns"; columns: string[] }
@@ -295,12 +298,19 @@ function parseProposeSteps(raw: Record<string, unknown>): Parsed<AgentCommand> {
   }
   const base = raw.base_steps === undefined ? undefined : parseBaseSteps(raw.base_steps);
   if (typeof base === "string") return { error: base };
+  // A malformed group is not worth refusing the proposal: the name is derived.
+  const g = raw.group;
+  const group =
+    isRecord(g) && typeof g.name === "string"
+      ? { name: g.name, ...(typeof g.intent === "string" ? { intent: g.intent } : {}) }
+      : undefined;
   return {
     type: "propose_steps",
     workspace: raw.workspace,
     base_identity: raw.base_identity,
     ops,
     ...(base ? { base_steps: base } : {}),
+    ...(group ? { group } : {}),
   };
 }
 
@@ -1002,6 +1012,30 @@ function stepsTouched(before: Step[], after: Step[]): Touched {
   return { steps, columns: [...columns] };
 }
 
+/**
+ * The group of the steps a proposal adds (#249, origin `auto`, produced by
+ * `agent`). Name: the agent's `group.name`, else the first line of the first
+ * step note (the proposal's note), else `"<op> <target>"` of the first added
+ * step. Intent: the agent's, else the note (up to 400 characters).
+ */
+export function proposalGroup(cmd: Extract<AgentCommand, { type: "propose_steps" }>): GroupMeta {
+  const steps = cmd.ops.flatMap((op) => ("add" in op ? [op.add.step] : "replace" in op ? [op.replace.step] : []));
+  const note = steps.find((s) => s.note?.trim())?.note?.trim() ?? "";
+  const first = cmd.ops.find((op): op is { add: { step: Step } } => "add" in op)?.add.step ?? steps[0];
+  const candidates = [
+    cmd.group?.name ?? "",
+    note.split(/\r?\n/)[0]!.trim().slice(0, 80),
+    first ? `${first.op} ${first.target}` : "",
+  ];
+  const name = candidates.map((c) => validateGroupName(c)).find((v): v is { name: string } => "name" in v);
+  return {
+    name: name?.name ?? "Agent proposal",
+    intent: (cmd.group?.intent?.trim() || note).slice(0, 400),
+    origin: "auto",
+    produced_by: "agent",
+  };
+}
+
 async function proposeSteps(
   id: string,
   cmd: Extract<AgentCommand, { type: "propose_steps" }>,
@@ -1042,7 +1076,7 @@ async function proposeSteps(
 
   const before = deps.getState().workspace?.steps ?? [];
   const { ops, ids } = mintAddedIds(cmd.ops, before);
-  deps.dispatch({ type: "APPLY_STEP_BATCH", ops });
+  deps.dispatch({ type: "APPLY_STEP_BATCH", ops, group: proposalGroup(cmd) });
   try {
     await deps.settle();
   } catch (e) {

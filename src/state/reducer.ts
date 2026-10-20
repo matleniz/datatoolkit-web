@@ -34,14 +34,19 @@ import { withDocumentNote } from "./documents";
 import { applyStepOps, type StepOp } from "./stepOps";
 import {
   assertValidGroups,
+  contiguousRowSteps,
   fillSingletons,
+  groupSteps,
   insertStep,
   orderList,
   removeGroup,
   removeStepAt,
+  renameGroup,
   sameGroups,
   setSteps,
+  ungroup,
   validateGroups,
+  type GroupMeta,
 } from "./stepGroups";
 import { fillStepIds, withNewId } from "./stepIds";
 import { EMPTY_GRID_VIEW, gridViewKey, type GridView } from "./gridView";
@@ -342,7 +347,11 @@ export type AppAction =
   /** Remove a whole step group (its steps and the group) in one undoable change (#249). */
   | { type: "REMOVE_GROUP"; id: string }
   /** Several step edits as ONE undo entry (agent bridge, #63); no-op if one op is invalid. */
-  | { type: "APPLY_STEP_BATCH"; ops: StepOp[] }
+  | { type: "APPLY_STEP_BATCH"; ops: StepOp[]; group?: GroupMeta }
+  /** The rows `groupIds` (side by side) made one manual group (#249). */
+  | { type: "GROUP_ROWS"; groupIds: string[]; name: string; intent: string }
+  | { type: "UNGROUP"; id: string }
+  | { type: "RENAME_GROUP"; id: string; name: string; intent: string }
   /** Pipeline history only (datatoolkit-issues#16); no-op while editing a step. */
   /** Notes (#152): one undoable change each; a blank text removes the note. */
   | { type: "SET_STEP_NOTE"; id: string; text: string }
@@ -1013,7 +1022,7 @@ function reduceSteps(state: AppState, action: AppAction): AppState | undefined {
       });
     }
     case "APPLY_STEP_BATCH": {
-      const out = applyStepOps(listOf(state.workspace), action.ops);
+      const out = applyStepOps(listOf(state.workspace), action.ops, action.group);
       if ("error" in out) return state;
       return withList(state, out, {
         editor: null,
@@ -1031,6 +1040,31 @@ function reduceSteps(state: AppState, action: AppAction): AppState | undefined {
     }
     case "REMOVE_STEP_BY_INDEX":
       return withList(state, removeStepAt(listOf(state.workspace), action.index));
+    default:
+      return undefined;
+  }
+}
+
+/** Manual group / ungroup / rename (#249): edits of `groups` alone, each one undo level. */
+function reduceGroupEdits(state: AppState, action: AppAction): AppState | undefined {
+  switch (action.type) {
+    case "GROUP_ROWS": {
+      const list = listOf(state.workspace);
+      const ids = contiguousRowSteps(list.groups, new Set(action.groupIds));
+      if (!ids) return state;
+      const out = groupSteps(list, ids, { name: action.name, intent: action.intent, origin: "manual" });
+      return "error" in out ? state : withList(state, out);
+    }
+    case "UNGROUP": {
+      const list = listOf(state.workspace);
+      const out = ungroup(list, action.id);
+      return out === list ? state : withList(state, out);
+    }
+    case "RENAME_GROUP": {
+      const list = listOf(state.workspace);
+      const out = renameGroup(list, action.id, action.name, action.intent);
+      return "error" in out || out === list ? state : withList(state, out);
+    }
     default:
       return undefined;
   }
@@ -1128,6 +1162,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     reduceToolState(state, action) ??
     reduceWorkspace(state, action) ??
     reduceSteps(state, action) ??
+    reduceGroupEdits(state, action) ??
     reduceNotes(state, action) ??
     state;
   return trackStepHistory(state, next, action);

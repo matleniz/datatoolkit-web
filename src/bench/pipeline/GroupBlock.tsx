@@ -7,7 +7,8 @@ import { groupCountLabel, groupEndVersion, originLabel, type GroupRow } from "./
  * A step group of several steps in the pipeline bar (datatoolkit-issues#249):
  * one header card (name, intent, step count, shape after its last step) that
  * selects the END of the group, a disclosure button that shows its steps, and
- * a remove button for the whole group. `children` are the step nodes, shown
+ * remove / rename / ungroup buttons for the whole group. A group that holds a
+ * failing step stays open (its toggle says so and does nothing). `children` are the step nodes, shown
  * only while expanded. A group of one step never comes here: it renders as a
  * plain step row.
  */
@@ -19,6 +20,9 @@ export function GroupBlock({
   canDelete,
   shape,
   onToggle,
+  pick,
+  onRename,
+  onUngroup,
   arrow,
   children,
 }: {
@@ -29,6 +33,11 @@ export function GroupBlock({
   canDelete: boolean;
   shape: string;
   onToggle: () => void;
+  /** The "select for grouping" checkbox of this row (null while an edit is open). */
+  pick: ReactNode;
+  /** Rename and ungroup, offered while no step edit is open; null hides them. */
+  onRename: (() => void) | null;
+  onUngroup: (() => void) | null;
   /** The connector drawn before the header, as for every node. */
   arrow: ReactNode;
   children: ReactNode;
@@ -49,7 +58,11 @@ export function GroupBlock({
   };
 
   return (
-    <div className="pipeline-node-wrap pipeline-group" data-group-id={group.id}>
+    <div
+      className="pipeline-node-wrap pipeline-group"
+      data-group-id={group.id}
+      data-row-first-step={group.step_ids[0]}
+    >
       {arrow}
       <div className="pipeline-node-rel">
         <button
@@ -65,23 +78,39 @@ export function GroupBlock({
             <span className="pipeline-title" title={group.name}>
               {group.name}
             </span>
-            {origin ? <span className="pipeline-group-origin">{origin}</span> : null}
           </span>
           <span className="pipeline-sub pipeline-group-intent">{group.intent || "\u00a0"}</span>
           <span className="pipeline-meta">
             {/* The shape is the one after the whole group: not shown while the view cuts it. */}
             {row.partial ? null : <span className="pipeline-shape">{shape}</span>}
-            <span className="pipeline-delta delta-muted">{groupCountLabel(row)}</span>
+            <span className="pipeline-delta delta-muted pipeline-group-count">{groupCountLabel(row)}</span>
+            {origin ? (
+              <span className="pipeline-group-origin" title={`Made by: ${origin}`}>
+                {origin}
+              </span>
+            ) : null}
           </span>
         </button>
+        {pick}
         <button
           type="button"
           className="pipeline-edit pipeline-group-toggle"
           aria-expanded={expanded}
           aria-controls={panelId}
-          aria-label={`${expanded ? "Collapse" : "Expand"} group ${group.name}`}
-          title={expanded ? "Hide the steps of this group" : "Show the steps of this group"}
-          onClick={onToggle}
+          aria-disabled={error || undefined}
+          aria-label={
+            error
+              ? `Group ${group.name} stays open: one of its steps fails`
+              : `${expanded ? "Collapse" : "Expand"} group ${group.name}`
+          }
+          title={
+            error
+              ? "This group stays open because one of its steps fails"
+              : expanded
+                ? "Hide the steps of this group"
+                : "Show the steps of this group"
+          }
+          onClick={error ? undefined : onToggle}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
             <path
@@ -94,6 +123,38 @@ export function GroupBlock({
             />
           </svg>
         </button>
+        {onRename ? (
+          <button
+            type="button"
+            className="pipeline-note pipeline-group-rename"
+            aria-label={`Rename group ${group.name}`}
+            title="Rename this group or change its intent"
+            onClick={onRename}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+              <path
+                d="M1.5 8.5l.6-2.4L6.6 1.6l1.8 1.8-4.5 4.5z"
+                fill="none"
+                stroke="#5b5850"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        ) : null}
+        {onUngroup ? (
+          <button
+            type="button"
+            className="pipeline-note pipeline-group-ungroup"
+            aria-label={`Ungroup ${group.name}`}
+            title="Ungroup: each step becomes its own row again"
+            onClick={onUngroup}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+              <path d="M1.5 3.5h7M1.5 6.5h7" stroke="#5b5850" strokeWidth="1.3" strokeLinecap="round" />
+            </svg>
+          </button>
+        ) : null}
         {canDelete ? (
           <button
             type="button"
