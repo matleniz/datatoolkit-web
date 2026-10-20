@@ -31,7 +31,7 @@ test("MAT-154: empty train file disables workbench and alignment", async ({
   await sourceFileInput(page).setInputFiles(emptyPath);
 
   const filesList = page.getByRole("region", { name: "Files list" });
-  await expect(filesList.getByText("adv_empty.csv")).toBeVisible({
+  await expect(filesList.locator(".file-name", { hasText: "adv_empty.csv" })).toBeVisible({
     timeout: 30_000,
   });
 

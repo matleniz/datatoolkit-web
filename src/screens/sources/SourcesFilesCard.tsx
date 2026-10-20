@@ -70,9 +70,7 @@ function FileLoadError({ file, role }: { file: SourceFileItem; role: FileRole | 
       role={role === "trainX" ? "status" : "alert"}
       data-file-load-error={file.id}
     >
-      <strong>
-        {file.name}: {warning.title}
-      </strong>
+      <strong>{warning.title}</strong>
       <div className="file-warning-reason">{warning.reason}</div>
     </div>
   );
