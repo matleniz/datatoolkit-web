@@ -351,7 +351,11 @@ class HttpApiClient implements ApiClient {
       if (cancelled) {
         throw new EngineError("Cancelled", "Request cancelled.");
       }
-      if (!(e instanceof DOMException && e.name === "AbortError")) {
+      // A stale write is expected and dropped by the save gate (#263).
+      if (
+        !(e instanceof DOMException && e.name === "AbortError") &&
+        !(e instanceof StaleWriteError)
+      ) {
         console.error(`[engine] ${method} ${path} failed`, e);
       }
       throw e;
