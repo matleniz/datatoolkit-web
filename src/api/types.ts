@@ -600,8 +600,12 @@ export class EngineError extends Error {
  * accepted, so the engine wrote nothing for this one.
  */
 export class StaleWriteError extends EngineError {
-  constructor(message: string) {
+  /** Highest sequence the engine accepted for the workspace, null if unreadable. */
+  readonly lastSeq: number | null;
+
+  constructor(message: string, lastSeq: number | null = null) {
     super("StaleWriteError", message, 409);
+    this.lastSeq = lastSeq;
     this.name = "StaleWriteError";
   }
 }

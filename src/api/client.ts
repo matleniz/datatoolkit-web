@@ -406,7 +406,10 @@ class HttpApiClient implements ApiClient {
     const snippet = text.length > 200 ? `${text.slice(0, 200)}…` : text;
     if (!res.ok) {
       if (parsed && isErrorBody(data)) {
-        if (isStaleWriteBody(res.status, data)) throw new StaleWriteError(data.message);
+        if (isStaleWriteBody(res.status, data)) {
+          const last = (data as { detail?: { last_seq?: unknown } }).detail?.last_seq;
+          throw new StaleWriteError(data.message, typeof last === "number" ? last : null);
+        }
         const groupError = groupInvariantError(res.status, data);
         if (groupError) throw groupError;
         throw new EngineError(data.type, data.message, res.status);

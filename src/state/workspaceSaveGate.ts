@@ -1,6 +1,6 @@
 import { API_BASE, apiClient, serializeWorkspace } from "../api/client";
 import { isStaleWriteBody, StaleWriteError, type Group, type Workspace } from "../api/types";
-import { nextWriteSeq, WRITE_SEQ_HEADER } from "../api/writeSeq";
+import { highestWriteSeq, nextWriteSeq, raiseWriteSeqAbove, WRITE_SEQ_HEADER } from "../api/writeSeq";
 import { sameGroups } from "./stepGroups";
 import { dropLegacyCharts } from "./chartStorage";
 
@@ -182,7 +182,28 @@ export async function commitWorkspaceSave(opts: {
 
   let answer: unknown;
   try {
-    answer = await save(ws);
+    try {
+      answer = await save(ws);
+    } catch (e) {
+      // The engine holds a higher sequence than any this tab sent (clock set
+      // back, another tab): this payload is not superseded by a write of ours,
+      // so continue above that sequence and re-send ONCE (#263).
+      if (
+        e instanceof StaleWriteError &&
+        e.lastSeq !== null &&
+        e.lastSeq > highestWriteSeq() &&
+        !(
+          committedWorkspace &&
+          committedWorkspace.name === ws.name &&
+          serializeWorkspace(committedWorkspace) !== serialized
+        )
+      ) {
+        raiseWriteSeqAbove(e.lastSeq);
+        answer = await save(ws);
+      } else {
+        throw e;
+      }
+    }
   } catch (e) {
     // A newer write of this tab already landed (#263): this one is obsolete,
     // not failed. No banner, no retry, never recorded as saved.

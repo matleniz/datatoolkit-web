@@ -133,6 +133,50 @@ describe("409 stale_write (#263)", () => {
     expect(getLastSavedWorkspaceJson()).toBe(serializeWorkspace(e2));
   });
 
+  it("re-sends once above the engine's last_seq when it is higher than anything this tab sent", async () => {
+    vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    vi.spyOn(Date, "now").mockReturnValue(1_000_000_000_000);
+    const ahead = 9_000_000_000_000_000;
+    const f = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (_u, init) => {
+        const seq = Number((init!.headers as Record<string, string>)["X-Dtk-Write-Seq"]);
+        return seq < ahead
+          ? new Response(
+              JSON.stringify({ ...STALE, detail: { rule: "stale_write", last_seq: ahead } }),
+              { status: 409 },
+            )
+          : new Response("{}", { status: 200 });
+      });
+    const w = ws("stale_d");
+    markWorkspaceLoaded(w);
+    const e1 = { ...w, steps: [{ op: "x" }] } as unknown as Workspace;
+    setCommittedWorkspace(e1);
+    await ensureWorkspaceSaved(e1);
+    expect(f).toHaveBeenCalledTimes(2);
+    expect(seqOf(f.mock.calls[1]!)).toBeGreaterThan(ahead);
+    expect(getLastSavedWorkspaceJson()).toBe(serializeWorkspace(e1));
+    expect(getWorkspaceSaveFailure()).toBeNull();
+  });
+
+  it("re-sends only once when the engine keeps refusing", async () => {
+    vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({ ...STALE, detail: { rule: "stale_write", last_seq: 9e15 } }),
+          { status: 409 },
+        ),
+    );
+    const w = ws("stale_e");
+    markWorkspaceLoaded(w);
+    const e1 = { ...w, steps: [{ op: "x" }] } as unknown as Workspace;
+    setCommittedWorkspace(e1);
+    await ensureWorkspaceSaved(e1);
+    expect(f).toHaveBeenCalledTimes(2);
+    expect(getWorkspaceSaveFailure()).toBeNull();
+  });
+
   it("does not clear a genuine earlier failure", async () => {
     vi.spyOn(console, "debug").mockImplementation(() => undefined);
     const f = vi

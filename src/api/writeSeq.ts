@@ -17,6 +17,19 @@ export function nextWriteSeq(): number {
   return lastSeq;
 }
 
+/** Highest sequence this tab has generated (0 before the first). */
+export function highestWriteSeq(): number {
+  return lastSeq;
+}
+
+/**
+ * The engine reported a higher accepted sequence than any this tab sent
+ * (clock set back, or another tab): continue above it.
+ */
+export function raiseWriteSeqAbove(seq: number): void {
+  if (Number.isSafeInteger(seq) && seq > lastSeq) lastSeq = seq;
+}
+
 /** @internal vitest helper. */
 export function resetWriteSeqForTests(): void {
   lastSeq = 0;
