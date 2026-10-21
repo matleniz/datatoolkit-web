@@ -1,7 +1,10 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import type { ColumnProfile } from "../src/api/types";
 import { qualityShares, qualityTip } from "../src/bench/alerts";
+import { ColumnHeader } from "../src/bench/grid/Grid";
 
 const p = (o: Partial<ColumnProfile>) =>
   ({ count: 0, missing: 0, sentinel_candidates: [], ...o }) as ColumnProfile;
@@ -49,5 +52,40 @@ describe("qualityShares (#310)", () => {
 
   it("tooltip says mismatched is approximate", () => {
     expect(qualityTip(qualityShares(p({ count: 1 })))).toMatch(/approximate/);
+  });
+});
+
+describe("ColumnHeader quality bar (#310)", () => {
+  it("renders three segments and the approximate tooltip on .miss-bar", () => {
+    const profile = p({
+      name: "age",
+      kind: "number",
+      count: 80,
+      missing: 20,
+      sentinel_candidates: [{ value: -999, count: 10 }],
+    });
+    const html = renderToStaticMarkup(
+      createElement(ColumnHeader, {
+        c: { name: "age", kind: "number", status: "kept" },
+        sel: false,
+        isTarget: false,
+        touched: false,
+        profile,
+        note: undefined,
+        dispatch: () => {},
+        reorder: {
+          enabled: false,
+          hint: null,
+          start() {},
+          over() {},
+          end() {},
+          drop() {},
+        },
+      } as never),
+    );
+    expect(html).toContain('class="q-valid" style="width:70%"');
+    expect(html).toContain('class="q-mismatched" style="width:10%"');
+    expect(html).toContain('class="q-missing" style="width:20%"');
+    expect(html).toMatch(/class="miss-bar" title="Valid 70%[^"]*approximate/);
   });
 });

@@ -9,11 +9,7 @@ import {
 
 import { BusyIndicator } from "../../BusyIndicator";
 import { apiClient } from "../../api/client";
-import {
-  CANCELLED_MESSAGE,
-  type ColumnProfile,
-  type Step,
-} from "../../api/types";
+import { CANCELLED_MESSAGE, type ColumnProfile, type Step } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import {
   colAlerts,
@@ -62,15 +58,12 @@ function isTypingTarget(t: EventTarget | null): boolean {
 
 function ColSpacer({ width }: { width: number }) {
   if (width <= 0) return null;
-  return (
-    <div className="grid-col-spacer" aria-hidden="true" style={{ width }} />
-  );
+  return <div className="grid-col-spacer" aria-hidden="true" style={{ width }} />;
 }
 
 function headerAlerts(c: DisplayCol, pr: ColumnProfile | undefined) {
   if (c.status === "added") return [{ text: "new", tone: "ok" as const }];
-  if (c.status === "removed")
-    return [{ text: "removed", tone: "bad" as const }];
+  if (c.status === "removed") return [{ text: "removed", tone: "bad" as const }];
   return colAlerts(pr);
 }
 
@@ -84,8 +77,7 @@ function cellTip(
   if (row.status === "removed" || c.status === "removed") {
     return `${tip} (removed by this step)`;
   }
-  if (row.changed[c.name])
-    return `${tip} (was ${fmtPreview(row.prev[c.name] as never)})`;
+  if (row.changed[c.name]) return `${tip} (was ${fmtPreview(row.prev[c.name] as never)})`;
   return outlier ? `${tip} (IQR outlier)` : tip;
 }
 
@@ -104,7 +96,7 @@ function dropSide(e: React.DragEvent<HTMLElement>): DropSide {
   return e.clientX < r.left + r.width / 2 ? "before" : "after";
 }
 
-function ColumnHeader({
+export function ColumnHeader({
   c,
   sel,
   isTarget,
@@ -128,7 +120,7 @@ function ColumnHeader({
   const alerts = headerAlerts(c, pr);
   const miss = missPct(pr);
   const quality = qualityShares(pr);
-  const barColor = sel ? "#1d5b86" : (KIND_BAR[c.kind] ?? "#c9c5ba");
+  const barColor = sel ? "#1d5b86" : KIND_BAR[c.kind] ?? "#c9c5ba";
   const hint = reorder.hint?.col === c.name ? reorder.hint.side : null;
   return (
     <button
@@ -203,12 +195,7 @@ function ColumnHeader({
           </svg>
         ) : null}
         {note ? (
-          <span
-            className="th-note"
-            role="img"
-            aria-label="Column note"
-            title={note}
-          >
+          <span className="th-note" role="img" aria-label="Column note" title={note}>
             <NoteIcon filled />
           </span>
         ) : null}
@@ -337,8 +324,7 @@ function BenchErrorBanner({ message }: { message: string | null }) {
 }
 
 export function Grid() {
-  const { selection, targetColumn, benchError, editor, agentTouch, role } =
-    useAppState();
+  const { selection, targetColumn, benchError, editor, agentTouch, role } = useAppState();
   const dispatch = useAppDispatch();
   const {
     display,
@@ -372,11 +358,10 @@ export function Grid() {
 
   const editIndex = editor?.editIndex;
   const editLabel =
-    editIndex === undefined
-      ? ""
-      : `v${editIndex + 1} · ${steps[editIndex]?.op ?? ""}`;
+    editIndex === undefined ? "" : `v${editIndex + 1} · ${steps[editIndex]?.op ?? ""}`;
 
-  const totalW = 44 + display.cols.reduce((w, c) => w + colWidth(c.kind), 0);
+  const totalW =
+    44 + display.cols.reduce((w, c) => w + colWidth(c.kind), 0);
 
   const selText = selectionText(selection);
 
@@ -405,9 +390,7 @@ export function Grid() {
         } = latest.current;
         if (!ws) return;
         // A "removed" column (diff of the last step) is not in the frame.
-        const order = d.cols
-          .filter((c) => c.status !== "removed")
-          .map((c) => c.name);
+        const order = d.cols.filter((c) => c.status !== "removed").map((c) => c.name);
         const wanted = dropOrder(order, name, target, side);
         if (!wanted) return;
         const n = ws.steps.length;
@@ -543,19 +526,14 @@ export function Grid() {
     if (!el || !touch) return;
     const rid = touch.cells[0]?.rid ?? touch.rows[0];
     if (rid === undefined) return;
-    el.querySelector(`[data-rid="${rid}"]`)?.scrollIntoView?.({
-      block: "nearest",
-    });
+    el.querySelector(`[data-rid="${rid}"]`)?.scrollIntoView?.({ block: "nearest" });
     const col = touch.cells[0]?.column;
     if (col === undefined) return;
     let left = 0;
     for (const c of display.cols) {
       if (c.name === col) {
         const w = colWidth(c.kind);
-        if (
-          left < el.scrollLeft ||
-          left + w > el.scrollLeft + el.clientWidth - 44
-        ) {
+        if (left < el.scrollLeft || left + w > el.scrollLeft + el.clientWidth - 44) {
           el.scrollLeft = Math.max(0, left - 44);
         }
         break;
