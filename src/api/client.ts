@@ -68,7 +68,7 @@ interface ApiClient {
     workspace: Workspace,
     role: Role,
     version?: number | null,
-    /** Optional column filter — engine ignores until MAT-152 engine change. */
+    /** Optional column filter; an engine that ignores it returns every column. */
     columns?: string[] | null,
   ): Promise<ColumnProfiles>;
   previewStep(

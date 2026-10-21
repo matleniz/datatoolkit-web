@@ -11,7 +11,14 @@ import { BusyIndicator } from "../../BusyIndicator";
 import { apiClient } from "../../api/client";
 import { CANCELLED_MESSAGE, type ColumnProfile, type Step } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
-import { colAlerts, isOutlierValue, missPct, profileBars } from "../alerts";
+import {
+  colAlerts,
+  isOutlierValue,
+  missPct,
+  profileBars,
+  qualityShares,
+  qualityTip,
+} from "../alerts";
 import { cellTone, type DisplayCol, type DisplayRow } from "../diff";
 import {
   cellDisplay,
@@ -89,7 +96,7 @@ function dropSide(e: React.DragEvent<HTMLElement>): DropSide {
   return e.clientX < r.left + r.width / 2 ? "before" : "after";
 }
 
-function ColumnHeader({
+export function ColumnHeader({
   c,
   sel,
   isTarget,
@@ -112,6 +119,7 @@ function ColumnHeader({
   const bars = pr ? profileBars(pr, 22) : [];
   const alerts = headerAlerts(c, pr);
   const miss = missPct(pr);
+  const quality = qualityShares(pr);
   const barColor = sel ? "#1d5b86" : KIND_BAR[c.kind] ?? "#c9c5ba";
   const hint = reorder.hint?.col === c.name ? reorder.hint.side : null;
   return (
@@ -211,8 +219,16 @@ function ColumnHeader({
           />
         ))}
       </span>
-      <span className="miss-bar">
-        <span style={{ width: `${miss}%` }} />
+      <span className="miss-bar" title={qualityTip(quality)}>
+        <span className="q-valid" style={{ width: `${quality.validPct}%` }} />
+        <span
+          className="q-mismatched"
+          style={{ width: `${quality.mismatchedPct}%` }}
+        />
+        <span
+          className="q-missing"
+          style={{ width: `${quality.missingPct}%` }}
+        />
       </span>
       <span className="th-alerts" aria-hidden="true">
         {alerts.map((a) => (
