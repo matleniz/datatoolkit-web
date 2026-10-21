@@ -19,8 +19,11 @@ const KNOWN_VIOLATIONS: Record<string, string> = {};
 export async function expectNoA11yViolations(
   page: Page,
   label: string,
+  exclude: string[] = [],
 ): Promise<void> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+  const axe = new AxeBuilder({ page }).withTags(WCAG_TAGS);
+  for (const selector of exclude) axe.exclude(selector);
+  const results = await axe.analyze();
   const known = results.violations.filter((v) => v.id in KNOWN_VIOLATIONS);
   const unknown = results.violations.filter((v) => !(v.id in KNOWN_VIOLATIONS));
   console.log(

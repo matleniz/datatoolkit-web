@@ -148,7 +148,7 @@ test("issue 249c: group two rows, rename, ungroup, each one PUT and undoable; ba
   await bar(page).getByRole("button", { name: "Ungroup Prepare age" }).click();
   const ungrouped = await expectPuts(puts, ++n);
   expect(shapeOf(ungrouped)).toEqual(["s1", "s2", "s3", "s4"]);
-  expect(ungrouped.groups.map((g) => g.id)).toEqual(["g1", "g2", "g3", "g4"]);
+  expect(ungrouped.groups.map((g) => g.id)).toEqual(["g1", "g2-2", "g3-2", "g4"]); // g2 / g3 were the singletons grouped just before (#275)
   console.log(`[249c] ungroup PUT groups=${JSON.stringify(ungrouped.groups.map((g) => ({ id: g.id, name: g.name, origin: g.origin })))}`);
   await expect.poll(() => shapeOf(onDisk("g249c"))).toEqual(["s1", "s2", "s3", "s4"]);
   await page.getByRole("button", { name: "Undo pipeline change" }).click();
@@ -247,4 +247,12 @@ test("issue 249c: a group holding a failing step stays open and its toggle says 
   await toggle.click({ force: true });
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(bar(page).getByRole("group", { name: "Steps of Scale things" })).toBeVisible();
+  // Documented exception (#275): the view sits at v1, and the nodes after the
+  // viewed version (the group header, its step nodes) are dimmed with an inline
+  // opacity of 0.5, which fails color-contrast by design. The toggle, the
+  // panel and the rest of the page are scanned.
+  await expectNoA11yViolations(page, "group with a failing step, forced open (#275)", [
+    '[data-group-id="gbad"] .pipeline-group-head',
+    "#pipeline-group-gbad .pipeline-node",
+  ]);
 });

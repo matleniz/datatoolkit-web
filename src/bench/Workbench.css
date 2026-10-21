@@ -1713,7 +1713,8 @@
   white-space: nowrap;
 }
 .pipeline-group-toggle[aria-disabled="true"] {
-  opacity: 0.45;
+  /* No opacity: a dimmed title / version / count fails color-contrast (#275).
+     The reason is in the toggle's accessible name ("stays open"). */
   cursor: not-allowed;
 }
 .pipeline-group-rename,
