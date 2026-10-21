@@ -7,11 +7,11 @@ import type { StepOp } from "./stepOps";
  * ids, to re-apply them in another workspace. Fitted state is not carried:
  * imported steps refit on the target workspace's train data.
  */
-export const STEPS_FILE_FORMAT = "dtk-steps";
-export const STEPS_FILE_VERSION = 1;
+const STEPS_FILE_FORMAT = "dtk-steps";
+const STEPS_FILE_VERSION = 1;
 /** Size sanity bounds, checked before anything is dispatched. */
-export const MAX_STEPS_FILE_BYTES = 1_000_000;
-export const MAX_STEPS_IN_FILE = 500;
+const MAX_STEPS_FILE_BYTES = 1_000_000;
+const MAX_STEPS_IN_FILE = 500;
 
 const TARGETS: readonly StepTarget[] = ["train", "test", "both"];
 
@@ -22,7 +22,7 @@ export interface StepsFile {
 }
 
 /** The file content for `steps` (ids and the front-only `align` flag dropped). */
-export function buildStepsFile(steps: Step[]): StepsFile {
+function buildStepsFile(steps: Step[]): StepsFile {
   return {
     format: STEPS_FILE_FORMAT,
     version: STEPS_FILE_VERSION,
