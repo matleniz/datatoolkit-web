@@ -194,7 +194,7 @@ export function PipelineBar() {
   const live = pruneExpanded(expanded, workspace?.groups ?? []);
   if (live !== expanded) setExpanded(live);
 
-  const editing = useGroupEditing(workspace?.groups ?? [], dispatch);
+  const editing = useGroupEditing(workspace?.groups ?? [], dispatch, !!editor);
   const { picked, setPicked, setForm, refocus } = editing;
   const canGroup = canEdit;
   const canPick = canEdit && editing.selecting;

@@ -207,10 +207,10 @@ export function fillSingletons(steps: Step[], groups: Group[]): Group[] {
  * ids no longer in `steps` drop out (an emptied group disappears); steps in
  * no group get a singleton. Always a valid partition. Idempotent.
  */
-function rebuild(steps: Step[], groups: Group[]): Group[] {
+function rebuild(steps: Step[], groups: Group[], retired: Iterable<string> = []): Group[] {
   const owner = new Map<string, Group>();
   for (const g of groups) for (const sid of g.step_ids) if (!owner.has(sid)) owner.set(sid, g);
-  const taken = new Set(groups.map((g) => g.id));
+  const taken = new Set([...retired, ...groups.map((g) => g.id)]);
   const used = new Set<string>();
   const out: Group[] = [];
   let open: Group | null = null;
@@ -351,10 +351,16 @@ export function groupSteps(list: StepList, ids: string[], meta: GroupMeta): Step
   return { steps: list.steps, groups: rebuild(list.steps, groups) };
 }
 
-/** Group `groupId` dissolved: each of its steps is a singleton group again (the engine's ids and names). */
-export function ungroup(list: StepList, groupId: string): StepList {
+/**
+ * Group `groupId` dissolved: each of its steps is a singleton group again
+ * (the engine's names). Contract rule 3 says a group id is never reused, which
+ * the engine cannot enforce on a delete: a singleton id in `retired` (ids
+ * this workspace used earlier in the session) takes the engine's clash form,
+ * `g2-2`, instead of `g2`.
+ */
+export function ungroup(list: StepList, groupId: string, retired: Iterable<string> = []): StepList {
   if (!list.groups.some((g) => g.id === groupId)) return list;
-  return { steps: list.steps, groups: rebuild(list.steps, list.groups.filter((g) => g.id !== groupId)) };
+  return { steps: list.steps, groups: rebuild(list.steps, list.groups.filter((g) => g.id !== groupId), retired) };
 }
 
 /**

@@ -14,7 +14,7 @@ export type GroupFormState =
  * select mode (a "Group rows" button, so a plain list shows no checkbox), the rows ticked (by group id; a singleton is a row too), the open
  * form, and where the focus goes back once it closes or the grouping lands.
  */
-export function useGroupEditing(groups: Group[], dispatch: Dispatch<AppAction>) {
+export function useGroupEditing(groups: Group[], dispatch: Dispatch<AppAction>, editorOpen = false) {
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const [selecting, setSelecting] = useState(false);
   const [form, setForm] = useState<GroupFormState | null>(null);
@@ -24,6 +24,13 @@ export function useGroupEditing(groups: Group[], dispatch: Dispatch<AppAction>) 
   if (live.length !== picked.size) setPicked(new Set(live));
   const canSelect = groups.length >= 2;
   if (selecting && !canSelect) setSelecting(false);
+  // The checkboxes hide while a step editor is open: leave select mode and
+  // drop the picks, or "Group N rows" would stay live on rows nobody sees (#275).
+  if (editorOpen && (selecting || picked.size > 0 || form)) {
+    setSelecting(false);
+    setPicked(new Set());
+    setForm(null);
+  }
   const pickedSteps = contiguousRowSteps(groups, picked);
 
   const firstStepOf = (ids: Iterable<string>): string | null => {

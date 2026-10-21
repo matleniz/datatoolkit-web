@@ -100,6 +100,11 @@ export interface CtxMenuState {
 export interface AppState {
   workspace: Workspace | null;
   /**
+   * Every step-group id the open workspace has had this session, so an
+   * ungroup does not hand a former id out again (contract rule 3, #275).
+   */
+  usedGroupIds: readonly string[];
+  /**
    * View-only grid filter / sort (datatoolkit-issues#81): sent to
    * `/workspace/rows`, never part of the workspace, the pipeline or the data
    * identity. Reset when another workspace is opened.
@@ -200,6 +205,7 @@ export function emptyWorkspace(name = "untitled"): Workspace {
 
 export const initialState: AppState = {
   workspace: null,
+  usedGroupIds: [],
   gridView: EMPTY_GRID_VIEW,
   gridFilterColumn: null,
   screen: "sources",
@@ -1057,7 +1063,7 @@ function reduceGroupEdits(state: AppState, action: AppAction): AppState | undefi
     }
     case "UNGROUP": {
       const list = listOf(state.workspace);
-      const out = ungroup(list, action.id);
+      const out = ungroup(list, action.id, state.usedGroupIds);
       return out === list ? state : withList(state, out);
     }
     case "RENAME_GROUP": {
@@ -1165,5 +1171,17 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     reduceGroupEdits(state, action) ??
     reduceNotes(state, action) ??
     state;
-  return trackStepHistory(state, next, action);
+  return trackGroupIds(state, trackStepHistory(state, next, action));
+}
+
+/** `usedGroupIds` follows the workspace's groups; it starts over with another workspace (#275). */
+function trackGroupIds(prev: AppState, next: AppState): AppState {
+  const ws = next.workspace;
+  if (ws?.name !== prev.workspace?.name) {
+    return { ...next, usedGroupIds: (ws?.groups ?? []).map((g) => g.id) };
+  }
+  if (ws?.groups === prev.workspace?.groups) return next;
+  const seen = new Set(next.usedGroupIds);
+  const fresh = [...(prev.workspace?.groups ?? []), ...(ws?.groups ?? [])].map((g) => g.id).filter((id) => !seen.has(id));
+  return fresh.length === 0 ? next : { ...next, usedGroupIds: [...next.usedGroupIds, ...new Set(fresh)] };
 }
