@@ -98,6 +98,70 @@ export function missPct(profile: ColumnProfile | undefined): number {
   return rows ? Math.round((profile.missing / rows) * 100) : 0;
 }
 
+export interface QualityShares {
+  rows: number;
+  valid: number;
+  mismatched: number;
+  missing: number;
+  /** Whole percentages summing to 100 (0/0/0 when there are no rows). */
+  validPct: number;
+  mismatchedPct: number;
+  missingPct: number;
+}
+
+/**
+ * Valid / mismatched / missing split of a column, from the profile alone.
+ * Mismatched is an approximation: the non-null values the engine flagged as
+ * sentinel candidates (e.g. -999, "N/A"); other format problems
+ * (numbers_as_text, text dates) carry no per-value count and are not included.
+ */
+export function qualityShares(
+  profile: ColumnProfile | undefined,
+): QualityShares {
+  const none = {
+    rows: 0,
+    valid: 0,
+    mismatched: 0,
+    missing: 0,
+    validPct: 0,
+    mismatchedPct: 0,
+    missingPct: 0,
+  };
+  if (!profile) return none;
+  const missing = Math.max(0, profile.missing);
+  const nonNull = Math.max(0, profile.count);
+  const rows = nonNull + missing;
+  if (!rows) return none;
+  const sentinels = (profile.sentinel_candidates ?? []).reduce(
+    (n, s) => n + Math.max(0, s.count),
+    0,
+  );
+  const mismatched = Math.min(sentinels, nonNull);
+  const missingPct = Math.round((missing / rows) * 100);
+  const mismatchedPct = Math.min(
+    Math.round((mismatched / rows) * 100),
+    100 - missingPct,
+  );
+  return {
+    rows,
+    valid: nonNull - mismatched,
+    mismatched,
+    missing,
+    validPct: 100 - missingPct - mismatchedPct,
+    mismatchedPct,
+    missingPct,
+  };
+}
+
+/** Tooltip for the quality bar; states that mismatched is approximate. */
+export function qualityTip(q: QualityShares): string {
+  return [
+    `Valid ${q.validPct}% (${q.valid})`,
+    `Mismatched ${q.mismatchedPct}% (${q.mismatched}) — approximate: counts sentinel-like values only`,
+    `Missing ${q.missingPct}% (${q.missing})`,
+  ].join("\n");
+}
+
 export function isOutlierValue(
   profile: ColumnProfile | undefined,
   value: unknown,
