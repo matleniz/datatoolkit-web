@@ -113,6 +113,31 @@ export function buildCondition(
   return v === null || v === "" ? null : { column, op, value: v };
 }
 
+/**
+ * Condition from ticked facet values (datatoolkit-issues#276): `isin` (or
+ * `notin`) over the ticked values, in the order given. Null while none ticked.
+ */
+export function buildFacetCondition(
+  column: string,
+  op: "isin" | "notin",
+  ticked: unknown[],
+): GridCondition | null {
+  return ticked.length === 0 ? null : { column, op, value: [...ticked] };
+}
+
+/**
+ * Value facets from a profile's `top_values` (missing values are left to the
+ * is-missing operator). `hidden` is how many distinct values the capped list
+ * does not show; 0 when the list is complete.
+ */
+export function valueFacets(
+  topValues: { value: unknown; count: number }[] | null | undefined,
+  distinct: number,
+): { items: { value: unknown; count: number }[]; hidden: number } {
+  const items = (topValues ?? []).filter((t) => t.value !== null);
+  return { items, hidden: Math.max(0, distinct - items.length) };
+}
+
 /** Add a condition to the view's filter (AND by default). */
 export function addCondition(v: GridView, c: GridCondition): GridView {
   const filter: GridFilter = v.filter
