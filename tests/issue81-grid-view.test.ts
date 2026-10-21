@@ -4,11 +4,13 @@ import { dataIdentity } from "../src/bench/dataIdentity";
 import {
   addCondition,
   buildCondition,
+  buildFacetCondition,
   EMPTY_GRID_VIEW,
   gridViewBody,
   gridViewKey,
   removeCondition,
   toggleSort,
+  valueFacets,
 } from "../src/state/gridView";
 import { appReducer, emptyWorkspace, initialState } from "../src/state/reducer";
 
@@ -72,5 +74,42 @@ describe("#81 grid view state", () => {
       appReducer(s1, { type: "SET_WORKSPACE", workspace: emptyWorkspace("o") })
         .gridView,
     ).toEqual(EMPTY_GRID_VIEW);
+  });
+});
+
+describe("#276 value facets", () => {
+  it("builds an isin / notin condition from ticks, null when none", () => {
+    expect(buildFacetCondition("Sex", "isin", ["male", "female"])).toEqual({
+      column: "Sex",
+      op: "isin",
+      value: ["male", "female"],
+    });
+    expect(buildFacetCondition("Pclass", "notin", [1])).toEqual({
+      column: "Pclass",
+      op: "notin",
+      value: [1],
+    });
+    expect(buildFacetCondition("Sex", "isin", [])).toBeNull();
+  });
+
+  it("ticks only touch the view, never the steps or data identity", () => {
+    const c = buildFacetCondition("Sex", "isin", ["male"])!;
+    const view = addCondition(EMPTY_GRID_VIEW, c);
+    expect(view.filter?.conditions).toEqual([c]);
+    expect(gridViewBody(view).filter?.conditions[0]?.value).toEqual(["male"]);
+  });
+
+  it("says how many distinct values the capped list hides", () => {
+    const top = [
+      { value: "a", count: 5 },
+      { value: null, count: 2 },
+      { value: "b", count: 1 },
+    ];
+    expect(valueFacets(top, 2)).toEqual({
+      items: [top[0], top[2]],
+      hidden: 0,
+    });
+    expect(valueFacets(top, 40).hidden).toBe(38);
+    expect(valueFacets(null, 3)).toEqual({ items: [], hidden: 3 });
   });
 });

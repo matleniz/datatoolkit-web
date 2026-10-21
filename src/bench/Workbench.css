@@ -522,6 +522,36 @@
   max-width: 100%;
 }
 
+.grid-facets {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  max-height: 160px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border, #d0d0d0);
+  border-radius: 4px;
+}
+
+.grid-facet {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.grid-facet-count {
+  color: #5a5a5a;
+  font-variant-numeric: tabular-nums;
+}
+
+.grid-facets-note {
+  flex-basis: 100%;
+  margin: 0;
+  color: #5a5a5a;
+}
+
 .banner-kicker.travel {
   color: #7a5a06;
 }

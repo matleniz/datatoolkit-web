@@ -4,6 +4,7 @@ import { useAppDispatch, useAppState } from "../../state/AppStore";
 import {
   addCondition,
   buildCondition,
+  buildFacetCondition,
   conditionText,
   EMPTY_GRID_VIEW,
   FILTER_OPS,
@@ -11,6 +12,7 @@ import {
   opIsList,
   opNeedsValue,
   removeCondition,
+  valueFacets,
   type FilterOp,
 } from "../../state/gridView";
 import { isNumericKind } from "../kinds";
@@ -25,7 +27,28 @@ function FilterDialog({ initial }: { initial: string }) {
   const [raw, setRaw] = useState("");
   const kind =
     columns.find((c) => c.name === column)?.kind ?? profiles.get(column)?.kind;
-  const cond = buildCondition(column, op, raw, isNumericKind(kind));
+  const profile = profiles.get(column);
+  const facets = valueFacets(profile?.top_values, profile?.distinct ?? 0);
+  const [ticked, setTicked] = useState<{ column: string; at: number[] }>({
+    column,
+    at: [],
+  });
+  const tickedAt = ticked.column === column ? ticked.at : [];
+  const useFacets = opIsList(op) && tickedAt.length > 0;
+  const cond = useFacets
+    ? buildFacetCondition(
+        column,
+        op as "isin" | "notin",
+        tickedAt.map((i) => facets.items[i]!.value),
+      )
+    : buildCondition(column, op, raw, isNumericKind(kind));
+  const toggle = (i: number) => {
+    const at = tickedAt.includes(i)
+      ? tickedAt.filter((j) => j !== i)
+      : [...tickedAt, i].sort((a, b) => a - b);
+    setTicked({ column, at });
+    if (at.length > 0 && !opIsList(op)) setOp("isin");
+  };
   const close = () => dispatch({ type: "CLOSE_GRID_FILTER" });
   const apply = () => {
     if (!cond || !workspace) return;
@@ -63,7 +86,7 @@ function FilterDialog({ initial }: { initial: string }) {
           </option>
         ))}
       </select>
-      {opNeedsValue(op) ? (
+      {opNeedsValue(op) && !useFacets ? (
         <input
           aria-label="Filter value"
           autoFocus
@@ -71,6 +94,28 @@ function FilterDialog({ initial }: { initial: string }) {
           placeholder={opIsList(op) ? "a, b, c" : "value"}
           onChange={(e) => setRaw(e.target.value)}
         />
+      ) : null}
+      {facets.items.length > 0 ? (
+        <fieldset className="grid-facets">
+          <legend>Values of {column}</legend>
+          {facets.items.map((t, i) => (
+            <label key={`${String(t.value)}-${i}`} className="grid-facet">
+              <input
+                type="checkbox"
+                checked={tickedAt.includes(i)}
+                onChange={() => toggle(i)}
+              />
+              <span className="grid-facet-value">{String(t.value)}</span>
+              <span className="grid-facet-count">{t.count}</span>
+            </label>
+          ))}
+          {facets.hidden > 0 ? (
+            <p className="grid-facets-note" data-facets-truncated="">
+              Showing the {facets.items.length} most frequent of{" "}
+              {facets.items.length + facets.hidden} distinct values.
+            </p>
+          ) : null}
+        </fieldset>
       ) : null}
       <button type="submit" className="btn-primary" disabled={!cond}>
         Apply to view
