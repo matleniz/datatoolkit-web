@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 
 import { apiClient } from "../../api/client";
 import type { ExportFormat, ExportManifest, ExportOutputEntry } from "../../api/types";
 import { errorText } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
+import { parseStepsFile, serializeStepsFile, stepsToOps } from "../../state/stepsFile";
+import { opTitle } from "../stages";
 import {
   defaultExportOutDir,
   joinManifestPath,
@@ -62,6 +64,18 @@ function countFittedSteps(steps: Record<string, unknown>[]): number {
   }).length;
 }
 
+/** Download `text` as a JSON file named `filename`. */
+function downloadJson(text: string, filename: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 /** W3 — export panel (workspace JSON + export_workspace). */
 export function ExportPanel() {
   const { workspace, showExport } = useAppState();
@@ -84,6 +98,23 @@ export function ExportPanel() {
   }, [workspace]);
 
   const steps = workspace?.steps ?? [];
+  const stepsInputId = useId();
+  /** Steps left unchecked for the steps file (#311); every step is checked by default. */
+  const [unchecked, setUnchecked] = useState<ReadonlySet<string>>(new Set());
+  const [stepsMsg, setStepsMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const stepKey = (i: number) => steps[i]?.id ?? String(i);
+  const chosen = steps.filter((_, i) => !unchecked.has(stepKey(i)));
+  const importStepsFile = async (file: File | undefined) => {
+    if (!file) return;
+    const parsed = parseStepsFile(await file.text());
+    if ("error" in parsed) {
+      setStepsMsg({ ok: false, text: `${file.name}: ${parsed.error}` });
+      return;
+    }
+    dispatch({ type: "APPLY_STEP_BATCH", ops: stepsToOps(parsed.steps) });
+    const n = parsed.steps.length;
+    setStepsMsg({ ok: true, text: `Imported ${n} step${n === 1 ? "" : "s"} from ${file.name}.` });
+  };
   const nFit = steps.filter(
     (st) => FIT_OPS.has(st.op) && st.target !== "test",
   ).length;
@@ -166,6 +197,63 @@ export function ExportPanel() {
             manifest.json · steps, states, hashes
           </div>
           <div className="leak-line">{leakText}</div>
+          <fieldset className="export-formats export-steps-file">
+            <legend>Steps file</legend>
+            {steps.map((st, i) => (
+              <label key={stepKey(i)} className="export-format">
+                <input
+                  type="checkbox"
+                  checked={!unchecked.has(stepKey(i))}
+                  onChange={(e) =>
+                    setUnchecked((cur) => {
+                      const next = new Set(cur);
+                      if (e.target.checked) next.delete(stepKey(i));
+                      else next.add(stepKey(i));
+                      return next;
+                    })
+                  }
+                />
+                {i + 1}. {opTitle(st.op)}
+              </label>
+            ))}
+            <button
+              type="button"
+              className="export-run-btn"
+              disabled={chosen.length === 0}
+              onClick={() =>
+                downloadJson(
+                  serializeStepsFile(chosen),
+                  `${(workspace?.name ?? "pipeline").replace(/[^\w.-]+/g, "_")}.steps.json`,
+                )
+              }
+            >
+              Download steps ({chosen.length})
+            </button>
+            <input
+              id={stepsInputId}
+              type="file"
+              accept=".json,application/json"
+              style={{ display: "none" }}
+              disabled={!workspace}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                void importStepsFile(file);
+              }}
+            />
+            <label htmlFor={stepsInputId} className="export-run-btn" aria-disabled={!workspace}>
+              Import steps…
+            </label>
+            <div className="muted">
+              Fitted state is not carried: imported steps refit on this workspace&apos;s train data,
+              and a step whose column is missing fails at replay as usual.
+            </div>
+            {stepsMsg ? (
+              <div className={stepsMsg.ok ? "muted" : "engine-error"} role={stepsMsg.ok ? "status" : "alert"}>
+                {stepsMsg.text}
+              </div>
+            ) : null}
+          </fieldset>
           <label htmlFor="export-outdir">Output directory</label>
           <input
             id="export-outdir"
