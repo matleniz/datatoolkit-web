@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { openWorkbench, waitForGridReady } from "./helpers";
+import { captureFlowScreenshot, openWorkbench, waitForGridReady } from "./helpers";
 
 /**
  * datatoolkit-issues#277 — "Merge" on a Value groups row opens a replace_values
@@ -25,6 +25,7 @@ test("issue 277: Merge on a value group opens a previewed replace_values step", 
   await expect(editor.getByLabel("city: new value 1")).toHaveValue("paris");
   await expect(editor.getByLabel("city: old value 2")).toHaveValue("PARIS ");
   await expect(page.getByText("Live preview")).toBeVisible({ timeout: 20_000 });
+  await captureFlowScreenshot(page, "277-merge-value-groups", "01-merge-preview.png");
   // Nothing changed yet.
   expect(await steps()).toHaveLength(0);
 
