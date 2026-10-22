@@ -1467,6 +1467,12 @@
   margin-top: 4px;
 }
 
+.insp-group-merge {
+  margin-left: auto;
+  height: 24px;
+  padding: 0 8px;
+}
+
 .insp-fields {
   display: flex;
   flex-direction: column;

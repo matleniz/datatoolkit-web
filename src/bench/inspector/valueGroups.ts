@@ -5,6 +5,21 @@ export interface ValueGroup {
   to: string;
   /** Raw spellings joined like the prototype: `"Paris"  "paris"`. */
   from: string;
+  /** The raw spellings behind `from`. */
+  variants: string[];
+}
+
+/**
+ * `replace_values.mapping` that folds every non-canonical spelling of a group
+ * into its canonical form; empty when the group has nothing to rewrite.
+ */
+export function mergeMapping(
+  column: string,
+  group: ValueGroup,
+): Record<string, Record<string, string>> {
+  const pairs: Record<string, string> = {};
+  for (const v of group.variants) if (v !== group.to) pairs[v] = group.to;
+  return Object.keys(pairs).length ? { [column]: pairs } : {};
 }
 
 function asString(v: JsonValue | undefined): string | null {
@@ -79,12 +94,10 @@ function groupSpellings(spellings: string[]): ValueGroup[] {
       const raws = Object.keys(g[k]!);
       return raws.length > 1 || raws[0] !== k;
     })
-    .map((k) => ({
-      to: k,
-      from: Object.keys(g[k]!)
-        .map((s) => `"${s}"`)
-        .join("  "),
-    }));
+    .map((k) => {
+      const variants = Object.keys(g[k]!);
+      return { to: k, from: variants.map((s) => `"${s}"`).join("  "), variants };
+    });
 }
 
 function mergeGroups(a: ValueGroup[], b: ValueGroup[]): ValueGroup[] {
@@ -106,8 +119,8 @@ function mergeGroups(a: ValueGroup[], b: ValueGroup[]): ValueGroup[] {
       const raws = [...byTo[k]!];
       return raws.length > 1 || raws[0] !== k;
     })
-    .map((k) => ({
-      to: k,
-      from: [...byTo[k]!].map((s) => `"${s}"`).join("  "),
-    }));
+    .map((k) => {
+      const variants = [...byTo[k]!];
+      return { to: k, from: variants.map((s) => `"${s}"`).join("  "), variants };
+    });
 }

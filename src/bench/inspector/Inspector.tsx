@@ -15,7 +15,7 @@ import {
 import { isNumericKind, isTextKind, KIND_LABEL } from "../kinds";
 import { toEngineParams } from "../presets";
 import { useWorkbenchData } from "../WorkbenchData";
-import { buildValueGroups } from "./valueGroups";
+import { buildValueGroups, mergeMapping } from "./valueGroups";
 
 type Dispatch = ReturnType<typeof useAppDispatch>;
 type Params = Record<string, unknown>;
@@ -453,9 +453,9 @@ function columnTransforms(
 }
 
 function ColumnInspector({ col }: { col: string }) {
-  const { columns, rows, profiles } = useWorkbenchData();
+  const { columns, rows, profiles, isLatest } = useWorkbenchData();
   const { targetColumn } = useAppState();
-  const { dispatch, btn, opBtns, toolBtn } = useActions();
+  const { dispatch, openEd, btn, opBtns, toolBtn } = useActions();
   const kind = (columns.find((c) => c.name === col)?.kind ?? "text") as ColumnKind;
   const pr = profiles.get(col);
   const isTarget = col === targetColumn;
@@ -517,6 +517,17 @@ function ColumnInspector({ col }: { col: string }) {
             <div key={g.to} className="insp-group-row">
               <span className="mono">{g.to}</span>
               <span className="muted">← {g.from}</span>
+              <button
+                type="button"
+                className="insp-btn insp-group-merge"
+                aria-label={`Merge ${g.to}`}
+                disabled={!isLatest}
+                onClick={() =>
+                  openEd("replace_values", { mapping: mergeMapping(col, g) })
+                }
+              >
+                Merge
+              </button>
             </div>
           ))}
         </div>
