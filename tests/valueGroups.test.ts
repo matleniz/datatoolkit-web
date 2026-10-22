@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { TopValue, WorkspaceRow } from "../src/api/types";
 import {
   buildValueGroups,
+  mergeMapping,
   valueGroupsFromRows,
   valueGroupsFromTopValues,
 } from "../src/bench/inspector/valueGroups";
@@ -107,5 +108,32 @@ describe("valueGroups", () => {
       column: "city",
     });
     expect(g.some((x) => x.to === "paris")).toBe(true);
+  });
+});
+
+describe("mergeMapping", () => {
+  const g = valueGroupsFromTopValues([
+    { value: "Paris", count: 5 },
+    { value: "paris", count: 2 },
+    { value: "PARIS ", count: 1 },
+    { value: "Lyon ", count: 1 },
+    { value: "Nice", count: 1 },
+  ] as TopValue[]);
+
+  it("maps every non-canonical spelling to the canonical form", () => {
+    const paris = g.find((x) => x.to === "paris")!;
+    expect(paris.variants).toEqual(["Paris", "paris", "PARIS "]);
+    expect(mergeMapping("city", paris)).toEqual({
+      city: { Paris: "paris", "PARIS ": "paris" },
+    });
+  });
+
+  it("handles a lone non-canonical spelling", () => {
+    const lyon = g.find((x) => x.to === "lyon")!;
+    expect(mergeMapping("city", lyon)).toEqual({ city: { "Lyon ": "lyon" } });
+  });
+
+  it("is empty when nothing needs rewriting", () => {
+    expect(mergeMapping("city", { to: "a", from: '"a"', variants: ["a"] })).toEqual({});
   });
 });
