@@ -511,6 +511,18 @@ export interface PreviewStepChange {
   after: JsonValue;
 }
 
+/** One finding of a contract step (`expected_schema`) in a preview's `checks`. */
+export interface PreviewCheck {
+  severity: "error" | "warning" | "info" | string;
+  check: string;
+  column: string | null;
+  message: string;
+  count: number;
+  /** Offending rows (`row` is the 1-based row number; `value` is text). */
+  examples?: { row: number; value: JsonValue }[];
+  split?: "train" | "test" | string;
+}
+
 export interface PreviewStep {
   shape: [number, number];
   columns: string[];
@@ -521,6 +533,8 @@ export interface PreviewStep {
   changed_total: number;
   state: Record<string, JsonValue>;
   fitted_on: "train" | "test" | null;
+  /** Findings of a contract step; absent for every other op. */
+  checks?: PreviewCheck[];
 }
 
 export interface AlignSide {

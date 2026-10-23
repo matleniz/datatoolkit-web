@@ -78,6 +78,7 @@ export const OP_STAGE: Record<string, StageId> = {
   replace_values: "clean",
   sort_rows: "clean",
   sample_rows: "clean",
+  expected_schema: "clean",
   onehot: "transform",
   ordinal: "transform",
   log1p: "transform",
@@ -114,6 +115,7 @@ export const EXCLUDED_OPS: Record<string, string> = {
 
 /** Ops that learn state on train (fitted badge). */
 export const FITTING_OPS = new Set([
+  "expected_schema",
   "impute",
   "clip",
   "onehot",
@@ -188,6 +190,7 @@ export function opTitle(op: string): string {
     select_columns: "Select columns",
     sort_rows: "Sort rows",
     sample_rows: "Sample rows",
+    expected_schema: "Expected schema",
     replace_values: "Replace values",
     rename_columns_bulk: "Rename columns in bulk",
     reorder_columns: "Reorder columns",
