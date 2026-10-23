@@ -6,11 +6,14 @@ import type {
   JsonSource,
   ParquetSource,
 } from "../../api/types";
+import { DEFAULT_CSV_ENGINE } from "./sourcesScreenLogic";
 import type { RecordPathInfo, SheetInfo, SourceFileItem } from "./sourcesLogic";
 
 export interface SourceOptionsEditorProps {
   file: SourceFileItem;
   busy?: boolean;
+  /** CSV read engines offered by the engine; the picker shows when there are 2+. */
+  csvEngines?: string[];
   onChange: (next: FileSourceSpec) => void;
 }
 
@@ -24,10 +27,12 @@ function parseCsvList(raw: string): string[] | null {
 
 function CsvOptions({
   spec,
+  engines,
   busy,
   onChange,
 }: {
   spec: CsvSource;
+  engines: string[];
   busy?: boolean;
   onChange: (next: CsvSource) => void;
 }) {
@@ -35,6 +40,31 @@ function CsvOptions({
 
   return (
     <div className="source-options-grid" aria-label="CSV load options">
+      {engines.length > 1 ? (
+        <label className="source-opt">
+          <span>engine</span>
+          <select
+            aria-label="engine"
+            value={spec.engine ?? DEFAULT_CSV_ENGINE}
+            disabled={busy}
+            title="duckdb reads very large files (optional extra `large`)"
+            onChange={(e) =>
+              set({
+                engine:
+                  e.target.value === DEFAULT_CSV_ENGINE
+                    ? undefined
+                    : e.target.value,
+              })
+            }
+          >
+            {engines.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       <label className="source-opt">
         <span>sep</span>
         <input
@@ -326,6 +356,7 @@ function ParquetOptions({
 export function SourceOptionsEditor({
   file,
   busy,
+  csvEngines = [],
   onChange,
 }: SourceOptionsEditorProps) {
   const { spec } = file;
@@ -334,6 +365,7 @@ export function SourceOptionsEditor({
     return (
       <CsvOptions
         spec={spec}
+        engines={csvEngines}
         busy={busy}
         onChange={(next) => onChange(next)}
       />

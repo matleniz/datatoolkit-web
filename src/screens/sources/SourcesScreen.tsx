@@ -191,6 +191,7 @@ export function SourcesScreen() {
           guessedMap={src.guessedMap}
           optionsOpen={core.optionsOpen}
           optionsBusy={core.optionsBusy}
+          optionsNotice={core.optionsNotice}
           fileInputId={fileInputId}
           fileInputRef={core.fileInputRef}
           uploadError={core.uploadError}

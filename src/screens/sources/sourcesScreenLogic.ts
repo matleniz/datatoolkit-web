@@ -20,6 +20,34 @@ import {
   type WorkspaceSourcesState,
 } from "./sourcesLogic";
 
+/** Engine used when a CSV spec carries no `engine`. */
+export const DEFAULT_CSV_ENGINE = "pandas";
+
+/** Shown when the engine refuses `engine: "duckdb"` for lack of the `large` extra. */
+export const LARGE_EXTRA_MESSAGE =
+  "The duckdb engine is not available on this install (optional extra `large`). Reading with pandas instead; your other options are kept.";
+
+/** True when `spec` asks for a non-default CSV engine. */
+export function usesNonDefaultEngine(spec: FileSourceSpec): boolean {
+  return (
+    spec.kind === "csv" &&
+    spec.engine !== undefined &&
+    spec.engine !== DEFAULT_CSV_ENGINE
+  );
+}
+
+/** `spec` with the CSV engine reset to the default (every other option kept). */
+export function withDefaultEngine(spec: FileSourceSpec): FileSourceSpec {
+  if (spec.kind !== "csv") return spec;
+  const { engine: _engine, ...rest } = spec;
+  return rest;
+}
+
+/** A SourceError (HTTP 422) naming the missing `large` extra. */
+export function isLargeExtraMissing(message: string | null): boolean {
+  return message !== null && /SourceError/.test(message) && /\blarge\b/.test(message);
+}
+
 /** Shown when train has 0 columns / empty file (MAT-154). */
 export const EMPTY_TRAIN_MESSAGE =
   "This train file has no columns (empty or unreadable). Replace it before opening the workbench or checking alignment.";

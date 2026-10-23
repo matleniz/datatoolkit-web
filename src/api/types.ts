@@ -56,6 +56,8 @@ export interface CsvSource {
   usecols?: string[] | null;
   on_bad_lines?: "error" | "warn" | "skip";
   keep_leading_zeros?: boolean;
+  /** Read engine; omitted = the engine default (pandas). */
+  engine?: string;
 }
 
 export interface ParquetSource {
@@ -607,6 +609,18 @@ export interface AlignReport {
 export interface ErrorBody {
   type: string;
   message: string;
+}
+
+/**
+ * CSV engines named by a key's `source` schema (`CsvSource.engine.enum`);
+ * [] when the schema does not describe one, so the picker stays hidden.
+ */
+export function csvEngineChoices(schema: JsonSchema): string[] {
+  const defs = schema.$defs ?? schema.definitions ?? {};
+  const values = defs.CsvSource?.properties?.engine?.enum;
+  return Array.isArray(values)
+    ? values.filter((v): v is string => typeof v === "string")
+    : [];
 }
 
 export class EngineError extends Error {

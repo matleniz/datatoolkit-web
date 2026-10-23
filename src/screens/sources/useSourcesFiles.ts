@@ -21,10 +21,14 @@ import {
   clearedByReinspect,
   enrichFileItem,
   inspectUploadedFile,
+  isLargeExtraMissing,
   isEmptyUpload,
+  LARGE_EXTRA_MESSAGE,
   opensOptionsByDefault,
   storedSourceFailedMessage,
   trainParseErrorDisplay,
+  usesNonDefaultEngine,
+  withDefaultEngine,
   type TrainStatus,
 } from "./sourcesScreenLogic";
 import type { SourcesCore } from "./useSourcesState";
@@ -90,6 +94,7 @@ export function useSourcesFiles({
     sourcesLoading,
     setOptionsOpen,
     setOptionsBusy,
+    setOptionsNotice,
     fileInputRef,
     setUploadError,
     optionsGenRef,
@@ -161,9 +166,24 @@ export function useSourcesFiles({
 
     void (async () => {
       try {
-        const { spec, cols, rowCount, detected, parseError } =
-          await enrichFileItem({ ...current, spec: nextSpec });
+        let enriched = await enrichFileItem({ ...current, spec: nextSpec });
         if (!isLatest()) return;
+        // No availability probe: duckdb was tried and the `large` extra is
+        // missing (422). Say so and re-read with pandas, options untouched.
+        if (
+          usesNonDefaultEngine(nextSpec) &&
+          isLargeExtraMissing(enriched.parseError ?? null)
+        ) {
+          enriched = await enrichFileItem({
+            ...current,
+            spec: withDefaultEngine(nextSpec),
+          });
+          if (!isLatest()) return;
+          setOptionsNotice((n) => ({ ...n, [fileId]: LARGE_EXTRA_MESSAGE }));
+        } else {
+          setOptionsNotice(({ [fileId]: _gone, ...rest }) => rest);
+        }
+        const { spec, cols, rowCount, detected, parseError } = enriched;
         patchFile({ spec, cols, rowCount, detected, parseError });
         const cleared = clearedByOptionsEdit(
           current.parseError,

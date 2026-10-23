@@ -1,4 +1,5 @@
-import type { ChangeEvent, RefObject } from "react";
+import { useEffect, useState, type ChangeEvent, type RefObject } from "react";
+import { apiClient } from "../../api/client";
 import type { FileSourceSpec } from "../../api/types";
 import {
   ALL_ROLES,
@@ -50,6 +51,8 @@ interface FileBlockProps {
   isGuessed: boolean | undefined;
   optsOpen: boolean;
   optsBusy: boolean;
+  optsNotice: string | undefined;
+  csvEngines: string[];
   onPickRole: (fileId: string, role: FileRole) => void;
   onToggleOptions: (fileId: string) => void;
   onSpecChange: (fileId: string, spec: FileSourceSpec) => void;
@@ -82,6 +85,8 @@ function FileBlock({
   isGuessed,
   optsOpen,
   optsBusy,
+  optsNotice,
+  csvEngines,
   onPickRole,
   onToggleOptions,
   onSpecChange,
@@ -128,9 +133,15 @@ function FileBlock({
           {optsBusy ? (
             <span className="file-options-busy">Updating preview…</span>
           ) : null}
+          {optsNotice ? (
+            <div className="file-options-notice" role="status">
+              {optsNotice}
+            </div>
+          ) : null}
           <SourceOptionsEditor
             file={fl}
             busy={optsBusy}
+            csvEngines={csvEngines}
             onChange={(next) => void onSpecChange(fl.id, next)}
           />
         </div>
@@ -139,12 +150,33 @@ function FileBlock({
   );
 }
 
+/** CSV engines from the key schema; [] (picker hidden) until / unless it loads. */
+function useCsvEngines(): string[] {
+  const [engines, setEngines] = useState<string[]>([]);
+  useEffect(() => {
+    let active = true;
+    apiClient
+      .csvEngines()
+      .then((names) => {
+        if (active) setEngines(names);
+      })
+      .catch(() => {
+        /* the picker is optional: pandas stays the only engine */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  return engines;
+}
+
 interface SourcesFilesCardProps {
   files: SourceFileItem[];
   roles: Record<string, FileRole>;
   guessedMap: Record<string, boolean>;
   optionsOpen: Record<string, boolean>;
   optionsBusy: Record<string, boolean>;
+  optionsNotice: Record<string, string>;
   fileInputId: string;
   fileInputRef: RefObject<HTMLInputElement>;
   /** Why the last upload was refused (413, #299); null hides the line. */
@@ -161,6 +193,7 @@ export function SourcesFilesCard({
   guessedMap,
   optionsOpen,
   optionsBusy,
+  optionsNotice,
   fileInputId,
   fileInputRef,
   uploadError,
@@ -169,6 +202,7 @@ export function SourcesFilesCard({
   onSpecChange,
   onUpload,
 }: SourcesFilesCardProps) {
+  const csvEngines = useCsvEngines();
   return (
     <section className="sources-card" aria-label="Files list">
       <div className="files-table-header">
@@ -185,6 +219,8 @@ export function SourcesFilesCard({
           isGuessed={guessedMap[fl.id]}
           optsOpen={Boolean(optionsOpen[fl.id])}
           optsBusy={Boolean(optionsBusy[fl.id])}
+          optsNotice={optionsNotice[fl.id]}
+          csvEngines={csvEngines}
           onPickRole={onPickRole}
           onToggleOptions={onToggleOptions}
           onSpecChange={onSpecChange}
