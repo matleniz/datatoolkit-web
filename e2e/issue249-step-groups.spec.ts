@@ -1,10 +1,9 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { Group, Step, Workspace } from "../src/api/types";
 import { sameGroups, validateGroups } from "../src/state/stepGroups";
-import { churnWorkspace, openWorkbench, waitForGridReady } from "./helpers";
+import { churnWorkspace, fixturesDir, openWorkbench, waitForGridReady } from "./helpers";
 
 /**
  * datatoolkit-issues#249 (PR A, data layer): the workspace PUT always carries
@@ -199,17 +198,35 @@ test("issue 249: parkison (63 steps) opens and saves as 63 singleton groups, not
   request,
 }) => {
   test.setTimeout(240_000);
-  const source = join(homedir(), ".datatoolkit");
-  const original = join(source, "workspaces", "parkison.json");
-  test.skip(!existsSync(original), "no ~/.datatoolkit/workspaces/parkison.json on this machine");
-
-  // Copy the workspace and its sources into the temp home (read-only on ~/.datatoolkit).
-  const raw = readFileSync(original, "utf-8");
-  const uploads = join(HOME, "uploads");
-  const copied = raw.replace(new RegExp(`${source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/uploads/([^"/]+)/([^"]+)`, "g"), (_m, dir: string, file: string) => {
-    mkdirSync(join(uploads, dir), { recursive: true });
-    copyFileSync(join(source, "uploads", dir, file), join(uploads, dir, file));
-    return join(uploads, dir, file);
+  // A 63-step workspace in the pre-groups file format, built over a repo fixture
+  // and written into the temp home (never the developer's ~/.datatoolkit).
+  const csv = (path: string) => ({
+    kind: "csv", path, sep: ",", encoding: "utf-8", decimal: ".", skiprows: 0, header: 0,
+    mixed_sep: "error", na_values: null, dtype: null, parse_dates: null, usecols: null,
+    on_bad_lines: "error", keep_leading_zeros: true,
+  });
+  const wide = join(fixturesDir, "wide_320_cols.csv");
+  const dataset = { x: csv(wide), y: null, target_column: null };
+  const fileSteps = Array.from({ length: 63 }, (_, i) => ({
+    id: `s${(0xa000 + i).toString(16)}`,
+    op: "drop_columns",
+    target: "both",
+    params: { columns: [`f${String(i).padStart(3, "0")}`] },
+    note: null,
+  }));
+  const copied = JSON.stringify({
+    name: "parkison",
+    datasets: { train: dataset, test: dataset },
+    label: { mode: "order", key: null },
+    label_last: false,
+    merges: [],
+    variables: [],
+    charts: [],
+    steps: fileSteps,
+    notes: { workspace: null, columns: {} },
+    documents: [],
+    memory: [],
+    id_counters: { d: 0, m: 0 },
   });
   const before = JSON.parse(copied) as Workspace & Record<string, unknown>;
   expect(before.steps).toHaveLength(63);
@@ -250,8 +267,12 @@ test("issue 249: parkison (63 steps) opens and saves as 63 singleton groups, not
   expect(after.groups.every((g) => g.step_ids.length === 1 && g.origin === "auto" && g.intent === "")).toBe(true);
   expect(after.groups.map((g) => g.id)).toEqual(after.steps.map((s) => `g${s.id!.slice(1)}`));
   // Everything but `groups` is what it was (the note edit was reverted).
+  // The engine may add the source `engine` field ("pandas" is its default and is
+  // stored explicitly by engines with the DuckDB reader): ignore that one default.
+  const plain = (w: Record<string, unknown>) =>
+    JSON.parse(JSON.stringify(w, (k, v) => (k === "engine" && v === "pandas" ? undefined : v)));
   const { groups: _g, ...rest } = after;
   const { groups: _b, ...was } = before;
-  expect(rest).toEqual(was);
+  expect(plain(rest)).toEqual(plain(was));
   expect(basename(dirname(join(HOME, "workspaces", "parkison.json")))).toBe("workspaces");
 });
