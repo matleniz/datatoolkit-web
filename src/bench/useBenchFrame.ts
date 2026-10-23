@@ -146,7 +146,7 @@ async function sourceMismatch(ws: Workspace): Promise<string | null> {
 }
 
 /** Frames above this many rows get a sampled profile (engine `sample_rows`, #318). */
-export const PROFILE_SAMPLE_ROWS = 100_000;
+const PROFILE_SAMPLE_ROWS = 100_000;
 
 /** The sample a profile response discloses, null for a full profile. */
 function sampleOf(res: ColumnProfiles): ProfileSample | null {
