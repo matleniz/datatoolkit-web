@@ -1,4 +1,5 @@
 import {
+  csvEngineChoices,
   AlignReport,
   ColumnNotes,
   ColumnProfiles,
@@ -34,6 +35,7 @@ import { InFlightDedupe } from "./requestDedupe";
 interface ApiClient {
   listKeys(): Promise<KeyInfo[]>;
   keySchema(id: string): Promise<JsonSchema>;
+  csvEngines(): Promise<string[]>;
   runKey(id: string, params: Record<string, unknown>): Promise<Result>;
 
   listTransforms(): Promise<TransformInfo[]>;
@@ -483,6 +485,14 @@ class HttpApiClient implements ApiClient {
       this.evictOnFailure(this.keySchemaCache, id, cached);
     }
     return cached;
+  }
+
+  /**
+   * CSV read engines the engine offers, from the `source` schema of a key
+   * (no availability probe: whether an engine works is only known by trying).
+   */
+  async csvEngines(): Promise<string[]> {
+    return csvEngineChoices(await this.keySchema("dataset_overview"));
   }
 
   runKey(id: string, params: Record<string, unknown>): Promise<Result> {

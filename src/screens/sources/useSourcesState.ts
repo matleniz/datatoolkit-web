@@ -61,6 +61,9 @@ export interface SourcesCore {
   /** File ids currently re-previewing after an Options edit. */
   optionsBusy: Record<string, boolean>;
   setOptionsBusy: Dispatch<SetStateAction<Record<string, boolean>>>;
+  /** Per-file notice shown in the Options panel (e.g. engine fallback). */
+  optionsNotice: Record<string, string>;
+  setOptionsNotice: Dispatch<SetStateAction<Record<string, string>>>;
   fileInputRef: MutableRefObject<HTMLInputElement | null>;
   /** Why the last "Add a file" upload was refused (413, #299), shown by the button. */
   uploadError: string | null;
@@ -216,6 +219,7 @@ export function useSourcesState(): SourcesCore {
   );
   const [optionsOpen, setOptionsOpen] = useState<Record<string, boolean>>({});
   const [optionsBusy, setOptionsBusy] = useState<Record<string, boolean>>({});
+  const [optionsNotice, setOptionsNotice] = useState<Record<string, string>>({});
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -276,6 +280,8 @@ export function useSourcesState(): SourcesCore {
     setOptionsOpen,
     optionsBusy,
     setOptionsBusy,
+    optionsNotice,
+    setOptionsNotice,
     fileInputRef,
     uploadError,
     setUploadError,

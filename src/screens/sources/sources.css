@@ -424,6 +424,16 @@
   border-top: 1px dashed var(--dtk-hairline);
 }
 
+.file-options-notice {
+  font-size: 12px;
+  color: var(--dtk-warn-fg);
+  background: var(--dtk-warn-bg);
+  border: 1px solid var(--dtk-warn-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+}
+
 .file-options-busy {
   display: block;
   font-size: 11px;
