@@ -78,6 +78,7 @@ export const OP_STAGE: Record<string, StageId> = {
   replace_values: "clean",
   sort_rows: "clean",
   sample_rows: "clean",
+  expected_schema: "clean",
   onehot: "transform",
   ordinal: "transform",
   log1p: "transform",
