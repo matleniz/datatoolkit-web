@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { MEMORY_KINDS, type MemoryEntry, type MemoryKind } from "../../../api/types";
+import { useConfirm } from "../../../ConfirmDialog";
 import { useAppDispatch, useAppState } from "../../../state/AppStore";
 import {
   MEMORY_MAX_CHARS,
@@ -20,20 +21,25 @@ export function MemoryView() {
   const { workspace } = useAppState();
   const dispatch = useAppDispatch();
   const [editing, setEditing] = useState<string | null>(null);
+  const { confirm, dialog } = useConfirm();
 
   if (!workspace) {
     return <p className="agent-memory-empty">Open a workspace to see its agent memory.</p>;
   }
   const entries = workspace.memory ?? [];
-  const clear = () => {
+  const clear = async () => {
     const n = entries.length;
-    if (window.confirm(`Clear the agent memory of “${workspace.name}” (${n} ${n === 1 ? "entry" : "entries"})?`)) {
-      dispatch({ type: "CLEAR_MEMORY" });
-    }
+    const ok = await confirm({
+      title: "Clear agent memory",
+      message: `Clear the agent memory of “${workspace.name}” (${n} ${n === 1 ? "entry" : "entries"})?`,
+      confirmLabel: "Clear memory",
+    });
+    if (ok) dispatch({ type: "CLEAR_MEMORY" });
   };
 
   return (
     <section className="agent-memory" aria-label="Agent memory">
+      {dialog}
       <p className="agent-memory-hint">
         What the agent reads at the start of each chat in “{workspace.name}”. It adds and updates
         entries itself (with Undo); edit or delete them here.

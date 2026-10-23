@@ -143,8 +143,11 @@ test("issue 179: remember / forget from the bridge, Undo, the Agent memory view,
   await expect(m1).toBeVisible();
 
   // Clear asks first.
-  page.once("dialog", (d) => void d.accept());
   await view.getByRole("button", { name: "Clear memory" }).click();
+  await page
+    .getByRole("dialog", { name: "Clear agent memory" })
+    .getByRole("button", { name: "Clear memory", exact: true })
+    .click();
   await expect(view.getByText("No memory yet.")).toBeVisible();
   await saved(page);
   // `saved` only waits for the gate of the commit it can see: poll the stored copy (#244).

@@ -11,6 +11,7 @@ import {
 import { abandonPendingWorkspaceSave } from "../../state/AppStore";
 import { allowWorkspaceSave, flushWorkspaceSave } from "../../state/workspaceSaveGate";
 import { ENGINE_UNREACHABLE_LIST } from "../../engineDownHint";
+import { useConfirm } from "../../ConfirmDialog";
 import { engineMessage } from "./sourcesLogic";
 import {
   deleteConfirmMessage,
@@ -79,6 +80,7 @@ export function WorkspaceSidebar({
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [busy, setBusy] = useState(false);
+  const { confirm, dialog } = useConfirm();
   const renameSubmitting = useRef<string | null>(null);
   const refreshGen = useRef(0);
 
@@ -269,7 +271,12 @@ export function WorkspaceSidebar({
       unique.length === 1 && byName.get(unique[0]!)
         ? deleteConfirmMessage(byName.get(unique[0]!)!)
         : multiDeleteConfirmMessage(unique);
-    if (!window.confirm(message)) return;
+    const ok = await confirm({
+      title: unique.length === 1 ? "Delete workspace" : `Delete ${unique.length} workspaces`,
+      message,
+      confirmLabel: "Delete",
+    });
+    if (!ok || busy) return;
 
     setBusy(true);
     const deleted: string[] = [];
@@ -316,6 +323,7 @@ export function WorkspaceSidebar({
 
   return (
     <aside className="sources-sidebar" aria-label="Workspaces">
+      {dialog}
       <div className="sources-sidebar-title">Workspaces</div>
       <div className="sources-sidebar-desc">
         A workspace = which files make train and test, how the label joins, and

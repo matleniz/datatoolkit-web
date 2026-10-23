@@ -126,15 +126,12 @@ test("issue 249b: a multi-step group is one collapsed row, expands, scrubs, is r
 
   // Delete the whole group: confirmation, ONE PUT, valid groups, the dependent step fails.
   const putsBefore = puts.bodies.length;
-  const dialogs: string[] = [];
-  page.once("dialog", (d) => {
-    dialogs.push(d.message());
-    void d.accept();
-  });
   await bar(page).getByRole("button", { name: "Remove group Prepare age and replay" }).click();
+  const confirmDialog = page.getByRole("dialog", { name: "Remove group" });
+  await expect(confirmDialog).toContainText("Prepare age");
+  await confirmDialog.getByRole("button", { name: "Remove group", exact: true }).click();
   await expect(group).toHaveCount(0);
   await expect.poll(() => puts.bodies.length, { timeout: 15_000 }).toBe(putsBefore + 1);
-  expect(dialogs[0]).toContain("Prepare age");
   const removed = puts.bodies.at(-1)!;
   expect(removed.steps.map((s) => s.id)).toEqual(["s4", "s5"]);
   expect(removed.groups.map((g) => g.id)).toEqual(["g4", "g5"]);
