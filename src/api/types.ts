@@ -498,10 +498,23 @@ export interface ColumnProfile {
   suggested_params?: SuggestedParams;
 }
 
-/** POST /workspace/profiles → { columns, version } */
+/** POST /workspace/profiles → { columns, version } (+ sample fields when `sample_rows` was sent). */
 export interface ColumnProfiles {
   columns: ColumnProfile[];
   version: number;
+  /** True when the profile was computed on a sample of the rows. */
+  sampled?: boolean;
+  /** Rows of the frame before sampling. */
+  n_rows_source?: number;
+  /** Rows left out of the sample. */
+  n_sampled_out?: number;
+  note?: string;
+}
+
+/** What a sampled profile covers, for the grid's disclosure. */
+export interface ProfileSample {
+  nRowsSource: number;
+  nSampledOut: number;
 }
 
 export interface PreviewStepChange {

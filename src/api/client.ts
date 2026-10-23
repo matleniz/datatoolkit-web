@@ -70,6 +70,8 @@ interface ApiClient {
     version?: number | null,
     /** Optional column filter; an engine that ignores it returns every column. */
     columns?: string[] | null,
+    /** Profile only this many rows (engine `sample_rows`); the response then says it was sampled. */
+    sampleRows?: number | null,
   ): Promise<ColumnProfiles>;
   previewStep(
     workspace: Workspace,
@@ -623,6 +625,7 @@ class HttpApiClient implements ApiClient {
     role: Role,
     version: number | null = null,
     columns: string[] | null = null,
+    sampleRows: number | null = null,
   ): Promise<ColumnProfiles> {
     const body: Record<string, unknown> = {
       workspace: frameBody(workspace),
@@ -633,6 +636,7 @@ class HttpApiClient implements ApiClient {
     if (columns && columns.length > 0) {
       body.columns = columns;
     }
+    if (sampleRows && sampleRows > 0) body.sample_rows = sampleRows;
     return this.request("POST", "/workspace/profiles", body);
   }
 
