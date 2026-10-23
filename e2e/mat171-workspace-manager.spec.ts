@@ -128,7 +128,6 @@ test("MAT-171: manage workspaces (duplicate, rename, delete, reload)", async ({
   };
   page.on("request", onReq);
 
-  page.once("dialog", (d) => d.accept());
   await sidebar
     .locator('.ws-item[data-workspace="mat171_a"]')
     .getByLabel("Select mat171_a")
@@ -138,6 +137,10 @@ test("MAT-171: manage workspaces (duplicate, rename, delete, reload)", async ({
     .getByLabel("Select mat171_b")
     .check();
   await sidebar.getByRole("button", { name: "Delete selected" }).click();
+  await page
+    .getByRole("dialog", { name: "Delete 2 workspaces" })
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
 
   await expect(
     sidebar.locator('.ws-item[data-workspace="mat171_a"]'),

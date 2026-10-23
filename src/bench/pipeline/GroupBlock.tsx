@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { useConfirm } from "../../ConfirmDialog";
 import { useAppDispatch } from "../../state/AppStore";
 import { groupCountLabel, groupEndVersion, originLabel, type GroupRow } from "./groupRows";
 
@@ -52,9 +53,14 @@ export function GroupBlock({
   else if (vi === end) cls.push("on");
   if (row.partial) cls.push("partial");
   const tip = [group.name, group.intent].filter(Boolean).join("\n");
-  const remove = () => {
-    const msg = `Remove the group “${group.name}” and its ${row.count} steps? The pipeline replays; you can undo it.`;
-    if (window.confirm(msg)) dispatch({ type: "REMOVE_GROUP", id: group.id });
+  const { confirm, dialog } = useConfirm();
+  const remove = async () => {
+    const ok = await confirm({
+      title: "Remove group",
+      message: `Remove the group “${group.name}” and its ${row.count} steps? The pipeline replays; you can undo it.`,
+      confirmLabel: "Remove group",
+    });
+    if (ok) dispatch({ type: "REMOVE_GROUP", id: group.id });
   };
 
   return (
@@ -63,6 +69,7 @@ export function GroupBlock({
       data-group-id={group.id}
       data-row-first-step={group.step_ids[0]}
     >
+      {dialog}
       {arrow}
       <div className="pipeline-node-rel">
         <button

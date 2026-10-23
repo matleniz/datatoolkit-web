@@ -62,8 +62,11 @@ test("#236: corrupt remembered workspace is announced and explained", async ({
     await notice.getByRole("button", { name: "Dismiss" }).click();
     await expect(notice).toHaveCount(0);
 
-    page.once("dialog", (d) => void d.accept());
     await item.getByRole("button", { name: "Delete", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Delete workspace" })
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
     await expect(item).toHaveCount(0, { timeout: 15_000 });
   } finally {
     await request.delete(`${API}/workspaces/trunc236`);
