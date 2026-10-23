@@ -14,6 +14,7 @@ import {
 import type {
   ColumnNotes,
   ColumnProfile,
+  ProfileSample,
   PreviewStep,
   Step,
   WorkspaceRow,
@@ -56,6 +57,8 @@ export interface WorkbenchDataValue {
   /** Rows before the view-only filter. */
   totalUnfiltered: number;
   profiles: Map<string, ColumnProfile>;
+  /** Set when `profiles` come from a row sample (large frames). */
+  profileSample: ProfileSample | null;
   display: DisplayFrame;
   preview: PreviewStep | null;
   previewError: string | null;
@@ -152,6 +155,7 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       total: frame.total,
       totalUnfiltered: frame.totalUnfiltered,
       profiles: frame.profiles,
+      profileSample: frame.profileSample,
       display,
       preview: atBase ? preview : null,
       previewError: pv.previewError,

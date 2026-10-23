@@ -16,6 +16,8 @@ import {
   EngineError,
   errorText,
   type ColumnProfile,
+  type ColumnProfiles,
+  type ProfileSample,
   type Role,
   type Workspace,
   type WorkspaceRow,
@@ -57,6 +59,8 @@ interface Frame {
   rowsGridKey: string | null;
   /** Identity of the frame held in `profiles` (null = none). */
   profilesIdentity: string | null;
+  /** Set when the profiles (quality bars, stats) come from a row sample (#318). */
+  profileSample: ProfileSample | null;
 }
 
 interface Shapes {
@@ -90,6 +94,7 @@ const EMPTY_FRAME: Frame = {
   rowsIdentity: null,
   rowsGridKey: null,
   profilesIdentity: null,
+  profileSample: null,
 };
 const ZERO_SHAPE: PipelineShape = { rows: 0, cols: 0 };
 const NO_SHAPES: Shapes = { shapes: [], stepErrors: new Map() };
@@ -140,6 +145,15 @@ async function sourceMismatch(ws: Workspace): Promise<string | null> {
   }
 }
 
+/** Frames above this many rows get a sampled profile (engine `sample_rows`, #318). */
+export const PROFILE_SAMPLE_ROWS = 100_000;
+
+/** The sample a profile response discloses, null for a full profile. */
+function sampleOf(res: ColumnProfiles): ProfileSample | null {
+  if (!res.sampled || !res.n_rows_source) return null;
+  return { nRowsSource: res.n_rows_source, nSampledOut: res.n_sampled_out ?? 0 };
+}
+
 /**
  * Profiles of the viewport columns first (wide frames), then the rest. Today's
  * engine ignores the filter and returns every column in one shot.
@@ -151,12 +165,13 @@ async function loadProfiles(
   firstCols: string[] | null,
   totalCols: number,
   alive: () => boolean,
-  publish: (cols: ColumnProfile[]) => void,
+  publish: (cols: ColumnProfile[], sample: ProfileSample | null) => void,
+  sampleRows: number | null,
 ) {
   let first: Awaited<ReturnType<typeof apiClient.columnProfiles>> | undefined;
   if (firstCols) {
     try {
-      first = await apiClient.columnProfiles(ws, role, ver, firstCols);
+      first = await apiClient.columnProfiles(ws, role, ver, firstCols, sampleRows);
     } catch (e) {
       // Residual stale names (or race): fall back to unscoped instead of
       // SET_BENCH_ERROR when the engine rejects unknowns.
@@ -164,13 +179,13 @@ async function loadProfiles(
     }
   }
   const scopedOk = first !== undefined;
-  first ??= await apiClient.columnProfiles(ws, role, ver);
+  first ??= await apiClient.columnProfiles(ws, role, ver, null, sampleRows);
   if (!alive()) return;
   const { columns } = normalizeProfiles(first);
-  publish(columns);
+  publish(columns, sampleOf(first));
   if (!scopedOk || columns.length >= totalCols) return;
-  const rest = normalizeProfiles(await apiClient.columnProfiles(ws, role, ver));
-  if (alive()) publish(rest.columns);
+  const all = await apiClient.columnProfiles(ws, role, ver, null, sampleRows);
+  if (alive()) publish(normalizeProfiles(all).columns, sampleOf(all));
 }
 
 async function peekShape(ws: Workspace, role: Role, v: number) {
@@ -371,12 +386,14 @@ export function useBenchFrame(
           wide && prefer.length > 0 ? prefer : null,
           res.columns.length,
           alive,
-          (list) =>
+          (list, sample) =>
             setFrame((f) => ({
               ...f,
               profiles: new Map(list.map((p) => [p.name, p])),
               profilesIdentity: idKey,
+              profileSample: sample,
             })),
+          totalUnfiltered > PROFILE_SAMPLE_ROWS ? PROFILE_SAMPLE_ROWS : null,
         ).catch((e: unknown) => {
           // Keep rows usable; surface profile failure without clearing grid.
           if (alive()) {

@@ -344,6 +344,7 @@ export function Grid() {
     identity,
     rowsIdentity,
     columnNotes,
+    profileSample,
   } = useWorkbenchData();
 
   const { workspace } = useAppState();
@@ -606,6 +607,19 @@ export function Grid() {
       </div>
 
       <GridViewBar />
+
+      {profileSample ? (
+        <div className="banner sample-banner" role="status" data-profile-sample="">
+          <span className="banner-kicker">Sampled profile</span>
+          <span>
+            Quality bars and column stats cover{" "}
+            {(profileSample.nRowsSource - profileSample.nSampledOut).toLocaleString("en-US")} of{" "}
+            {profileSample.nRowsSource.toLocaleString("en-US")} rows (
+            {profileSample.nSampledOut.toLocaleString("en-US")} not profiled). The grid
+            still pages through every row.
+          </span>
+        </div>
+      ) : null}
 
       {pendingStep && preview ? (
         <div className="banner preview-banner" role="status">
