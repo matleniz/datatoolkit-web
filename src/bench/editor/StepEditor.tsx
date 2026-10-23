@@ -3,6 +3,8 @@ import { apiClient } from "../../api/client";
 import type { ColumnKind, JsonValue } from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
 import { FormulaField } from "./FormulaField";
+import { ColumnRulesField } from "./ColumnRulesField";
+import { ViolationsTable } from "./ViolationsTable";
 import { ValueMappingField } from "./ValueMappingField";
 import type { ValueMapping } from "./valueMapping";
 import { formatLearnedState } from "../format";
@@ -319,6 +321,8 @@ export function StepEditor() {
         </div>
       </div>
 
+      <ViolationsTable checks={preview?.checks} />
+
       {((formError && !schemaError) || editorBlocker) && !errorInline ? (
         <div className="ed-error" role="alert" data-ed-disabled-reason="">
           <div>{editorBlocker || previewError || paramsValid.missing}</div>
@@ -507,6 +511,15 @@ function Field({
       );
     case "dtypes":
       return <DtypesField params={params} columns={columns} onChange={setOwn} />;
+    case "column_rules":
+      return (
+        <ColumnRulesField
+          label={field.label}
+          value={params[field.key]}
+          columns={columns}
+          onChange={setOwn}
+        />
+      );
     case "formula":
       return (
         <FormulaField

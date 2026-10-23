@@ -1,4 +1,5 @@
 import type { ColumnKind, JsonSchema } from "../api/types";
+import { columnRulesProblem } from "./editor/columnRules";
 import { isNumericKind } from "./kinds";
 
 export type FieldWidget =
@@ -22,6 +23,8 @@ export type FieldWidget =
   | "formula"
   | "variables"
   | "conditions"
+  /** expected_schema.columns: a list of per-column rule objects. */
+  | "column_rules"
   | "object";
 
 export interface EditorField {
@@ -172,6 +175,7 @@ const SPECIAL_FIELDS: Record<
   expr: { widget: "formula", label: "Expression" },
   "formula.variables": { widget: "variables", label: "Variables", required: false },
   conditions: { widget: "conditions", label: "Conditions" },
+  "expected_schema.columns": { widget: "column_rules", label: "Column rules", fixedLabel: true, required: false },
 };
 
 /** Studio copy for generic fields (drop_duplicates: Subset vs Sort by, MAT-155). */
@@ -236,6 +240,8 @@ function genericWidget(
   schema: JsonSchema,
 ): WidgetSpec | null {
   if (isAutoOrNumberUnion(raw, schema)) return { widget: "auto_number" };
+  // A constant (expected_schema.schema_version) is the engine's, not the user's.
+  if (prop.const !== undefined) return null;
   const hint = prop["x-dtk-widget"];
   const dtype = prop["x-dtk-dtype"];
   const dtypeFilter = dtype === "numeric" || dtype === "any" ? dtype : undefined;
@@ -367,6 +373,7 @@ const EMPTY_VALUE: Partial<Record<FieldWidget, () => unknown>> = {
   dtypes: () => ({}),
   variables: () => [],
   conditions: () => [],
+  column_rules: () => [],
 };
 
 /** A required multi-enum preselects mean when offered, else its first value (MAT-167). */
@@ -524,6 +531,7 @@ const OP_CHECKS: Record<string, (p: Record<string, unknown>) => string | null> =
     (p.keep === "first" || p.keep === "last") && !fieldValuePresent(p.sort_by)
       ? "keep first/last requires sort_by (pick an identifier column, or use keep none)"
       : null,
+  expected_schema: columnRulesProblem,
   formula: (p) =>
     String(p.name ?? "").trim() && String(p.expr ?? "").trim()
       ? null

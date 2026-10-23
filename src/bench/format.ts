@@ -96,5 +96,9 @@ export function formatLearnedState(state: Record<string, JsonValue>): string {
     if (!keys.length) return "No variable used: nothing learned.";
     return keys.map((n) => `@${n} = ${fmt(vars[n]!)}`).join("\n");
   }
+  if ("violations" in state && state.violations && typeof state.violations === "object") {
+    const v = state.violations as Record<string, JsonValue>;
+    return `${state.n_rows} rows checked: ${v.error} errors, ${v.warning} warnings, ${v.info} info`;
+  }
   return JSON.stringify(state, null, 2);
 }
