@@ -228,6 +228,13 @@
 .agent-chip.review .agent-chip-dot {
   background: var(--dtk-warn-fg);
 }
+/* Under review, but its status cannot be read (engine unreachable). */
+.agent-chip.review.unavailable .agent-chip-dot {
+  background: var(--dtk-muted);
+}
+.agent-chip.review.unavailable .agent-chip-status {
+  color: var(--dtk-warn-fg);
+}
 .agent-chip.error .agent-chip-dot {
   background: var(--dtk-error-fg);
 }

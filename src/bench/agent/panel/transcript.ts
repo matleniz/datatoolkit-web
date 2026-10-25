@@ -34,6 +34,8 @@ export type TranscriptItem =
       error?: string;
       /** Bridge command id of a UI command (polled while under review). */
       command?: string;
+      /** Consecutive failed polls of the command status (reset by a good one). */
+      pollFailures?: number;
     }
   | {
       kind: "permission";
@@ -80,6 +82,8 @@ export type TranscriptAction =
   | { type: "reply"; id: string; allow: boolean }
   /** Final ack of a reviewed command (`GET /api/ui/commands/{id}`). */
   | { type: "command_status"; command: string; ok: boolean; error?: string }
+  /** Polling a reviewed command's status failed (engine gone, 5xx...) or answered again. */
+  | { type: "command_poll"; command: string; ok: boolean }
   /** Seed the cumulative usage from `GET /api/ui/agent`. */
   | { type: "usage_seed"; usage: UsageTotals }
   /** The session's attachments from `GET /api/ui/agent/attachments`. */
@@ -178,6 +182,34 @@ function onCommandStatus(
   return { ...t, items };
 }
 
+/**
+ * After this many failed polls in a row, a chip under review says its status
+ * is unavailable instead of "waiting" forever; it keeps polling and goes back
+ * to "waiting" (or its outcome) at the next good answer.
+ */
+export const REVIEW_POLL_MAX_FAILURES = 3;
+
+function onCommandPoll(
+  t: Transcript,
+  { command, ok }: Extract<TranscriptAction, { type: "command_poll" }>,
+): Transcript {
+  let hit = false;
+  const items = t.items.map((it) => {
+    if (it.kind !== "tool" || it.command !== command || it.status !== "review") return it;
+    const pollFailures = ok ? 0 : (it.pollFailures ?? 0) + 1;
+    if (pollFailures === (it.pollFailures ?? 0)) return it;
+    hit = true;
+    return { ...it, pollFailures };
+  });
+  // A good poll on a healthy chip changes nothing: no re-render every tick.
+  return hit ? { ...t, items } : t;
+}
+
+/** The chip waits for a review but the engine cannot tell its outcome. */
+export function statusUnavailable(item: Extract<TranscriptItem, { kind: "tool" }>): boolean {
+  return item.status === "review" && (item.pollFailures ?? 0) >= REVIEW_POLL_MAX_FAILURES;
+}
+
 /** Bridge command ids of the chips still waiting for the user's review. */
 export function reviewCommands(t: Transcript): string[] {
   return t.items.flatMap((it) =>
@@ -242,6 +274,8 @@ export function transcriptReducer(t: Transcript, action: TranscriptAction): Tran
       });
     case "command_status":
       return onCommandStatus(t, action);
+    case "command_poll":
+      return onCommandPoll(t, action);
     case "usage_seed":
       return t.usage.input + t.usage.output > 0 ? t : { ...t, usage: action.usage };
     case "attachments_seed":

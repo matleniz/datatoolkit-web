@@ -1,10 +1,13 @@
 """Studio build (``studio-dist.zip``): download, verify, cache.
 
-The zip and its ``.sha256`` are assets of the rolling GitHub release
-``studio-latest`` (``.github/workflows/studio-release.yml``). A verified build
+The zip and its ``.sha256`` are assets of the immutable GitHub release
+``studio-<sha7>`` of one web commit (``.github/workflows/studio-release.yml``),
+pinned by the release step (``scripts/pin-release.py``). A verified build
 is unpacked once under ``<data home>/studio/<sha256>/``; ``studio/current``
-names the one in use. ``$DTK_STUDIO_URL`` overrides the base URL the two
-assets are fetched from (any ``urllib`` URL, ``file://`` included: CI uses it).
+names the one in use and ``studio/source`` the URL it came from, so a build
+cached from another source (an older pin, ``$DTK_STUDIO_URL``) is replaced.
+``$DTK_STUDIO_URL`` overrides the base URL the two assets are fetched from
+(any ``urllib`` URL, ``file://`` included: CI uses it).
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-DEFAULT_URL = "https://github.com/matleniz/datatoolkit-web/releases/download/studio-latest"
+DEFAULT_URL = "https://github.com/matleniz/datatoolkit-web/releases/download/studio-7b10f45"
 ZIP_NAME = "studio-dist.zip"
 
 
@@ -46,9 +49,17 @@ def _cached(root: Path) -> Path | None:
     return path if sha and (path / "index.html").is_file() else None
 
 
-def _activate(root: Path, sha: str) -> Path:
-    """Point ``current`` at ``sha`` and drop the other cached builds."""
+def _source(root: Path) -> str:
+    try:
+        return (root / "source").read_text().strip()
+    except OSError:
+        return ""
+
+
+def _activate(root: Path, sha: str, base: str) -> Path:
+    """Point ``current`` at ``sha`` (from ``base``) and drop the other cached builds."""
     (root / "current").write_text(sha + "\n")
+    (root / "source").write_text(base + "\n")
     for old in root.iterdir():
         if old.is_dir() and old.name != sha:
             shutil.rmtree(old, ignore_errors=True)
@@ -58,16 +69,17 @@ def _activate(root: Path, sha: str) -> Path:
 def ensure_dist(refresh: bool = False, log=print) -> Path:
     """Directory holding Studio's ``index.html``, downloading it if needed.
 
-    Without ``refresh`` a cached build is used as is (no network). With
-    ``refresh``, or with no cache, the release's checksum is fetched and the
+    Without ``refresh`` a build cached from the same source is used as is (no
+    network). With ``refresh``, with no cache, or with a cache from another
+    source, the release's checksum is fetched and the
     zip downloaded unless that exact build is cached; offline, an existing
     cache is still used.
     """
     root = data_home() / "studio"
     cached = _cached(root)
-    if cached and not refresh:
-        return cached
     base = (os.environ.get("DTK_STUDIO_URL") or DEFAULT_URL).rstrip("/")
+    if cached and not refresh and _source(root) == base:
+        return cached
     try:
         sha = _fetch(f"{base}/{ZIP_NAME}.sha256").decode().split()[0].lower()
     except (OSError, IndexError, UnicodeDecodeError) as exc:
@@ -77,8 +89,8 @@ def ensure_dist(refresh: bool = False, log=print) -> Path:
         raise DistError(f"Could not download Studio from {base}: {exc}") from exc
     root.mkdir(parents=True, exist_ok=True)
     if (root / sha / "index.html").is_file():
-        return _activate(root, sha)
-    log(f"Downloading Studio ({ZIP_NAME})...")
+        return _activate(root, sha, base)
+    log(f"Downloading Studio ({ZIP_NAME}) from {base} ...")
     try:
         data = _fetch(f"{base}/{ZIP_NAME}")
     except OSError as exc:
@@ -106,4 +118,4 @@ def ensure_dist(refresh: bool = False, log=print) -> Path:
         out.rename(root / sha)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    return _activate(root, sha)
+    return _activate(root, sha, base)

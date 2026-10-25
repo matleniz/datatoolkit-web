@@ -11,10 +11,14 @@
 # Env: DTK_PORT (8080), DTK_DATA (<install dir>/datatoolkit-data, Docker mode),
 # DTK_INSTALL_DIR (install dir, ~/datatoolkit), DTK_NO_OPEN=1 (do not open the
 # browser), DTK_TIMEOUT (seconds to wait for the app, 300), DTK_COMPOSE_SRC
-# (URL or local path of the compose.yml to install; default: this repo's main
-# branch), DTK_LAUNCHER_SRC (uv mode: what `uv tool run --from` gets; default:
-# this repo's main branch, launcher/). DTK_HOME is the engine's data home
-# (uv mode, ~/.datatoolkit), not the install dir.
+# (URL or local path of the compose.yml to install), DTK_LAUNCHER_SRC (uv mode:
+# what `uv tool run --from` gets). DTK_HOME is the engine's data home (uv mode,
+# ~/.datatoolkit), not the install dir.
+#
+# Pinned: by default this installs ONE version, the compose.yml and launcher/
+# of the commit below (engine + Studio images, engine dependency and Studio
+# build all pinned there). scripts/pin-release.py updates these lines at
+# release time; DTK_COMPOSE_SRC / DTK_LAUNCHER_SRC / DTK_STUDIO_URL override.
 #
 # Everything runs inside main(), called on the last line, so a truncated
 # download through `curl | sh` never runs half a script.
@@ -22,9 +26,9 @@
 set -eu
 
 DOCKER_URL="https://docs.docker.com/get-started/get-docker/"
-DEFAULT_COMPOSE_SRC="https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/compose.yml"
+DEFAULT_COMPOSE_SRC="https://raw.githubusercontent.com/matleniz/datatoolkit-web/76c9d356227d0924ac839436bf1d114132876997/compose.yml"
 LAUNCHER_URL="https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/datatoolkit.sh"
-DEFAULT_LAUNCHER_SRC="git+https://github.com/matleniz/datatoolkit-web#subdirectory=launcher"
+DEFAULT_LAUNCHER_SRC="git+https://github.com/matleniz/datatoolkit-web@76c9d356227d0924ac839436bf1d114132876997#subdirectory=launcher"
 UV_INSTALLER_URL="https://astral.sh/uv/install.sh"
 UV_DOCS_URL="https://docs.astral.sh/uv/getting-started/installation/"
 PROJECT=datatoolkit
@@ -42,12 +46,12 @@ Usage: datatoolkit.sh [start|stop|update|uninstall [--purge]|help] [--uv]
 
   start      start engine + Studio and open it in the browser (default)
   stop       stop the containers (data is kept)
-  update     pull the latest images and restart
+  update     reinstall the pinned version (compose file + images), restart
   uninstall  remove the containers, images and compose file; keeps your data
              unless --purge is given
   --uv       run without Docker, in this terminal (Ctrl+C stops it); used
              automatically when Docker is missing or not running. `update --uv`
-             fetches the latest launcher and Studio build.
+             re-fetches the pinned launcher and Studio build.
 
 Piped form: curl -fsSL <url>/datatoolkit.sh | sh -s -- stop
 EOF
@@ -157,7 +161,7 @@ ensure_uv() {
 }
 
 # Run dtk-studio (Studio + engine, one process) in the foreground through uv.
-# `update` also refreshes uv's copy of the launcher and the Studio build.
+# `update` also re-checks uv's copy of the launcher and the Studio build.
 run_uv() { # run_uv start|update
   ensure_uv
   src=${DTK_LAUNCHER_SRC:-$DEFAULT_LAUNCHER_SRC}

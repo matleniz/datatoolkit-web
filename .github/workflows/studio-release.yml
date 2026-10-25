@@ -1,8 +1,11 @@
 name: studio-release
 
 # Studio's build for the no-Docker launcher (launcher/, dtk-studio): on every
-# push to main, `studio-dist.zip` + its `.sha256` replace the assets of the
-# rolling release `studio-latest`, whose tag moves to the pushed commit.
+# push to main, `studio-dist.zip` + its `.sha256` are published as the
+# immutable release `studio-<sha7>` (what a pinned launcher fetches, see
+# scripts/pin-release.py; never overwritten) and replace the assets of the
+# rolling release `studio-latest` (opt-in only, via DTK_STUDIO_URL), whose tag
+# moves to the pushed commit.
 
 on:
   push:
@@ -32,6 +35,19 @@ jobs:
         run: node scripts/check-dist-paths.mjs dist
       - name: Pack studio-dist.zip
         run: python3 scripts/pack-studio-dist.py dist release
+      - name: Publish the immutable studio-<sha7> release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="studio-${GITHUB_SHA::7}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag already published: kept as is"
+          else
+            sha=$(cut -d' ' -f1 release/studio-dist.zip.sha256)
+            gh release create "$tag" release/studio-dist.zip release/studio-dist.zip.sha256 \
+              --target "$GITHUB_SHA" --title "Studio build ${GITHUB_SHA::7}" --latest=false \
+              --notes "Studio build of ${GITHUB_SHA} (studio-dist.zip sha256 ${sha}), used by the no-Docker launcher (launcher/, dtk-studio) when pinned to this commit. Never replaced."
+          fi
       - name: Publish to the studio-latest release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -2,10 +2,12 @@
 #   docker compose up -d   ->   http://localhost:8080
 # In-Studio agent chat, opt-in (off unless DTK_AGENT is set):
 #   DTK_AGENT=1 DTK_UI_TOKEN=$(openssl rand -hex 16) ANTHROPIC_API_KEY=... docker compose up -d
+# Pinned: both images (and the engine build source) name one commit each,
+# set by the release step (scripts/pin-release.py), never by hand.
 services:
   engine:
-    image: ghcr.io/matleniz/datatoolkit-engine:latest
-    build: https://github.com/matleniz/datatoolkit.git#main
+    image: ghcr.io/matleniz/datatoolkit-engine:sha-43ea5ad
+    build: https://github.com/matleniz/datatoolkit.git#43ea5adb1440363d56a252675ffa3a199096daff
     volumes:
       - ${DTK_DATA:-./datatoolkit-data}:/data
     # Bare names: passed through from the shell (or .env) only when set there,
@@ -25,7 +27,7 @@ services:
     restart: unless-stopped
 
   web:
-    image: ghcr.io/matleniz/datatoolkit-web:latest
+    image: ghcr.io/matleniz/datatoolkit-web:sha-7b10f45
     build: .
     ports:
       # Localhost only on purpose: the engine reads files and SQL URLs, and with

@@ -1,412 +1,62 @@
 # datatoolkit Studio (`datatoolkit-web`)
 
-Web front for the datatoolkit engine. Talks only to the HTTP API (`dtk-api`);
-never imports `dtk_engine`. Specs live in the docs hub (`FRONT-WEB.md`,
-`ARCHITECTURE.md`, `TRANSFORMS.md`). Original behaviour reference:
-`docs/prototype.dc.html` (2026-09-27; it predates later UX changes such as the
-Suggestions-only left panel and the grid dock, so `FRONT-WEB.md` and the code
-are the reference where they differ).
+Studio is the web front of the datatoolkit engine. You load train and test
+sources, align them, and build a cleaning and feature pipeline in the Workbench,
+with suggestions, analysis windows, charts and export. An optional agent chat
+can propose steps. Studio talks to the engine only through its HTTP API
+(`dtk-api`) and never imports `dtk_engine`.
 
-## Share it / run it anywhere
+## Run it
 
-One line starts the engine + Studio, waits until they answer and opens
-http://localhost:8080. Needs nothing installed: it uses
-[Docker](https://docs.docker.com/get-started/get-docker/) when Docker is
-installed and running, else it runs without Docker (uv mode, below).
+One command starts the engine and Studio and opens http://localhost:8080. It
+uses Docker when Docker is running; otherwise it runs without Docker through
+[uv](https://docs.astral.sh/uv/), which it installs if needed.
 
 ```bash
-# macOS / Linux
 curl -fsSL https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/datatoolkit.sh | sh
 ```
 
-```powershell
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/datatoolkit.ps1 | iex
-```
+On Windows (PowerShell):
+`irm https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/datatoolkit.ps1 | iex`.
+It installs one pinned version of the engine and Studio, the same in both
+modes; `DTK_COMPOSE_SRC`, `DTK_LAUNCHER_SRC` or `DTK_STUDIO_URL` pick another
+source. Stop, update and uninstall commands, plus the Docker and uv details, are in
+[docs/running.md](docs/running.md); moving the pin is in [docs/release.md](docs/release.md).
 
-**Docker mode** (default when Docker is usable). Other commands: `stop`,
-`update` (latest images), `uninstall` (keeps your data; add `--purge` /
-`-Purge` to delete it). Piped, pass them as
-`curl -fsSL …/datatoolkit.sh | sh -s -- stop` or
-`& ([scriptblock]::Create((irm …/datatoolkit.ps1))) stop`. Files live in
-`~/datatoolkit` (`%USERPROFILE%\datatoolkit`): `compose.yml`, `.env` and the
-data dir `datatoolkit-data`. Env: `DTK_PORT` (8080), `DTK_DATA`,
-`DTK_INSTALL_DIR` (install dir), `DTK_NO_OPEN=1` (no browser), `DTK_TIMEOUT`
-(seconds, 300). Running it again is safe: it just makes sure the app is up.
-More in [Run with Docker](#run-with-docker).
+## Example: develop against a local engine
 
-**uv mode** (no Docker: used automatically, with a one-line notice, when
-Docker is missing or not running; force it with `--uv` / `-Uv`, e.g.
-`curl -fsSL …/datatoolkit.sh | sh -s -- --uv`). The script installs
-[uv](https://docs.astral.sh/uv/) with Astral's official installer if it is
-missing (user directory, no sudo), then runs the `dtk-studio` launcher
-(`launcher/`) from this repo with `uv tool run`: one local process serving
-Studio and the engine API on `127.0.0.1`, in the foreground — Ctrl+C or
-closing the window stops it (`stop` / `uninstall` are Docker-only). The first
-launch takes about a minute (uv fetches Python, the engine and its
-dependencies); later ones start in seconds. Data (workspaces, uploads, the
-cached Studio build) lives in the engine's data home `~/.datatoolkit`
-(`$DTK_HOME`). `update --uv` (`update -Uv`) refreshes the launcher, the engine
-and the Studio build, i.e. `uv tool run --refresh --from … dtk-studio --refresh`.
-More in [Run without Docker](#run-without-docker-uv).
-
-## Requirements
-
-- Node **22+** (`engines.node` is `>=22`; CI and the Docker build use Node 22)
-- [uv](https://docs.astral.sh/uv/) and the engine repo (optional for unit
-  tests; required for live data)
-
-## Run
-
-From zero, for development (the engine is expected at `~/datatoolkit`, the
-default of `e2e/engine.ts`; set `DTK_ENGINE_DIR` for e2e if it lives elsewhere):
+Requires Node 22+ (`engines.node` is `>=22`; the Docker build uses Node 22),
+uv and the engine checkout in `~/datatoolkit`.
 
 ```bash
-git clone https://github.com/matleniz/datatoolkit ~/datatoolkit
-git clone https://github.com/matleniz/datatoolkit-web && cd datatoolkit-web
-npm install
-
-# terminal 1 — engine HTTP API (uv creates the venv on first run)
-(cd ~/datatoolkit && uv run --extra api dtk-api --port 8765)
-
-# terminal 2 — Vite front (proxies /api → :8765)
-npm run dev
+(cd ~/datatoolkit && uv run --extra api dtk-api --port 8765) &   # engine API
+npm ci && npm run dev                                             # http://localhost:5173
 ```
 
-No clone needed to just use Studio: the one-liners above (Docker or uv).
+The checks are `npm run lint`, `npm run typecheck`, `npm test` and
+`npm run e2e`. The full project CHECK is `bash scripts/fleet-check.sh`.
 
-Open http://localhost:5173 (Vite's default host and port). `dtk-api` on another
-port: start it with `--port <n>` and run Vite with `DTK_API_PORT=<n> npm run
-dev` (also read by `npm run preview`; it changes the proxy target
-`http://127.0.0.1:<n>`; unset = 8765). `VITE_API_URL` (default `/api`, see
-`.env.example`) only changes the URL prefix the app calls. `npm run e2e` has
-its own `DTK_E2E_API_PORT`.
+## Docs
 
-On start, Studio reopens the last workspace (`localStorage["dtk.lastWorkspace"]`)
-or `churn` if the engine store has it; on an empty store it uploads the demo
-churn CSVs from `public/fixtures/` and saves a `churn` workspace
-(`src/bootstrap.ts`).
+In this repo:
 
-If the engine is unreachable (or `GET /api/workspaces` fails) at startup, Studio
-shows an error screen with the engine's message, a hint for how it is served
-(dev: start `dtk-api` on 8765, or on `DTK_API_PORT`; built app: `docker compose logs engine` or the
-`dtk-studio` terminal) and a Retry button; the app is mounted only once a
-workspace has loaded. Run mode is `import.meta.env.DEV`.
+- [docs/running.md](docs/running.md): one-line launchers, Docker, uv launcher (`dtk-studio`), pinned version
+- [docs/release.md](docs/release.md): the release step that pins the installers
+- [docs/development.md](docs/development.md): run from a checkout, scripts and checks, layout, fixtures, screenshots
+- [docs/e2e.md](docs/e2e.md): the Playwright e2e suite
+- [docs/agent.md](docs/agent.md): agent bridge, agent panel, agent packs, agent chat in Docker
+- [docs/behaviour.md](docs/behaviour.md): behaviour notes (saved charts, workspace saves, suggestions, step editor, undo / redo)
+- `docs/prototype.dc.html`: the original behaviour reference (2026-09-27). It
+  predates later UX changes such as the Suggestions-only left panel and the
+  grid dock, so where they differ `FRONT-WEB.md` and the code win.
 
-### Agent bridge (dev)
+The specs live in the docs hub, a local-only repo with no remote, so they are
+cited by path:
 
-Studio publishes its view (workspace, role, version, identity, selection, open
-windows, editor) to the engine's `/api/ui` and runs the commands it relays
-(`propose_steps`, `open_window`, `select_columns`, `set_view`), all through the
-reducer (undoable). Agent step edits apply at once with an "Undo" notice;
-destructive ones (a removed step, `drop_columns`, `filter_rows`,
-`drop_low_variance`, `drop_correlated`) wait for Apply / Dismiss: Studio acks
-them `pending: "review"` at once (the agent's call returns, the final ack is in
-`GET /api/ui/commands/{id}` once the user decides), view commands keep running
-while the banner is open, and another `propose_steps` answers `busy`. The page gets
-the engine's per-run token from `<meta name="dtk-ui-token">` (never stored).
-`dtk-studio` fills it in; with `npm run dev`, pass the same token to both sides:
+- `~/datatoolkit-web-hub/FRONT-WEB.md`: the Studio spec
+- `~/datatoolkit-web-hub/ARCHITECTURE.md`: the architecture
+- `TRANSFORMS.md`, in the same hub: the transform ops
 
-```bash
-export DTK_UI_TOKEN=$(openssl rand -hex 24)          # any random string
-DTK_CORS_ORIGINS=http://localhost:5173 uv run --extra api dtk-api --port 8765
-npm run dev                                           # same env: Vite injects the meta
-```
-
-Without `DTK_UI_TOKEN` the page has no meta and the bridge stays off, silently.
-`npm run e2e` generates a token per run.
-
-### Agent panel
-
-The rail's last icon (**Agent**) opens a chat panel next to the tool rail
-(datatoolkit-issues#67). It talks to the engine's agent pack over the same
-bridge: `event: agent` on `/api/ui/events` (`user_message`, `assistant_delta`,
-`tool_call`, `tool_result`, `permission_request`, `usage`, `done`, `error`),
-and `GET /api/ui/agent`, `POST /api/ui/agent/send|cancel|permission`. Each tool
-call shows as a chip; a click opens the window or highlights the step it
-touched. Step edits apply at once with the bridge's Undo toast; destructive
-ones wait in the review banner: the chip says "waiting for your review in
-Studio", then follows the command status (`applied after your review` /
-`dismissed in Studio`), and the UI context lists the open reviews (`reviews:
-[{command, summary}]`) so the agent can see what awaits the user. The footer shows the session's cumulative
-tokens and a Stop button while a turn runs. With no pack the panel says why.
-
-The engine picks the pack from `DTK_AGENT_PACK`; see
-[Agent packs](#agent-packs). In dev: `DTK_AGENT_PACK=agent-sdk uv run --extra
-api --extra agent-sdk dtk-api` (or `dtk-api --agent`) next to `npm run dev`;
-all-in-one: `dtk-studio --agent`. `npm run e2e` runs the engine with the
-scripted `stub` pack.
-
-#### Agent packs
-
-One variable, `DTK_AGENT_PACK`, for every way of running (names from the
-engine's `chat_packs.py`, the `dtk-api --agent` help and `docker/entrypoint.sh`):
-
-| Pack | Dev (`dtk-api`) | `dtk-studio --agent` | Docker (`DTK_AGENT=1`) |
-|---|---|---|---|
-| `agent-sdk` | yes: `DTK_AGENT_PACK=agent-sdk` or `dtk-api --agent`; needs engine extra `agent-sdk` | yes, the default of `--agent` (sets `DTK_AGENT_PACK`) | no: the entrypoint refuses it |
-| `api-anthropic` | yes (`ANTHROPIC_API_KEY`) | `--agent api-anthropic` | yes, the default when `DTK_AGENT_PACK` is unset |
-| `api-openai` | yes (`DTK_OPENAI_*`) | `--agent api-openai` | yes |
-| `stub` | yes (scripted; used by `npm run e2e`) | `--agent stub` | yes (the `smoke` job) |
-| unset / `off` | agent off | agent off (no `--agent`) | agent off: `DTK_AGENT` is the switch, `DTK_AGENT_PACK` alone is ignored |
-
-## Run with Docker
-
-The launchers above wrap this. `scripts/datatoolkit.sh` / `.ps1` check Docker,
-install `compose.yml` into `~/datatoolkit` (`DTK_COMPOSE_SRC` overrides the
-source: URL or local path), persist `DTK_PORT` / `DTK_DATA` in its `.env`, run
-`docker compose -p datatoolkit pull` + `up -d --no-build`, wait for `/` and
-`/api/keys` (logs tail on timeout), then open the browser. They refuse an
-install dir that is a git checkout (set `DTK_INSTALL_DIR`). The `launcher` job in
-`.github/workflows/docker.yml` runs both on ubuntu against the `latest` images.
-
-Engine + Studio by hand (images from GHCR):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/compose.yml -o datatoolkit.yml && docker compose -f datatoolkit.yml up -d
-```
-
-PowerShell: `curl.exe -fsSL https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/compose.yml -o datatoolkit.yml; docker compose -f datatoolkit.yml up -d`
-
-Then open http://localhost:8080 (bound to localhost only; change with
-`DTK_PORT`). Update with `docker compose -f datatoolkit.yml pull && docker
-compose -f datatoolkit.yml up -d`. Workspaces, uploads and exports live in
-`./datatoolkit-data` (override with `DTK_DATA`). Sources given as host absolute
-paths are not visible inside the container: use upload instead.
-
-From a checkout, `docker compose up -d --build` builds both images locally.
-
-### Agent chat in Docker (opt-in)
-
-Off by default. Set `DTK_AGENT` and a `DTK_UI_TOKEN` in the shell (or in the
-`.env` next to the compose file) to turn on the in-Studio agent chat
-(datatoolkit-issues#148):
-
-```bash
-DTK_AGENT=1 DTK_UI_TOKEN=$(openssl rand -hex 16) ANTHROPIC_API_KEY=sk-... docker compose up -d
-```
-
-`compose.yml` passes these through to the containers only when they are set:
-
-| Env | Goes to | Role |
-|---|---|---|
-| `DTK_AGENT` | engine | `1` / `true` / `yes` / `on` turns the chat on |
-| `DTK_UI_TOKEN` | engine, web | Bridge token, required when `DTK_AGENT` is on (the engine exits 64 without it). The web container writes it into `index.html` as `<meta name="dtk-ui-token">` at start (`docker/40-dtk-ui-token.sh`), never at build; unset = no meta, bridge off. URL-safe characters only |
-| `DTK_AGENT_PACK` | engine | Default pack: `api-anthropic` (default), `api-openai` or `stub` (table: [Agent packs](#agent-packs)) |
-| `ANTHROPIC_API_KEY`, `DTK_ANTHROPIC_BASE_URL`, `DTK_ANTHROPIC_MODEL` | engine | `api-anthropic` |
-| `DTK_OPENAI_BASE_URL`, `DTK_OPENAI_API_KEY`, `DTK_OPENAI_MODEL` | engine | `api-openai`. A model on the host is `http://host.docker.internal:11434/v1` (on Linux add `extra_hosts: ["host.docker.internal:host-gateway"]` to `engine` in an override file) |
-| `DTK_UI_ALLOWED_HOSTS`, `DTK_CORS_ORIGINS` | engine | Not needed behind this nginx (same origin, `Host` forwarded); only when Studio is reached under another hostname or through TLS in front |
-
-The token is in the served page, so the port stays bound to `127.0.0.1`:
-loopback is the trust boundary, do not publish it on another interface. nginx
-streams `/api/ui/events` (SSE) unbuffered, masks `token=` in its access log,
-and does not proxy `/mcp` nor the agent terminal (`/api/ui/terminal`, no agent
-CLI in the engine image). The engine also keeps the token in
-`datatoolkit-data/agent/runtime.json` (0600). The `smoke` job in
-`.github/workflows/docker.yml` checks both modes (agent off, and on with the
-`stub` pack).
-
-## Run without Docker (uv)
-
-`launcher/` is a small Python package (`dtk-studio`, hatchling) whose only
-dependency is the engine with its `api` and `pdf` extras (`pdf` = pypdf, so PDF
-workspace documents have their text extracted), straight from GitHub
-(`dtk-engine[api,pdf] @ git+https://github.com/matleniz/datatoolkit`; nothing is on
-PyPI). With [uv](https://docs.astral.sh/uv/) installed:
-
-```bash
-uvx --from "git+https://github.com/matleniz/datatoolkit-web#subdirectory=launcher" dtk-studio
-```
-
-`dtk-studio [--port 8080] [--no-open] [--refresh]`:
-
-- Studio's build comes from the rolling GitHub release `studio-latest`
-  (`studio-dist.zip` + `studio-dist.zip.sha256`, republished on every push to
-  `main` by `.github/workflows/studio-release.yml`). It is downloaded once,
-  checked against its sha256 and unpacked into `$DTK_HOME/studio/<sha256>/`
-  (`~/.datatoolkit`); `--refresh` checks for a newer build. Offline with a
-  cache, the cache is used. `DTK_STUDIO_URL` overrides where the two assets
-  are fetched from (any URL, `file://` included).
-- One ASGI app: the engine's `create_app()` answers `/api/...`, every other
-  path is the static build with an SPA fallback to `index.html`. Studio still
-  only talks HTTP to `/api` (same origin), as behind nginx.
-- Binds `127.0.0.1` only. Port taken → the next free one (it says which);
-  default `$DTK_PORT` or 8080. Once `/api/keys` answers it prints the URL and
-  the data dir and opens the browser.
-
-From a checkout: `npm run build`, `python3 scripts/pack-studio-dist.py dist
-/tmp/rel` (same zip as the release), then
-`DTK_STUDIO_URL=file:///tmp/rel uvx --from ./launcher dtk-studio --no-open`.
-The build runs on other machines, so it must not embed a path of the build
-machine: `node scripts/check-dist-paths.mjs dist` fails on one (run by the
-`ci` and `studio-release` workflows and the Docker build).
-The sh / ps1 scripts take the launcher from `DTK_LAUNCHER_SRC` (default this
-repo's `main`, `launcher/`). The `uv-launcher` workflow runs all of it on
-ubuntu, macOS and Windows (`scripts/smoke-uv-launcher.py`): `uvx --from
-./launcher`, the sh one-liner falling back to uv (and installing it), and the
-ps1 one-liner with `-Uv`.
-
-## Scripts
-
-| Script | Purpose |
-|---|---|
-| `npm run dev` | Vite dev server + `/api` proxy |
-| `npm run build` | `tsc --noEmit` then `vite build` into `dist/` |
-| `npm run preview` | Serve `dist/` (same `/api` proxy as dev) |
-| `npm run lint` | ESLint |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Vitest (unit): `tests/**/*.test.ts`, `src/**/*.test.ts` |
-| `npx knip@6 --exclude types` | Unused files / exports / dependencies (fetched by npx, not a dependency) |
-| `npm run e2e` | Playwright e2e suite with headless `dtk-api` + Vite |
-
-`fleet gate` runs `npm run lint`, `npm run typecheck`, `npm test` and
-`npx knip@6 --exclude types` (one command per line in `GATE_CMDS` of the
-project's fleet config, outside this repo); the e2e suite is run separately.
-`.github/workflows/ci.yml` runs the same checks; e2e stays local.
-
-The project CHECK (all of the above plus the full e2e) is `bash scripts/fleet-check.sh`.
-
-`eslint-plugin-sonarjs` enforces one rule, `sonarjs/cognitive-complexity` at 25
-(`error`): extract pure helpers rather than raising the ceiling.
-
-### e2e (Playwright)
-
-- Chromium only (`playwright.config.ts`); first run needs
-  `npx playwright install chromium`.
-- `npm run e2e` starts its own servers, never reusing running ones: `dtk-api`
-  on **8766** (`DTK_E2E_API_PORT`) and Vite with `e2e/vite.e2e.config.ts` on
-  **5175** (`DTK_E2E_WEB_PORT`), so it does not clash with a dev server on
-  8765 / 5173.
-- `dtk-api` resolution: `DTK_API_CMD` (full command), else
-  `DTK_API_BIN --port <port>`, else `~/datatoolkit/.venv/bin/dtk-api`, else
-  `uv run --project ~/datatoolkit --extra api dtk-api`.
-- Engine checkout: `DTK_ENGINE_DIR`, else `~/datatoolkit` (`e2e/engine.ts`,
-  used by the config and by the specs that drive the real MCP tools:
-  `issue100-mcp-tools`, `issue178-documents`, `issue179-agent-memory`). Without
-  a synced `.venv` there those specs **fail** with a message naming
-  `DTK_ENGINE_DIR`; `DTK_E2E_SKIP_ENGINE=1` is the explicit opt-out that skips
-  them.
-- The engine runs with `DTK_HOME` = `DTK_E2E_HOME` or a fresh temp dir,
-  deleted after the run unless `DTK_E2E_KEEP=1` (`e2e/global-teardown.ts`).
-- One worker, not fully parallel; retries only on CI.
-- `playwright.config.ts` makes a random `DTK_UI_TOKEN` per run (unless set) for
-  the engine, the page and `e2e/issue63-agent-bridge.spec.ts` (which posts
-  commands to `POST /api/ui/commands`), and adds the web origin to the
-  engine's `DTK_CORS_ORIGINS`.
-- `e2e/vite.e2e.config.ts` pre-bundles all deps (`optimizeDeps.include`), so a
-  cold `node_modules/.vite` does not reload the page mid-spec. Add a dep there
-  when you import a new one lazily.
-- Specs wait on readiness signals, not fixed timeouts, so they pass alone, in
-  any order and under load (datatoolkit-issues#13): `waitForAlignReady`
-  (`.align-layout[data-align-state="ready"]`: the report matches the current
-  fixes), `waitForSuggestionsReady` (`.sug-identity` `data-identity` caught up
-  with `data-identity-current`), `applyEditorStep` (editor closed, grid
-  ready, the step's pipeline node shows its shape) and `waitForGridReady`.
-- Screenshots always go to `e2e/screenshots/<flow>/` (gitignored). The
-  committed copies under `docs/screenshots/t1-e2e/` are only rewritten with
-  `DTK_E2E_SCREENSHOTS=1 npm run e2e`, so a plain run leaves the tree clean.
-
-## Styling
-
-Design tokens: `src/theme/tokens.css` (prototype palette + IBM Plex /
-Instrument Serif). Features use either one plain global stylesheet or CSS
-modules — see `src/theme/README.md`. No CSS framework.
-
-## Layout
-
-| Path | Contents |
-|---|---|
-| `src/api/` | `client.ts` (the only module calling `dtk-api`), request dedupe, contract types |
-| `src/state/` | `AppStore` (React context + reducer), browser storage (dock, panels, dismissed suggestions), workspace save gate |
-| `src/screens/sources/`, `src/screens/align/` | Sources and train / test alignment screens |
-| `src/bench/` | Workbench: `pipeline`, `grid`, `inspector`, `editor`, `contextmenu`, `left` (Suggestions), `dock` (analysis windows + Chart), `toolrail`, `export` |
-| `src/theme/` | Design tokens |
-| `tests/` | Vitest unit tests and their JSON fixtures |
-| `e2e/` | Playwright specs, `helpers.ts`, data fixtures |
-| `docker/`, `Dockerfile`, `compose.yml` | nginx image and the engine + Studio stack |
-
-Saved charts (datatoolkit-issues#11) live on the engine workspace
-(`Workspace.charts`, `{name, params}`): **Save chart** PUTs the workspace with
-the new chart through the save gate's ordered chain (`saveWorkspaceNow`) and
-only then updates the store, so the engine's error is shown in the chart bar;
-a name already saved gets the engine's 422 `duplicate chart name '<name>'`
-with a **Replace** action. Charts come back with the workspace on load /
-reload, ride along on any later PUT (the Sources rebuild carries them like
-steps), and are left out of frame / analysis request bodies and of the data
-identity, so a chart save never refetches data. Charts saved by older builds
-in `localStorage["dtk.charts.<workspace>"]` are adopted once when the engine
-workspace has none, and the key is removed after the next successful save.
-
-Workspace saves (`src/state/workspaceSaveGate.ts`): every autosave and
-explicit gate save runs on one ordered chain. A workspace read from the engine
-(bootstrap, selecting it on Sources) is marked as saved, so it is not PUT
-straight back. Deleting workspaces tombstones their names (no queued or
-debounced save runs for them; other workspaces keep saving) and waits for the
-PUT already on the wire before the DELETE: an aborted fetch could still be
-applied by the engine after the delete (datatoolkit-issues#13). A PUT that
-lands for a tombstoned name is deleted again, and the sidebar treats a 404 on
-DELETE as already deleted.
-
-Suggestions can be dismissed (datatoolkit-issues#15): browser-local, per
-workspace (`localStorage["dtk.dismissedSuggestions.<workspace>"]`). The id
-hashes the key, the suggested step (op / target / params) and the finding
-(column, title, detail), so a finding stays hidden after an unrelated step
-and shows again once its content changes; "Show dismissed" lists the hidden
-ones with a Restore action. No key-specific logic.
-
-Step editor fields come from the transform schema (`src/bench/schemaFields.ts`),
-with two generic hints (datatoolkit-issues#48), no op-specific code:
-`x-dtk-when` (`{sibling: value or list of values}`) shows, validates and sends
-a param only while every listed sibling has one of those values (e.g. impute's
-`by` / `order` / `fallback` / `expr` / `fill_value` follow `strategy`); an
-empty `x-dtk-semantic` param (e.g. `impute.by`, `ffill.by` = `group_id`) is
-prefilled when the editor opens with the frame's column whose `workspace_rows`
-`semantic` matches, only when exactly one column does. The formula palette and
-autocomplete also offer `group_mean` / `group_prev` / `group_interp`. An engine error on the formula
-(`formula` and `impute(strategy=formula)`) is shown right under the Expr field,
-which gets a red outline, not at the bottom of the panel.
-
-No router: the three screens (Sources, Alignment, Workbench) are reducer
-state (`SET_SCREEN`); nginx serves `index.html` for any path.
-
-Workbench layout (prototype sizes, `src/theme/tokens.css`): pipeline
-**96px**, left **280px**, inspector **318px**, tool rail **56px**.
-
-Pipeline undo / redo (datatoolkit-issues#16): the pipeline bar's ↶ / ↷
-buttons, Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z (or Ctrl+Y) undo / redo changes to
-the workspace's steps (add, edit, remove, alignment steps) and replay at the latest
-version. History is in memory (`AppState.stepHistory`, 100 levels,
-`src/state/stepHistory.ts`), reset when another workspace is loaded; disabled
-while a step is being edited, and the shortcuts leave text fields alone.
-Variables, charts and the target are not part of it.
-
-Edit an applied step (datatoolkit-issues#10): a pipeline step node's ✎ button,
-or right-click → **Edit step**, opens the step editor pre-filled with the
-step's op, target and params (`EDIT_STEP`; the params are the step's own over
-the schema defaults, no Studio preset or prefill). While editing, the view is
-pinned to the step's input version, the live preview runs on the steps before
-it, and Apply stays disabled until something changed; Apply replaces the step
-at its index (`REPLACE_STEP`, alignment flag kept, later steps kept) and the
-pipeline replays at the latest version, as one undoable change. Discard goes
-back to the latest version.
-
-## Fixtures
-
-Prototype churn CSVs (dirty on purpose) live in `e2e/fixtures/`:
-`churn_train.csv`, `churn_labels.csv`, `churn_test.csv` (comma decimals like
-`41,0`), `customers_extra.csv`, next to the other e2e datasets. Identical
-copies in `public/fixtures/` seed the demo `churn` workspace (see Run).
-
-## Screenshots
-
-`docs/screenshots/t1-e2e/` holds the committed e2e captures (see e2e above).
-`docs/screenshots/fx-*/` are one-off captures from the 2026-09-27/28 fix PRs
-(MAT-139 / 142 / 144): no spec writes them, and they show the UI before the
-2026-09-29 UX rework (left panel tabs, dock layout, Variables). Likewise
-`t1-e2e/4-variables-formula/01-variable-created.png` is no longer captured
-(Studio no longer creates variables, MAT-231).
-
-## Issues
-
-Tracked in `matleniz/datatoolkit-issues` (private). Older references use
-Linear ids `MAT-<n>` (read-only history; Studio epic MAT-126).
+Issues are tracked in `matleniz/datatoolkit-issues` (private). Older
+references use Linear ids `MAT-<n>` (read-only history; the Studio epic is
+MAT-126).

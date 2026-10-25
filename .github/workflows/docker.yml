@@ -103,9 +103,10 @@ jobs:
           curl -fsS http://127.0.0.1:8080/some/deep/route | grep -q 'content="ci-token"'
       - name: Agent on - the token is not in the web image
         run: |
-          docker image inspect --format '{{json .Config.Env}}' ghcr.io/matleniz/datatoolkit-web:latest | tee web-env.json
+          img=$(docker compose config --images | grep datatoolkit-web)
+          docker image inspect --format '{{json .Config.Env}}' "$img" | tee web-env.json
           if grep -q DTK_UI_TOKEN web-env.json; then exit 1; fi
-          docker run --rm --entrypoint sh ghcr.io/matleniz/datatoolkit-web:latest -c '! grep -q dtk-ui-token /usr/share/nginx/html/index.html'
+          docker run --rm --entrypoint sh "$img" -c '! grep -q dtk-ui-token /usr/share/nginx/html/index.html'
       - name: Agent on - agent routes through nginx need the token
         run: |
           code=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/ui/agent/options)
@@ -154,7 +155,7 @@ jobs:
 
   launcher:
     # The one-command launchers (scripts/datatoolkit.{sh,ps1}) against the
-    # published `latest` images, with this branch's compose.yml.
+    # published images pinned in this branch's compose.yml.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:

@@ -1,0 +1,6 @@
++3.2s chip: waiting for your review in Studio
++3.3s killed engine pid 2673717
+[console.warn] agent review c1: status poll failed 1x: GET /ui/commands: HTTP 500
+[console.warn] agent review c1: status poll failed 2x: GET /ui/commands: HTTP 500
+[console.warn] agent review c1: status poll failed 3x (showing status unavailable): GET /ui/commands: HTTP 500
++8.2s chip: status unavailable
