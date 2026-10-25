@@ -1,3 +1,11 @@
 {
-  "$schema": "https://unpkg.com/knip@6/schema.json"
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "eslint": { "config": ["eslint.config.js"] },
+  "playwright": {
+    "config": ["playwright.config.ts"],
+    "entry": ["e2e/**/*.spec.ts", "e2e/global-teardown.ts"]
+  },
+  "typescript": { "config": ["tsconfig.json", "tsconfig.node.json"] },
+  "vite": { "config": ["vite.config.ts", "e2e/vite.e2e.config.ts"] },
+  "vitest": { "config": ["vite.config.ts"] }
 }
