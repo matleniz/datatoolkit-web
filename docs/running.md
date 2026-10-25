@@ -59,10 +59,10 @@ install dir that is a git checkout (set `DTK_INSTALL_DIR`). The `launcher` job i
 Engine + Studio by hand (images from GHCR):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/compose.yml -o datatoolkit.yml && docker compose -f datatoolkit.yml up -d
+curl -fsSL https://raw.githubusercontent.com/matleniz/datatoolkit-web/76c9d356227d0924ac839436bf1d114132876997/compose.yml -o datatoolkit.yml && docker compose -f datatoolkit.yml up -d
 ```
 
-PowerShell: `curl.exe -fsSL https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/compose.yml -o datatoolkit.yml; docker compose -f datatoolkit.yml up -d`
+PowerShell: `curl.exe -fsSL https://raw.githubusercontent.com/matleniz/datatoolkit-web/76c9d356227d0924ac839436bf1d114132876997/compose.yml -o datatoolkit.yml; docker compose -f datatoolkit.yml up -d`
 
 Then open http://localhost:8080 (bound to localhost only; change with
 `DTK_PORT`). Update with `docker compose -f datatoolkit.yml pull && docker
@@ -83,7 +83,7 @@ workspace documents have their text extracted), straight from GitHub
 nothing is on PyPI). With [uv](https://docs.astral.sh/uv/) installed:
 
 ```bash
-uvx --from "git+https://github.com/matleniz/datatoolkit-web#subdirectory=launcher" dtk-studio
+uvx --from "git+https://github.com/matleniz/datatoolkit-web@76c9d356227d0924ac839436bf1d114132876997#subdirectory=launcher" dtk-studio
 ```
 
 `dtk-studio [--port 8080] [--no-open] [--refresh]`:

@@ -25,9 +25,9 @@
 
 function Invoke-Datatoolkit {
     $DockerUrl = 'https://docs.docker.com/desktop/setup/install/windows-install/'
-    $DefaultComposeSrc = 'https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/compose.yml'
+    $DefaultComposeSrc = 'https://raw.githubusercontent.com/matleniz/datatoolkit-web/76c9d356227d0924ac839436bf1d114132876997/compose.yml'
     $LauncherUrl = 'https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/datatoolkit.ps1'
-    $DefaultLauncherSrc = 'git+https://github.com/matleniz/datatoolkit-web#subdirectory=launcher'
+    $DefaultLauncherSrc = 'git+https://github.com/matleniz/datatoolkit-web@76c9d356227d0924ac839436bf1d114132876997#subdirectory=launcher'
     $UvInstallerUrl = 'https://astral.sh/uv/install.ps1'
     $UvDocsUrl = 'https://docs.astral.sh/uv/getting-started/installation/'
     $Project = 'datatoolkit'

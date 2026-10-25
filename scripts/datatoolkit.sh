@@ -26,9 +26,9 @@
 set -eu
 
 DOCKER_URL="https://docs.docker.com/get-started/get-docker/"
-DEFAULT_COMPOSE_SRC="https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/compose.yml"
+DEFAULT_COMPOSE_SRC="https://raw.githubusercontent.com/matleniz/datatoolkit-web/76c9d356227d0924ac839436bf1d114132876997/compose.yml"
 LAUNCHER_URL="https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/datatoolkit.sh"
-DEFAULT_LAUNCHER_SRC="git+https://github.com/matleniz/datatoolkit-web#subdirectory=launcher"
+DEFAULT_LAUNCHER_SRC="git+https://github.com/matleniz/datatoolkit-web@76c9d356227d0924ac839436bf1d114132876997#subdirectory=launcher"
 UV_INSTALLER_URL="https://astral.sh/uv/install.sh"
 UV_DOCS_URL="https://docs.astral.sh/uv/getting-started/installation/"
 PROJECT=datatoolkit
