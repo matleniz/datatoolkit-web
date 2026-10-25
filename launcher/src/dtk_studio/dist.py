@@ -20,7 +20,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-DEFAULT_URL = "https://github.com/matleniz/datatoolkit-web/releases/download/studio-latest"
+DEFAULT_URL = "https://github.com/matleniz/datatoolkit-web/releases/download/studio-7b10f45"
 ZIP_NAME = "studio-dist.zip"
 
 

@@ -6,8 +6,8 @@
 # set by the release step (scripts/pin-release.py), never by hand.
 services:
   engine:
-    image: ghcr.io/matleniz/datatoolkit-engine:latest
-    build: https://github.com/matleniz/datatoolkit.git#main
+    image: ghcr.io/matleniz/datatoolkit-engine:sha-43ea5ad
+    build: https://github.com/matleniz/datatoolkit.git#43ea5adb1440363d56a252675ffa3a199096daff
     volumes:
       - ${DTK_DATA:-./datatoolkit-data}:/data
     # Bare names: passed through from the shell (or .env) only when set there,
@@ -27,7 +27,7 @@ services:
     restart: unless-stopped
 
   web:
-    image: ghcr.io/matleniz/datatoolkit-web:latest
+    image: ghcr.io/matleniz/datatoolkit-web:sha-7b10f45
     build: .
     ports:
       # Localhost only on purpose: the engine reads files and SQL URLs, and with
