@@ -60,7 +60,7 @@ SOURCES = [
 ] + [
     (
         name,
-        r"(git\+https://github\.com/matleniz/datatoolkit-web)(@[^#\s]+)?(#subdirectory=launcher)",
+        r"(git\+https://github\.com/matleniz/datatoolkit-web)(@[0-9a-f]{40})?(#subdirectory=launcher)",
         r"\g<1>@{a}\g<3>",
     )
     for name in ("scripts/datatoolkit.sh", "scripts/datatoolkit.ps1", "docs/running.md")

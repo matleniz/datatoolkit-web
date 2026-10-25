@@ -21,7 +21,7 @@ irm https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/data
 ```
 
 **Docker mode** (default when Docker is usable). Other commands: `stop`,
-`update` (latest images), `uninstall` (keeps your data; add `--purge` /
+`update` (re-fetch the pinned compose file and images), `uninstall` (keeps your data; add `--purge` /
 `-Purge` to delete it). Piped, pass them as
 `curl -fsSL …/datatoolkit.sh | sh -s -- stop` or
 `& ([scriptblock]::Create((irm …/datatoolkit.ps1))) stop`. Files live in
@@ -54,7 +54,7 @@ source: URL or local path), persist `DTK_PORT` / `DTK_DATA` in its `.env`, run
 `docker compose -p datatoolkit pull` + `up -d --no-build`, wait for `/` and
 `/api/keys` (logs tail on timeout), then open the browser. They refuse an
 install dir that is a git checkout (set `DTK_INSTALL_DIR`). The `launcher` job in
-`.github/workflows/docker.yml` runs both on ubuntu against the `latest` images.
+`.github/workflows/docker.yml` runs both on ubuntu against the pinned images.
 
 Engine + Studio by hand (images from GHCR):
 
@@ -79,8 +79,8 @@ The in-Studio agent chat in Docker is opt-in: see [Agent chat in Docker](agent.m
 `launcher/` is a small Python package (`dtk-studio`, hatchling) whose only
 dependency is the engine with its `api` and `pdf` extras (`pdf` = pypdf, so PDF
 workspace documents have their text extracted), straight from GitHub
-(`dtk-engine[api,pdf] @ git+https://github.com/matleniz/datatoolkit`; nothing is on
-PyPI). With [uv](https://docs.astral.sh/uv/) installed:
+(`dtk-engine[api,pdf] @ git+https://github.com/matleniz/datatoolkit@<pinned commit>`;
+nothing is on PyPI). With [uv](https://docs.astral.sh/uv/) installed:
 
 ```bash
 uvx --from "git+https://github.com/matleniz/datatoolkit-web#subdirectory=launcher" dtk-studio
@@ -88,13 +88,17 @@ uvx --from "git+https://github.com/matleniz/datatoolkit-web#subdirectory=launche
 
 `dtk-studio [--port 8080] [--no-open] [--refresh]`:
 
-- Studio's build comes from the rolling GitHub release `studio-latest`
-  (`studio-dist.zip` + `studio-dist.zip.sha256`, republished on every push to
-  `main` by `.github/workflows/studio-release.yml`). It is downloaded once,
-  checked against its sha256 and unpacked into `$DTK_HOME/studio/<sha256>/`
-  (`~/.datatoolkit`); `--refresh` checks for a newer build. Offline with a
-  cache, the cache is used. `DTK_STUDIO_URL` overrides where the two assets
-  are fetched from (any URL, `file://` included).
+- Studio's build comes from the pinned GitHub release `studio-<sha7>`
+  (`studio-dist.zip` + `studio-dist.zip.sha256`, published once per push to
+  `main` by `.github/workflows/studio-release.yml`, never replaced; the same
+  workflow also keeps a rolling `studio-latest`, used only if you point
+  `DTK_STUDIO_URL` at it). It is downloaded once, checked against its sha256
+  and unpacked into `$DTK_HOME/studio/<sha256>/` (`~/.datatoolkit`); a build
+  cached from another source is replaced, `--refresh` checks the source
+  again. Offline with a cache, the cache is used. `DTK_STUDIO_URL` overrides
+  where the two assets are fetched from (any URL, `file://` included).
+- At start it prints the engine version and commit and the Studio build's
+  sha256 (`Engine: dtk-engine 0.1.0 (git 43ea5ad); Studio build: sha256 …`).
 - One ASGI app: the engine's `create_app()` answers `/api/...`, every other
   path is the static build with an SPA fallback to `index.html`. Studio still
   only talks HTTP to `/api` (same origin), as behind nginx.
@@ -108,8 +112,33 @@ From a checkout: `npm run build`, `python3 scripts/pack-studio-dist.py dist
 The build runs on other machines, so it must not embed a path of the build
 machine: `node scripts/check-dist-paths.mjs dist` fails on one (run by the
 `ci` and `studio-release` workflows and the Docker build).
-The sh / ps1 scripts take the launcher from `DTK_LAUNCHER_SRC` (default this
-repo's `main`, `launcher/`). The `uv-launcher` workflow runs all of it on
+The sh / ps1 scripts take the launcher from `DTK_LAUNCHER_SRC` (default
+`launcher/` at the pinned commit, see [Pinned version](#pinned-version)). The `uv-launcher` workflow runs all of it on
 ubuntu, macOS and Windows (`scripts/smoke-uv-launcher.py`): `uvx --from
 ./launcher`, the sh one-liner falling back to uv (and installing it), and the
 ps1 one-liner with `-Uv`.
+
+## Pinned version
+
+By default the launchers install one version, set by the release step
+([release.md](release.md)), never by hand:
+
+- `scripts/datatoolkit.sh` / `.ps1` fetch `compose.yml` and `launcher/` from
+  one commit of this repo (not `main`);
+- `compose.yml` names both images by commit (`datatoolkit-engine:sha-<7>`,
+  `datatoolkit-web:sha-<7>`, no `latest`) and builds the engine from that same
+  engine commit;
+- the uv launcher depends on that same engine commit and downloads the Studio
+  build of that same web commit (`studio-<7>`, not `studio-latest`).
+
+To run something else, override the source:
+
+| Env | Mode | Example |
+| --- | --- | --- |
+| `DTK_COMPOSE_SRC` | Docker | another `compose.yml` (URL or path), e.g. one with `:latest` images |
+| `DTK_LAUNCHER_SRC` | uv | `git+https://github.com/matleniz/datatoolkit-web@main#subdirectory=launcher`, or `./launcher` |
+| `DTK_STUDIO_URL` | uv | `https://github.com/matleniz/datatoolkit-web/releases/download/studio-latest` |
+| `UV_OVERRIDE` | uv | file with `dtk-engine[api,pdf] @ git+https://github.com/matleniz/datatoolkit@<ref>` (uv's own override) |
+
+The one-line command itself is fetched from `main`; to install exactly an older
+release, fetch the script from that release's commit instead of `main`.

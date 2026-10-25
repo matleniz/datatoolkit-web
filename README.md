@@ -18,8 +18,10 @@ curl -fsSL https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scrip
 
 On Windows (PowerShell):
 `irm https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/datatoolkit.ps1 | iex`.
-Stop, update and uninstall commands, plus the Docker and uv details, are in
-[docs/running.md](docs/running.md).
+It installs one pinned version of the engine and Studio, the same in both
+modes; `DTK_COMPOSE_SRC`, `DTK_LAUNCHER_SRC` or `DTK_STUDIO_URL` pick another
+source. Stop, update and uninstall commands, plus the Docker and uv details, are in
+[docs/running.md](docs/running.md); moving the pin is in [docs/release.md](docs/release.md).
 
 ## Example: develop against a local engine
 
@@ -38,7 +40,8 @@ The checks are `npm run lint`, `npm run typecheck`, `npm test` and
 
 In this repo:
 
-- [docs/running.md](docs/running.md): one-line launchers, Docker, uv launcher (`dtk-studio`)
+- [docs/running.md](docs/running.md): one-line launchers, Docker, uv launcher (`dtk-studio`), pinned version
+- [docs/release.md](docs/release.md): the release step that pins the installers
 - [docs/development.md](docs/development.md): run from a checkout, scripts and checks, layout, fixtures, screenshots
 - [docs/e2e.md](docs/e2e.md): the Playwright e2e suite
 - [docs/agent.md](docs/agent.md): agent bridge, agent panel, agent packs, agent chat in Docker
