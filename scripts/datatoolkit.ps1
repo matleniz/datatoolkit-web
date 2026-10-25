@@ -10,10 +10,15 @@
 # Env: DTK_PORT (8080), DTK_DATA (<install dir>\datatoolkit-data, Docker mode),
 # DTK_INSTALL_DIR (install dir, %USERPROFILE%\datatoolkit), DTK_NO_OPEN=1 (do
 # not open the browser), DTK_TIMEOUT (seconds to wait for the app, 300),
-# DTK_COMPOSE_SRC (URL or local path of the compose.yml to install; default:
-# this repo's main), DTK_LAUNCHER_SRC (uv mode: what `uv tool run --from` gets;
-# default: this repo's main branch, launcher/). DTK_HOME is the engine's data
-# home (uv mode, %USERPROFILE%\.datatoolkit), not the install dir.
+# DTK_COMPOSE_SRC (URL or local path of the compose.yml to install),
+# DTK_LAUNCHER_SRC (uv mode: what `uv tool run --from` gets). DTK_HOME is the
+# engine's data home (uv mode, %USERPROFILE%\.datatoolkit), not the install dir.
+#
+# Pinned: by default this installs ONE version, the compose.yml and launcher/
+# of the commit in $DefaultComposeSrc / $DefaultLauncherSrc (engine + Studio
+# images, engine dependency and Studio build all pinned there).
+# scripts/pin-release.py updates them at release time; DTK_COMPOSE_SRC /
+# DTK_LAUNCHER_SRC / DTK_STUDIO_URL override.
 #
 # No param() block and no `exit` on purpose: under `irm | iex` the script runs
 # in the caller's session, where `exit` would close the PowerShell window.
@@ -50,12 +55,12 @@ Usage: datatoolkit.ps1 [start|stop|update|uninstall [-Purge]|help] [-Uv]
 
   start      start engine + Studio and open it in the browser (default)
   stop       stop the containers (data is kept)
-  update     pull the latest images and restart
+  update     reinstall the pinned version (compose file + images), restart
   uninstall  remove the containers, images and compose file; keeps your data
              unless -Purge is given
   -Uv        run without Docker, in this window (Ctrl+C stops it); used
              automatically when Docker is missing or not running. `update -Uv`
-             fetches the latest launcher and Studio build.
+             re-fetches the pinned launcher and Studio build.
 
 Piped form: & ([scriptblock]::Create((irm <url>/datatoolkit.ps1))) stop
 '@
@@ -163,7 +168,7 @@ Piped form: & ([scriptblock]::Create((irm <url>/datatoolkit.ps1))) stop
         }
 
         # Run dtk-studio (Studio + engine, one process) in this window through uv.
-        # `update` also refreshes uv's copy of the launcher and the Studio build.
+        # `update` also re-checks uv's copy of the launcher and the Studio build.
         function Start-Uv([bool]$Refresh) {
             $uv = Get-Uv
             $src = if ($env:DTK_LAUNCHER_SRC) { $env:DTK_LAUNCHER_SRC } else { $DefaultLauncherSrc }

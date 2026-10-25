@@ -9,6 +9,7 @@ to the engine over HTTP (same origin, ``/api``), as behind nginx in Docker.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import socket
@@ -17,6 +18,7 @@ import threading
 import time
 import urllib.request
 import webbrowser
+from importlib import metadata
 from pathlib import Path
 
 from starlette.exceptions import HTTPException
@@ -94,6 +96,19 @@ def build_app(dist: Path):
     return app
 
 
+def engine_version() -> str:
+    """``dtk-engine <version>``, plus the git commit it was installed from."""
+    try:
+        dist = metadata.distribution("dtk-engine")
+    except metadata.PackageNotFoundError:
+        return "dtk-engine (not installed)"
+    try:
+        commit = json.loads(dist.read_text("direct_url.json") or "{}")["vcs_info"]["commit_id"]
+    except (KeyError, TypeError, ValueError):
+        return f"dtk-engine {dist.version}"
+    return f"dtk-engine {dist.version} (git {commit[:7]})"
+
+
 def _bind(port: int) -> socket.socket | None:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     if os.name != "nt":
@@ -159,7 +174,9 @@ def main(argv: list[str] | None = None) -> None:
         help="port on 127.0.0.1 (default: $DTK_PORT or 8080; next free one if busy)",
     )
     parser.add_argument("--no-open", action="store_true", help="do not open the browser")
-    parser.add_argument("--refresh", action="store_true", help="download the latest Studio build")
+    parser.add_argument(
+        "--refresh", action="store_true", help="check the Studio build source again"
+    )
     parser.add_argument(
         "--agent",
         nargs="?",
@@ -184,6 +201,7 @@ def main(argv: list[str] | None = None) -> None:
     sock = bind_port(args.port)
     port = sock.getsockname()[1]
     url = f"http://localhost:{port}"
+    print(f"Engine: {engine_version()}; Studio build: sha256 {dist.name[:12]}")
     print(f"Starting datatoolkit Studio on {url} ...")
     sys.stdout.flush()
 
