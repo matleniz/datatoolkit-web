@@ -14,6 +14,7 @@ import {
 import { parseAgentEvent, type AgentOptions, type AgentStatus } from "./protocol";
 import {
   EMPTY_TRANSCRIPT,
+  REVIEW_POLL_MAX_FAILURES,
   reviewCommands,
   transcriptReducer,
   type Transcript,
@@ -98,14 +99,31 @@ export function useAgentChat(token: string): AgentChat {
 
   // A reviewed command ends after the turn (Apply / Dismiss in Studio): the
   // engine's command status is what the agent sees, so the chip follows it.
+  // Failed polls are counted (the chip says "status unavailable" after
+  // REVIEW_POLL_MAX_FAILURES in a row) and logged up to that point, not on
+  // every tick while the engine stays down.
   const waiting = reviewCommands(transcript).join(" ");
   useEffect(() => {
     if (!waiting) return;
+    const failures = new Map<string, number>();
     const timer = window.setInterval(() => {
       for (const command of waiting.split(" ")) {
         getCommandStatus(token, command)
-          .then((s) => s && dispatch({ type: "command_status", command, ...s }))
-          .catch(() => undefined);
+          .then((s) => {
+            if (failures.get(command)) console.info(`agent review ${command}: status reachable again`);
+            failures.delete(command);
+            dispatch({ type: "command_poll", command, ok: true });
+            if (s) dispatch({ type: "command_status", command, ...s });
+          })
+          .catch((err: unknown) => {
+            const n = (failures.get(command) ?? 0) + 1;
+            failures.set(command, n);
+            if (n <= REVIEW_POLL_MAX_FAILURES) {
+              const gaveUp = n === REVIEW_POLL_MAX_FAILURES ? " (showing status unavailable)" : "";
+              console.warn(`agent review ${command}: status poll failed ${n}x${gaveUp}:`, message(err));
+            }
+            dispatch({ type: "command_poll", command, ok: false });
+          });
       }
     }, REVIEW_POLL_MS);
     return () => window.clearInterval(timer);
