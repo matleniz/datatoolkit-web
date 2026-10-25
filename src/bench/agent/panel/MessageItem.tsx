@@ -5,7 +5,7 @@ import { chipJump, chipLabel, chipTarget } from "./chips";
 import { renderMarkdown } from "./markdown";
 import { createThrottle } from "./throttle";
 import { LINES_MAX, summaryLines } from "./toolSummary";
-import { formatTokens, type TranscriptItem } from "./transcript";
+import { formatTokens, statusUnavailable, type TranscriptItem } from "./transcript";
 
 /** How long a chip click highlights what it points at (same as AgentBridge). */
 const TOUCH_MS = 2_000;
@@ -45,6 +45,7 @@ const STATUS_TEXT = {
   ok: "done",
   error: "failed",
 } as const;
+const UNAVAILABLE_TEXT = "status unavailable";
 
 /** One value, cut with a "show more" toggle when long. */
 function Value({ line }: { line: ReturnType<typeof summaryLines>[number] }) {
@@ -105,6 +106,7 @@ function ToolChip({ item }: { item: Extract<TranscriptItem, { kind: "tool" }> })
   const bodyId = useId();
   const target = chipTarget(item.name, item.input);
   const failed = item.status === "error" || item.status === "rejected";
+  const unavailable = statusUnavailable(item);
   const jump = failed ? null : chipJump(target, workspace?.steps ?? []);
 
   const go = () => {
@@ -118,7 +120,10 @@ function ToolChip({ item }: { item: Extract<TranscriptItem, { kind: "tool" }> })
   };
 
   return (
-    <div className={`agent-chip ${item.status}`} data-tool-call={item.name}>
+    <div
+      className={`agent-chip ${item.status}${unavailable ? " unavailable" : ""}`}
+      data-tool-call={item.name}
+    >
       <div className="agent-chip-row">
         <button
           type="button"
@@ -130,7 +135,12 @@ function ToolChip({ item }: { item: Extract<TranscriptItem, { kind: "tool" }> })
           <span className="agent-chip-caret" aria-hidden="true">{open ? "▾" : "▸"}</span>
           <span className="agent-chip-dot" aria-hidden="true" />
           <span className="agent-chip-label">{chipLabel(item.name, target)}</span>
-          <span className="agent-chip-status">{STATUS_TEXT[item.status]}</span>
+          <span
+            className="agent-chip-status"
+            title={unavailable ? "Studio cannot reach the engine to read this review's outcome" : undefined}
+          >
+            {unavailable ? UNAVAILABLE_TEXT : STATUS_TEXT[item.status]}
+          </span>
         </button>
         {jump ? (
           <button
