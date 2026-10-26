@@ -392,6 +392,13 @@
   gap: 4px;
 }
 
+.file-detected-text {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* one line: its height never depends on the engine text */
+}
+
 .btn-file-options {
   height: 22px;
   padding: 0 8px;

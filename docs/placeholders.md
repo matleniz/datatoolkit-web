@@ -33,10 +33,10 @@ Colours, radius and timing are tokens in `src/theme/tokens.css`
   row height (`--dtk-grid-row-h` + the 1px row border), same column widths, same
   header band, same matrix cell. `e2e/issue328-placeholders.spec.ts` holds each
   request at the network, then checks the loaded boxes against the placeholder
-  ones. Not reserved: the wrapping of a file's "detected" line on Sources, which
-  depends on the engine's text.
+  ones; a file's "detected" line on Sources is one ellipsized line (full text in
+  its tooltip), so file rows keep their height.
 - **Accessible.** Skeletons are `aria-hidden`. A `PendingRegion` is a polite
-  live region carrying the label ("Loading rows"); the grid keeps `aria-busy`.
+  live region (label set after mount, so it is announced) carrying the label ("Loading rows"); the grid keeps `aria-busy`.
   Classes of real rows (`.grid-row`, `.grid-td`) are never used by placeholders,
   so specs and tools count only data.
 - **Reduced motion.** `prefers-reduced-motion: reduce` turns the shimmer off

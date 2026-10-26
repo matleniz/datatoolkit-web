@@ -8,7 +8,7 @@ import {
   type FileRole,
   type SourceFileItem,
 } from "./sourcesLogic";
-import { PendingRegion, Skeleton } from "../../placeholder/Skeleton";
+import { Skeleton } from "../../placeholder/Skeleton";
 import { fileWarning } from "./sourcesScreenLogic";
 import { SourceOptionsEditor } from "./SourceOptionsEditor";
 import { SourcesDocuments } from "./SourcesDocuments";
@@ -102,9 +102,7 @@ function FileBlock({
           <span className="file-name">{fl.name}</span>
           <span className="file-cols" title={fl.cols.join(", ")}>
             {loading && fl.cols.length === 0 ? (
-              <PendingRegion label={`Reading the columns of ${fl.name}`}>
-                <Skeleton width="70%" height={9} />
-              </PendingRegion>
+              <Skeleton width="70%" height={9} />
             ) : (
               fl.cols.join(", ")
             )}
@@ -112,7 +110,12 @@ function FileBlock({
         </div>
 
         <div className="file-detected">
-          {fl.detected || formatDetectedFromSpec(fl.spec, null)}
+          <span
+            className="file-detected-text"
+            title={fl.detected || formatDetectedFromSpec(fl.spec, null)}
+          >
+            {fl.detected || formatDetectedFromSpec(fl.spec, null)}
+          </span>
           <button
             type="button"
             className={`btn-file-options ${optsOpen ? "on" : ""}`}

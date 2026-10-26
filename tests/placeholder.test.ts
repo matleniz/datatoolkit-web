@@ -48,7 +48,7 @@ describe("placeholder primitives", () => {
   });
 
   it("SkeletonRow keeps each cell's height and width", () => {
-    const host = render(createElement(SkeletonRow, { widths: [96, 130, 112], height: 30 }));
+    const host = render(createElement(SkeletonRow, { widths: [96, 130, 112], height: 30, className: "r", cellClassName: "c" }));
     const row = host.firstElementChild as HTMLElement;
     const cells = [...row.children] as HTMLElement[];
     expect(cells.map((c) => c.style.width)).toEqual(["96px", "130px", "112px"]);
@@ -60,15 +60,15 @@ describe("placeholder primitives", () => {
       createElement(PendingRegion, { label: "Loading rows", children: createElement(Skeleton, {}) }),
     );
     const region = host.querySelector('[role="status"]')!;
+    // Announced after mount (live regions skip their initial content).
     expect(region.getAttribute("aria-live")).toBe("polite");
     expect(region.querySelector(".sr-only")!.textContent).toBe("Loading rows");
     expect(region.querySelector('[aria-hidden="true"] .sk')).not.toBeNull();
   });
 
   it("Spinner is decorative", () => {
-    const el = render(createElement(Spinner, { size: "md" })).firstElementChild!;
+    const el = render(createElement(Spinner, {})).firstElementChild!;
     expect(el.getAttribute("aria-hidden")).toBe("true");
-    expect(el.className).toContain("md");
   });
 });
 

@@ -97,7 +97,7 @@ function GridSkeletonRows({ cols, leftPad }: { cols: DisplayCol[]; leftPad: numb
           key={r}
           className="sk-grid-row"
           cellClassName="sk-grid-td"
-          height={ROW_H}
+          height="var(--dtk-grid-row-h)"
           seed={r}
           lead={
             <>
@@ -419,8 +419,6 @@ function rowNumClass(selected: boolean, removed: boolean): string {
 const SKELETON_ROWS = 14;
 /** Placeholder columns when the column list itself is not known yet. */
 const SKELETON_FALLBACK_COLS = 6;
-/** Matches `--dtk-grid-row-h`. */
-const ROW_H = 30;
 
 /** W2 — data grid with horizontally windowed columns (MAT-152). */
 /** The bench load error; a user Cancel reads as a neutral notice (#250). */

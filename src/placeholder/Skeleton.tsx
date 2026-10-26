@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { skeletonWidths } from "./widths";
 import "./placeholder.css";
 
@@ -57,10 +57,10 @@ export function SkeletonText({ lines = 3, seed = 0, lineHeight = 18 }: SkeletonT
 interface SkeletonRowProps {
   /** One width (px) per cell. */
   widths: number[];
-  /** Cell height in px; match the real row (the row's own borders come on top). */
-  height: number;
-  className?: string;
-  cellClassName?: string;
+  /** Cell height (px or CSS length); match the real row (its borders come on top). */
+  height: Size;
+  className: string;
+  cellClassName: string;
   /** Shown before the cells (e.g. the row number column). */
   lead?: ReactNode;
   /** Fraction of the cell filled by the bar, varied per cell. */
@@ -78,15 +78,15 @@ export function SkeletonRow({
 }: SkeletonRowProps) {
   const bars = skeletonWidths(widths.length, seed, 40, 85);
   return (
-    <div className={className ?? "sk-row"} aria-hidden="true">
+    <div className={className} aria-hidden="true">
       {lead}
       {widths.map((w, i) => (
         <span
           key={i}
-          className={cellClassName ?? "sk-cell"}
-          style={{ width: w, height, flexShrink: 0 }}
+          className={cellClassName}
+          style={{ width: w, height: px(height), flexShrink: 0 }}
         >
-          <Skeleton width={`${bars[i]}%`} height={Math.min(12, height - 12)} />
+          <Skeleton width={`${bars[i]}%`} height={12} />
         </span>
       ))}
     </div>
@@ -94,14 +94,12 @@ export function SkeletonRow({
 }
 
 interface SpinnerProps {
-  /** `sm` 12px (inline, next to a label), `md` 20px (centred on a panel). */
-  size?: "sm" | "md";
   className?: string;
 }
 
 /** The indeterminate spinner. Decorative: pair it with a text label. */
-export function Spinner({ size = "sm", className }: SpinnerProps) {
-  const cls = ["sk-spinner", size === "md" ? "md" : "", className ?? ""].filter(Boolean).join(" ");
+export function Spinner({ className }: SpinnerProps) {
+  const cls = className ? `sk-spinner ${className}` : "sk-spinner";
   return <span className={cls} aria-hidden="true" />;
 }
 
@@ -118,9 +116,12 @@ interface PendingRegionProps {
  * from assistive tech, so only the label is announced.
  */
 export function PendingRegion({ label, className, children }: PendingRegionProps) {
+  // A live region announces changes, not its first content: mount it empty.
+  const [announced, setAnnounced] = useState("");
+  useEffect(() => setAnnounced(label), [label]);
   return (
     <div className={className} role="status" aria-live="polite" data-pending="1">
-      <span className="sr-only">{label}</span>
+      <span className="sr-only">{announced}</span>
       <div aria-hidden="true" className="sk-region-body">
         {children}
       </div>

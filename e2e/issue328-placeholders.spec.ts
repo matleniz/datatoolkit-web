@@ -168,7 +168,8 @@ test("sources: result card placeholders while the files are inspected", async ({
   const card = page.getByLabel("Result schema");
   await expect(card.locator(".res-chips [role=status]")).toContainText("Loading the columns", { timeout: 30_000 });
   const before = (await card.boundingBox())!;
-  const fileBefore = (await page.locator(".file-info").first().boundingBox())!;
+  const rowHeights = () => page.locator(".files-table-row").evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));
+  const rowsBefore = await rowHeights();
   await expect(page.locator(".file-cols .sk").first()).toBeVisible();
   await card.screenshot({ path: join(shots, "sources-card-placeholder.png") });
   await shot(page, "sources-placeholder.png");
@@ -177,8 +178,8 @@ test("sources: result card placeholders while the files are inspected", async ({
   await expect(card.locator(".sk")).toHaveCount(0);
   await card.screenshot({ path: join(shots, "sources-card-loaded.png") });
   await shot(page, "sources-loaded.png");
-  // The card keeps its own box, and a file's name + column line keeps its height.
+  // The card keeps its own box, and every file row keeps its height.
   const after = (await card.boundingBox())!;
   expect(after.height).toBe(before.height);
-  expect((await page.locator(".file-info").first().boundingBox())!.height).toBe(fileBefore.height);
+  expect(await rowHeights()).toEqual(rowsBefore);
 });
