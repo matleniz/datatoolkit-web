@@ -47,10 +47,9 @@ describe("placeholder primitives", () => {
     expect(w(3)).toBeLessThanOrEqual(60);
   });
 
-  it("SkeletonRow keeps the row height and each cell width", () => {
+  it("SkeletonRow keeps each cell's height and width", () => {
     const host = render(createElement(SkeletonRow, { widths: [96, 130, 112], height: 30 }));
     const row = host.firstElementChild as HTMLElement;
-    expect(row.style.height).toBe("30px");
     const cells = [...row.children] as HTMLElement[];
     expect(cells.map((c) => c.style.width)).toEqual(["96px", "130px", "112px"]);
     expect(cells.every((c) => c.style.height === "30px")).toBe(true);
@@ -58,7 +57,7 @@ describe("placeholder primitives", () => {
 
   it("PendingRegion announces its label once and hides the shapes", () => {
     const host = render(
-      createElement(PendingRegion, { label: "Loading rows" }, createElement(Skeleton, {})),
+      createElement(PendingRegion, { label: "Loading rows", children: createElement(Skeleton, {}) }),
     );
     const region = host.querySelector('[role="status"]')!;
     expect(region.getAttribute("aria-live")).toBe("polite");

@@ -75,6 +75,7 @@ The project CHECK (all of the above plus the full e2e) is `bash scripts/fleet-ch
 Design tokens: `src/theme/tokens.css` (prototype palette + IBM Plex /
 Instrument Serif). Features use either one plain global stylesheet or CSS
 modules — see [src/theme/README.md](../src/theme/README.md). No CSS framework.
+Pending data uses the shared skeletons and spinner: [Placeholders](placeholders.md).
 
 ## Layout
 
@@ -84,6 +85,7 @@ modules — see [src/theme/README.md](../src/theme/README.md). No CSS framework.
 | `src/state/` | `AppStore` (React context + reducer), browser storage (dock, panels, dismissed suggestions), workspace save gate |
 | `src/screens/sources/`, `src/screens/align/` | Sources and train / test alignment screens |
 | `src/bench/` | Workbench: `pipeline`, `grid`, `inspector`, `editor`, `contextmenu`, `left` (Suggestions), `dock` (analysis windows + Chart), `toolrail`, `export` |
+| `src/placeholder/` | Skeletons and spinner for pending data ([Placeholders](placeholders.md)) |
 | `src/theme/` | Design tokens |
 | `tests/` | Vitest unit tests and their JSON fixtures |
 | `e2e/` | Playwright specs, `helpers.ts`, data fixtures |

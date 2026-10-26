@@ -23,14 +23,17 @@ interface SourcesResultCardProps {
   onReplaceTrain: () => void;
 }
 
+/** While `loading`, the placeholders stand in for the "Loading…" banner. */
 function ErrorBanners({
   engineErrors,
   status,
-}: Pick<SourcesResultCardProps, "engineErrors" | "status">) {
+  loading,
+}: Pick<SourcesResultCardProps, "engineErrors" | "status" | "loading">) {
   const { parseErrorHint, emptyTrainHint } = status;
   return (
     <>
-      {visibleEngineErrors(engineErrors, status).map((err, i) =>
+      {/* Errors derived from columns not read yet would be false alarms. */}
+      {(loading ? [] : visibleEngineErrors(engineErrors, status)).map((err, i) =>
         err === CANCELLED_MESSAGE ? (
           <div key={i} className="engine-notice-box" role="status">
             {err}
@@ -50,7 +53,7 @@ function ErrorBanners({
           {parseErrorHint}
         </div>
       ) : null}
-      {showEmptyTrainBanner(status, engineErrors) ? (
+      {!loading && showEmptyTrainBanner(status, engineErrors) ? (
         <div className="engine-error-box" role="status">
           {emptyTrainHint}
         </div>
@@ -110,10 +113,10 @@ export function SourcesResultCard(props: SourcesResultCardProps) {
     status,
     loading = false,
   } = props;
-  const NONE = "—";
-  const shapeSk = (text: string) =>
-    loading && text === NONE ? <Skeleton className="res-shape-sk" width={56} height={11} /> : text;
+  // Nothing known yet: the shapes and the column chips are placeholders.
   const chipsSk = loading && displayedCols.length === 0;
+  const shapeSk = (text: string) =>
+    chipsSk ? <Skeleton className="res-shape-sk" width={56} height={11} /> : text;
   return (
     <section className="sources-card-padded" aria-label="Result schema">
       <div className="res-header">
@@ -145,7 +148,7 @@ export function SourcesResultCard(props: SourcesResultCardProps) {
         <span className="legend-merge">■ merged</span>
       </div>
 
-      <ErrorBanners engineErrors={props.engineErrors} status={status} />
+      <ErrorBanners engineErrors={props.engineErrors} status={status} loading={loading} />
       {status.parseErrorHint ? <RecoveryActions {...props} /> : null}
     </section>
   );

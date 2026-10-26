@@ -57,7 +57,7 @@ export function SkeletonText({ lines = 3, seed = 0, lineHeight = 18 }: SkeletonT
 interface SkeletonRowProps {
   /** One width (px) per cell. */
   widths: number[];
-  /** Row height in px; match the real row. */
+  /** Cell height in px; match the real row (the row's own borders come on top). */
   height: number;
   className?: string;
   cellClassName?: string;
@@ -78,7 +78,7 @@ export function SkeletonRow({
 }: SkeletonRowProps) {
   const bars = skeletonWidths(widths.length, seed, 40, 85);
   return (
-    <div className={className ?? "sk-row"} style={{ height }} aria-hidden="true">
+    <div className={className ?? "sk-row"} aria-hidden="true">
       {lead}
       {widths.map((w, i) => (
         <span

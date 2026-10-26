@@ -376,6 +376,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   width: 235px;
+  min-height: 14px; /* the line is reserved while the columns are read */
 }
 
 .file-detected {

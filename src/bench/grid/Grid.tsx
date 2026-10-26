@@ -62,23 +62,46 @@ function ColSpacer({ width }: { width: number }) {
   return <div className="grid-col-spacer" aria-hidden="true" style={{ width }} />;
 }
 
-/** Placeholder rows: the box of a real row, so nothing moves when rows arrive. */
-function GridSkeletonRows({ cols, leftPad }: { cols: DisplayCol[]; leftPad: number }) {
-  const widths = cols.length > 0
+/** Column widths of the placeholders: the real ones, else a plausible set. */
+function placeholderWidths(cols: DisplayCol[]): number[] {
+  return cols.length > 0
     ? cols.map((c) => colWidth(c.kind))
     : Array.from({ length: SKELETON_FALLBACK_COLS }, () => colWidth("number"));
+}
+
+/**
+ * Header cells while the column list itself is awaited: keeps the 100px header
+ * band in place, so the rows do not drop by that much when the columns arrive.
+ */
+function GridSkeletonHeader() {
+  return (
+    <>
+      {placeholderWidths([]).map((w, i) => (
+        <span key={i} className="sk-grid-th" style={{ width: w }} aria-hidden="true">
+          <Skeleton width="60%" height={12} />
+          <Skeleton width={36} height={12} />
+          <Skeleton height={22} />
+        </span>
+      ))}
+    </>
+  );
+}
+
+/** Placeholder rows: the box of a real row, so nothing moves when rows arrive. */
+function GridSkeletonRows({ cols, leftPad }: { cols: DisplayCol[]; leftPad: number }) {
+  const widths = placeholderWidths(cols);
   return (
     <PendingRegion label="Loading rows">
       {Array.from({ length: SKELETON_ROWS }, (_, r) => (
         <SkeletonRow
           key={r}
-          className="grid-row grid-row-sk"
-          cellClassName="grid-td grid-td-sk"
+          className="sk-grid-row"
+          cellClassName="sk-grid-td"
           height={ROW_H}
           seed={r}
           lead={
             <>
-              <span className="grid-rn grid-rn-sk" />
+              <span className="sk-grid-rn" />
               <ColSpacer width={leftPad} />
             </>
           }
@@ -123,6 +146,16 @@ function GridFooter({
     );
   }
   return null;
+}
+
+/** The header histograms shimmer from the rows' arrival until the profiles land. */
+function profilesPending(o: {
+  loading: boolean;
+  benchError: string | null | undefined;
+  profilesIdentity: string | null;
+  identityKey: string;
+}): boolean {
+  return !o.loading && !o.benchError && o.profilesIdentity !== o.identityKey;
 }
 
 function headerAlerts(c: DisplayCol, pr: ColumnProfile | undefined) {
@@ -429,7 +462,10 @@ export function Grid() {
     rowsIdentity,
     columnNotes,
     profileSample,
+    profilesIdentity,
   } = useWorkbenchData();
+  // Rows are in but the profiles of this view are still on their way.
+  const profilesAwaited = profilesPending({ loading, benchError, profilesIdentity, identityKey: identity.key });
 
   const { workspace } = useAppState();
   const steps = workspace?.steps ?? [];
@@ -800,12 +836,13 @@ export function Grid() {
                 touched={!!agentTouch?.columns.includes(c.name)}
                 profile={profiles.get(c.name)}
                 note={columnNotes.notes[c.name]}
-                profilePending={loading && !profiles.has(c.name)}
+                profilePending={profilesAwaited && !profiles.has(c.name)}
                 dispatch={dispatch}
                 reorder={reorder}
               />
             ))}
             <ColSpacer width={windowed.rightPad} />
+            {showSkeleton && display.cols.length === 0 ? <GridSkeletonHeader /> : null}
           </div>
 
           {display.rows.map((row) => {

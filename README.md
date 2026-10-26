@@ -45,6 +45,7 @@ In this repo:
 - [docs/development.md](docs/development.md): run from a checkout, scripts and checks, layout, fixtures, screenshots
 - [docs/e2e.md](docs/e2e.md): the Playwright e2e suite
 - [docs/agent.md](docs/agent.md): agent bridge, agent panel, agent packs, agent chat in Docker
+- [docs/placeholders.md](docs/placeholders.md): skeletons and spinner for pending data, no layout shift
 - [docs/behaviour.md](docs/behaviour.md): behaviour notes (saved charts, workspace saves, suggestions, step editor, undo / redo)
 - `docs/prototype.dc.html`: the original behaviour reference (2026-09-27). It
   predates later UX changes such as the Suggestions-only left panel and the

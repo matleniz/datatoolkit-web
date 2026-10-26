@@ -186,6 +186,7 @@ export function SourcesScreen() {
         <BusyIndicator scope="source" label="Loading the dataset…" />
 
         <SourcesFilesCard
+          loading={core.sourcesLoading}
           files={files}
           roles={roles}
           guessedMap={src.guessedMap}
@@ -228,6 +229,7 @@ export function SourcesScreen() {
             commonMergeCols={commonMergeCols}
             mergeKey={mergeKey}
             mergeInTest={mergeInTest}
+            loading={core.sourcesLoading}
             infoText={buildResult.info.merge}
             patch={patch}
           />
