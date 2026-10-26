@@ -619,6 +619,16 @@
   color: var(--dtk-ink);
 }
 
+.res-chips {
+  min-height: 22px; /* one chip row, reserved while the columns load */
+}
+
+.res-shape-sk {
+  display: inline-block;
+  vertical-align: middle;
+  width: 56px;
+}
+
 .res-legend {
   display: flex;
   gap: 14px;

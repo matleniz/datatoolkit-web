@@ -416,6 +416,13 @@
   line-height: 1.5;
 }
 
+.dock-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+
 .dock-empty-state {
   margin: 8px 0;
   padding: 14px 16px;

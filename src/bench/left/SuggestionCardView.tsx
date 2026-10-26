@@ -3,6 +3,7 @@ import type { Dispatch } from "react";
 import type { AppAction } from "../../state/AppStore";
 import { toEngineParams } from "../presets";
 import { Chips } from "../Chips";
+import { PendingRegion, Skeleton, SkeletonText } from "../../placeholder/Skeleton";
 import { toolForKey } from "../toolrail/tools";
 import {
   STAGE_COLOR,
@@ -170,5 +171,31 @@ export function SuggestionCardView({
       )}
       {dismissed ? null : <ViewFullReport card={card} dispatch={dispatch} />}
     </div>
+  );
+}
+
+/** Cards in the placeholder: about what a typical result list shows. */
+const SKELETON_CARDS = 3;
+
+/** Card-shaped placeholders while the suggestion analysis runs. */
+export function SuggestionsSkeleton() {
+  return (
+    <PendingRegion label="Loading suggestions" className="sug-skeleton">
+      {Array.from({ length: SKELETON_CARDS }, (_, i) => (
+        <div key={i} className="sug-card sug-card-sk" aria-hidden="true">
+          <div className="sug-stage">
+            <Skeleton width={8} height={8} radius={4} />
+            <Skeleton width={64} height={10} />
+          </div>
+          <div className="sug-title">
+            <Skeleton width={`${60 + ((i * 17) % 30)}%`} height={13} />
+          </div>
+          <div className="sug-detail">
+            <SkeletonText lines={2} seed={i + 1} lineHeight={17} />
+          </div>
+          <Skeleton className="sug-sk-btn" width={128} height={28} radius={5} />
+        </div>
+      ))}
+    </PendingRegion>
   );
 }

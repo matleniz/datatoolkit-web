@@ -175,6 +175,23 @@
   border-radius: 8px;
 }
 
+.sug-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sug-card-sk .sug-title,
+.sug-card-sk .sug-detail {
+  display: flex;
+  align-items: center;
+}
+.sug-card-sk .sug-title {
+  height: 17px;
+}
+.sug-sk-btn {
+  margin-top: 8px;
+}
+
 .sug-stage {
   display: flex;
   align-items: center;

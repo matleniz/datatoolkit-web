@@ -33,6 +33,7 @@ import { columnWindow } from "./columnWindow";
 import { dropOrder, planReorder, type ReorderParams } from "./reorderDrag";
 import { NoteIcon } from "../notes/NotePopover";
 import { GridViewBar } from "./GridViewBar";
+import { PendingRegion, Skeleton, SkeletonRow } from "../../placeholder/Skeleton";
 
 type Dispatch = ReturnType<typeof useAppDispatch>;
 type Selection = ReturnType<typeof useAppState>["selection"];
@@ -59,6 +60,69 @@ function isTypingTarget(t: EventTarget | null): boolean {
 function ColSpacer({ width }: { width: number }) {
   if (width <= 0) return null;
   return <div className="grid-col-spacer" aria-hidden="true" style={{ width }} />;
+}
+
+/** Placeholder rows: the box of a real row, so nothing moves when rows arrive. */
+function GridSkeletonRows({ cols, leftPad }: { cols: DisplayCol[]; leftPad: number }) {
+  const widths = cols.length > 0
+    ? cols.map((c) => colWidth(c.kind))
+    : Array.from({ length: SKELETON_FALLBACK_COLS }, () => colWidth("number"));
+  return (
+    <PendingRegion label="Loading rows">
+      {Array.from({ length: SKELETON_ROWS }, (_, r) => (
+        <SkeletonRow
+          key={r}
+          className="grid-row grid-row-sk"
+          cellClassName="grid-td grid-td-sk"
+          height={ROW_H}
+          seed={r}
+          lead={
+            <>
+              <span className="grid-rn grid-rn-sk" />
+              <ColSpacer width={leftPad} />
+            </>
+          }
+          widths={widths}
+        />
+      ))}
+    </PendingRegion>
+  );
+}
+
+function GridFooter({
+  skeleton,
+  shown,
+  total,
+  hasMore,
+}: {
+  skeleton: boolean;
+  shown: number;
+  total: number;
+  hasMore: boolean;
+}) {
+  if (skeleton) {
+    return (
+      <div className="grid-more" aria-hidden="true">
+        <Skeleton width={96} height={10} />
+      </div>
+    );
+  }
+  if (total > shown) {
+    return (
+      <div className="grid-more">
+        Showing {shown} of {total} rows
+        {hasMore ? " · scroll for more" : ""}
+      </div>
+    );
+  }
+  if (total > 0) {
+    return (
+      <div className="grid-more">
+        {total} row{total === 1 ? "" : "s"}
+      </div>
+    );
+  }
+  return null;
 }
 
 function headerAlerts(c: DisplayCol, pr: ColumnProfile | undefined) {
@@ -103,6 +167,7 @@ export function ColumnHeader({
   touched,
   profile: pr,
   note,
+  profilePending,
   dispatch,
   reorder,
 }: {
@@ -113,6 +178,8 @@ export function ColumnHeader({
   profile: ColumnProfile | undefined;
   /** Column note (#152), shown on hover; edited from the column menu. */
   note: string | undefined;
+  /** The profile is awaited: the histogram and quality bar shimmer in place. */
+  profilePending: boolean;
   dispatch: Dispatch;
   reorder: ReorderDrag;
 }) {
@@ -205,30 +272,40 @@ export function ColumnHeader({
         <span className="miss-label">{miss ? `${miss}% ∅` : ""}</span>
       </span>
       <span className="th-bars">
-        {bars.map((b, i) => (
-          <span
-            key={i}
-            title={b.tip}
-            style={{
-              flex: "1 1 0",
-              minWidth: 2,
-              height: b.heightPx,
-              background: barColor,
-              borderRadius: "1px 1px 0 0",
-            }}
-          />
-        ))}
+        {profilePending ? (
+          <Skeleton height={14} />
+        ) : (
+          bars.map((b, i) => (
+            <span
+              key={i}
+              title={b.tip}
+              style={{
+                flex: "1 1 0",
+                minWidth: 2,
+                height: b.heightPx,
+                background: barColor,
+                borderRadius: "1px 1px 0 0",
+              }}
+            />
+          ))
+        )}
       </span>
-      <span className="miss-bar" title={qualityTip(quality)}>
-        <span className="q-valid" style={{ width: `${quality.validPct}%` }} />
-        <span
-          className="q-mismatched"
-          style={{ width: `${quality.mismatchedPct}%` }}
-        />
-        <span
-          className="q-missing"
-          style={{ width: `${quality.missingPct}%` }}
-        />
+      <span className="miss-bar" title={profilePending ? undefined : qualityTip(quality)}>
+        {profilePending ? (
+          <Skeleton height={4} radius={2} />
+        ) : (
+          <>
+            <span className="q-valid" style={{ width: `${quality.validPct}%` }} />
+            <span
+              className="q-mismatched"
+              style={{ width: `${quality.mismatchedPct}%` }}
+            />
+            <span
+              className="q-missing"
+              style={{ width: `${quality.missingPct}%` }}
+            />
+          </>
+        )}
       </span>
       <span className="th-alerts" aria-hidden="true">
         {alerts.map((a) => (
@@ -304,6 +381,13 @@ function rowNumClass(selected: boolean, removed: boolean): string {
   if (selected) return "grid-rn on";
   return removed ? "grid-rn removed" : "grid-rn";
 }
+
+/** Placeholder rows shown while the first page of rows is awaited. */
+const SKELETON_ROWS = 14;
+/** Placeholder columns when the column list itself is not known yet. */
+const SKELETON_FALLBACK_COLS = 6;
+/** Matches `--dtk-grid-row-h`. */
+const ROW_H = 30;
 
 /** W2 — data grid with horizontally windowed columns (MAT-152). */
 /** The bench load error; a user Cancel reads as a neutral notice (#250). */
@@ -487,6 +571,10 @@ export function Grid() {
     () => columnWindow(display.cols, scrollLeft, Math.max(0, viewportW - 44)),
     [display.cols, scrollLeft, viewportW],
   );
+
+  // Rows not loaded yet: placeholder rows with the real row height and column
+  // widths, so the header and the scroll width do not move when rows arrive.
+  const showSkeleton = loading && display.rows.length === 0;
 
   useEffect(() => {
     reportVisibleColumns(windowed.visible.map((c) => c.name));
@@ -689,9 +777,6 @@ export function Grid() {
         ref={scrollRef}
         onScroll={onScroll}
       >
-        {loading && display.rows.length === 0 ? (
-          <div className="grid-more">Loading rows…</div>
-        ) : null}
         {!loading && total === 0 && display.cols.length > 0 ? (
           <div
             className="grid-empty-state"
@@ -715,6 +800,7 @@ export function Grid() {
                 touched={!!agentTouch?.columns.includes(c.name)}
                 profile={profiles.get(c.name)}
                 note={columnNotes.notes[c.name]}
+                profilePending={loading && !profiles.has(c.name)}
                 dispatch={dispatch}
                 reorder={reorder}
               />
@@ -764,17 +850,11 @@ export function Grid() {
               </div>
             );
           })}
+          {showSkeleton ? (
+            <GridSkeletonRows cols={windowed.visible} leftPad={windowed.leftPad} />
+          ) : null}
         </div>
-        {total > display.rows.length ? (
-          <div className="grid-more">
-            Showing {display.rows.length} of {total} rows
-            {hasMore ? " · scroll for more" : ""}
-          </div>
-        ) : total > 0 ? (
-          <div className="grid-more">
-            {total} row{total === 1 ? "" : "s"}
-          </div>
-        ) : null}
+        <GridFooter skeleton={showSkeleton} shown={display.rows.length} total={total} hasMore={hasMore} />
       </div>
     </div>
   );

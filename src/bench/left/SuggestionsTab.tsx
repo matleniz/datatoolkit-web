@@ -14,7 +14,7 @@ import { Chips } from "../Chips";
 import { useWorkbenchData } from "../WorkbenchData";
 import { targetColumnOf } from "./datasetSource";
 import { keyParamsFromSchema } from "./keyParams";
-import { SuggestionCardView } from "./SuggestionCardView";
+import { SuggestionCardView, SuggestionsSkeleton } from "./SuggestionCardView";
 import {
   SUGGESTION_KEYS,
   listSuggestions,
@@ -163,8 +163,6 @@ export function SuggestionsTab() {
         <div className="muted" role="status" data-sug-rechecking="1">
           Re-checking…
         </div>
-      ) : loading || (!gridReady && workspace?.datasets.train.x.path) ? (
-        <div className="muted">Loading suggestions…</div>
       ) : null}
       {error ? (
         <div className="engine-error" role="alert">
@@ -182,6 +180,9 @@ export function SuggestionsTab() {
         </label>
       ) : null}
       <div className="sug-list" data-sug-cards={shown.length}>
+        {!rechecking && (loading || (!gridReady && workspace?.datasets.train.x.path)) ? (
+          <SuggestionsSkeleton />
+        ) : null}
         {shown.map((item) => (
           <SuggestionCardView
             key={item.card.id}

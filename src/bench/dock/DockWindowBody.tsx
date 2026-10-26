@@ -17,6 +17,7 @@ import { stripNullParams } from "../schemaFields";
 import { toolDef } from "../toolrail/tools";
 import { useDebounced, useKeyedAsync } from "../../hooks";
 import { useWorkbenchData } from "../WorkbenchData";
+import { Skeleton } from "../../placeholder/Skeleton";
 import {
   SCOPEABLE_TOOLS,
   isNumericKind,
@@ -36,6 +37,7 @@ import { AnalysisResultView } from "./AnalysisResultView";
 import { chartPrefillForWindow } from "./chartPrefill";
 import { compareStatsPlan, useCompareStats } from "./compareStats";
 import { DockParamsPanel } from "./DockParamsPanel";
+import { DockSkeleton } from "./DockSkeleton";
 import { IdentityStrip } from "./IdentityStrip";
 
 function histBars(
@@ -472,7 +474,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
     return wrap(
       <div>
         {subchrome}
-        <div className="dock-msg muted">Loading…</div>
+        <DockSkeleton />
       </div>
     );
   }
@@ -548,7 +550,7 @@ export function DockWindowBody({ id }: { id: ToolId }) {
   return wrap(
     <div>
       {subchrome}
-      <div className="dock-msg muted">Loading…</div>
+      <DockSkeleton />
     </div>
   );
 }
@@ -579,8 +581,9 @@ function CompareNative({
   );
   const full = useCompareStats(statsKey, source, plan, target);
   const pending = plan.numeric.length > 0 && !full.ready;
-  const cell = (v: string) => (pending ? "…" : v);
-  const rowsDef: { name: string; fn: (c: string) => string }[] = [
+  // A shimmering bar the size of a value, so the matrix keeps its shape.
+  const cell = (v: string): ReactNode => (pending ? <Skeleton width={24} height={10} /> : v);
+  const rowsDef: { name: string; fn: (c: string) => ReactNode }[] = [
     { name: "type", fn: (c) => profiles.get(c)?.kind ?? "—" },
     { name: "missing", fn: (c) => String(profiles.get(c)?.missing ?? 0) },
     { name: "distinct", fn: (c) => String(profiles.get(c)?.distinct ?? 0) },
@@ -609,6 +612,11 @@ function CompareNative({
   return (
     <div data-compare-cols={cols.join(",")} data-scope-mode="selection">
       <div className="dock-bound muted">{bound}</div>
+      {pending && !full.error ? (
+        <span className="sr-only" role="status">
+          Computing statistics on the full frame…
+        </span>
+      ) : null}
       {full.error && (
         <div className="dock-msg" role="alert">
           Could not compute the statistics on the full frame: {full.error}

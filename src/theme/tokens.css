@@ -69,7 +69,14 @@
   --dtk-kind-date: #b3a6d6;
   --dtk-kind-id: #c9c5ba;
 
+  /* Placeholders (skeletons) */
+  --dtk-skeleton-base: #ecebe5;
+  --dtk-skeleton-shine: #f8f7f3;
+  --dtk-skeleton-radius: 4px;
+  --dtk-skeleton-duration: 1.5s;
+
   /* Layout (prototype shell) */
+  --dtk-grid-row-h: 30px;
   --dtk-header-h: 52px;
   --dtk-pipeline-h: 96px;
   --dtk-left-w: 280px;

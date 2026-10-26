@@ -1,4 +1,5 @@
 import { CANCELLED_MESSAGE } from "../../api/types";
+import { PendingRegion, Skeleton } from "../../placeholder/Skeleton";
 import type { SourceFileItem } from "./sourcesLogic";
 import {
   showEmptyTrainBanner,
@@ -14,6 +15,8 @@ interface SourcesResultCardProps {
   originFor: (col: string) => "x" | "y" | "merge";
   engineErrors: string[];
   status: TrainStatus;
+  /** The sources are being inspected: nothing to show yet. */
+  loading?: boolean;
   trainXFile: SourceFileItem | undefined;
   onReinspect: () => void;
   onOpenTrainOptions: () => void;
@@ -105,17 +108,29 @@ export function SourcesResultCard(props: SourcesResultCardProps) {
     resolvedTarget,
     originFor,
     status,
+    loading = false,
   } = props;
+  const NONE = "—";
+  const shapeSk = (text: string) =>
+    loading && text === NONE ? <Skeleton className="res-shape-sk" width={56} height={11} /> : text;
+  const chipsSk = loading && displayedCols.length === 0;
   return (
     <section className="sources-card-padded" aria-label="Result schema">
       <div className="res-header">
         <span className="sources-card-title">Result</span>
         <span className="res-shape">
-          train {trainShapeText} · test {testShapeText}
+          train {shapeSk(trainShapeText)} · test {shapeSk(testShapeText)}
         </span>
       </div>
 
-      <div className="chips-row">
+      <div className="chips-row res-chips">
+        {chipsSk ? (
+          <PendingRegion label="Loading the columns" className="chips-row">
+            {[64, 88, 72, 96, 56, 80].map((w, i) => (
+              <Skeleton key={i} width={w} height={22} radius={4} />
+            ))}
+          </PendingRegion>
+        ) : null}
         {displayedCols.map((col) => (
           <span key={col} className={`res-col-chip origin-${originFor(col)}`}>
             {col}

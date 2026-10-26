@@ -255,6 +255,7 @@ export function SourcesScreen() {
           }
           engineErrors={core.engineErrors}
           status={status}
+          loading={core.sourcesLoading}
           trainXFile={trainXFile}
           onReinspect={() => void fileActions.reinspectTrain()}
           onOpenTrainOptions={fileActions.openTrainOptions}
