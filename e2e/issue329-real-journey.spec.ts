@@ -15,11 +15,11 @@ const csv = process.env.DTK_BIG_CSV;
 const apiPort = process.env.DTK_E2E_API_PORT ?? "8766";
 const shots = join(dirname(fileURLToPath(import.meta.url)), "screenshots", "continuous-scroll");
 
-/** Resident set (MB) of the engine listening on the e2e port. */
-function serverRssMb(): number {
+/** Resident set (MB) of the engine listening on the e2e port; `hwm` = peak (VmHWM). */
+function serverRssMb(hwm = false): number {
   const pid = execSync(`ss -ltnpH 'sport = :${apiPort}'`).toString().match(/pid=(\d+)/)?.[1];
   if (!pid) return NaN;
-  const m = readFileSync(`/proc/${pid}/status`, "utf8").match(/VmRSS:\s+(\d+) kB/);
+  const m = readFileSync(`/proc/${pid}/status`, "utf8").match(hwm ? /VmHWM:\s+(\d+) kB/ : /VmRSS:\s+(\d+) kB/);
   return m ? Math.round(Number(m[1]) / 1024) : NaN;
 }
 
@@ -87,6 +87,7 @@ test("real journey: scrolling a 4M-row CSV on the duckdb engine (#329)", async (
   report.pagesInMemory = Number(await page.locator(".grid-vbody").getAttribute("data-pages"));
   report.browserAfterMb = await heapMb(page);
   report.serverAfterMb = serverRssMb();
+  report.serverPeakMb = serverRssMb(true);
   console.log("JOURNEY " + JSON.stringify(report));
   expect(report.pagesInMemory).toBeLessThanOrEqual(24);
 });
