@@ -37,7 +37,9 @@ export interface RowPagesOptions {
   seed: WorkspaceRow[];
   /** Resets the store with `seed` (identity + grid view of the frame). */
   resetKey: string;
+  /** One call per burst of failures; `onRecover` follows when a page then loads. */
   onError: (message: string) => void;
+  onRecover?: () => void;
 }
 
 export interface RowPagesApi {
@@ -59,6 +61,8 @@ export function useRowPages(opts: RowPagesOptions): RowPagesApi {
   const failedAt = useRef(new Map<number, number>());
   const range = useRef({ first: 0, end: 0, dir: 1 as 1 | -1 });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const errorShown = useRef(false);
 
   // A new frame / grid view restarts the store in the same render, so the
   // first paint already shows the seeded rows and no stale page.
@@ -67,6 +71,7 @@ export function useRowPages(opts: RowPagesOptions): RowPagesApi {
     for (const c of inflight.current.values()) c.abort();
     inflight.current.clear();
     failedAt.current.clear();
+    errorShown.current = false;
     const store = new RowPages();
     store.seed(opts.seed);
     storeRef.current = store;
@@ -77,7 +82,7 @@ export function useRowPages(opts: RowPagesOptions): RowPagesApi {
     timer.current = null;
     const store = storeRef.current;
     if (!store) return;
-    const { workspace, role, version, view, total, enabled, onError } = optsRef.current;
+    const { workspace, role, version, view, total, enabled } = optsRef.current;
     if (!enabled) return;
     const { first, end, dir } = range.current;
     const wanted = wantedPages(first, end, total, dir);
@@ -112,11 +117,18 @@ export function useRowPages(opts: RowPagesOptions): RowPagesApi {
           if (storeRef.current !== store || ctl.signal.aborted) return;
           failedAt.current.delete(p);
           store.put(p, res.rows);
+          if (errorShown.current) {
+            errorShown.current = false;
+            optsRef.current.onRecover?.();
+          }
         })
         .catch((e: unknown) => {
           if (storeRef.current !== store || ctl.signal.aborted) return;
           failedAt.current.set(p, Date.now());
-          onError(errorText(e));
+          if (!errorShown.current) {
+            errorShown.current = true;
+            optsRef.current.onError(errorText(e));
+          }
         })
         .finally(() => {
           if (inflight.current.get(p) === ctl) inflight.current.delete(p);
@@ -127,6 +139,22 @@ export function useRowPages(opts: RowPagesOptions): RowPagesApi {
             timer.current = setTimeout(run, FETCH_INTERVAL_MS);
           }
         });
+    }
+    // A wanted page that failed is asked again without a new scroll.
+    if (retryTimer.current !== null) clearTimeout(retryTimer.current);
+    retryTimer.current = null;
+    let retryIn: number | null = null;
+    for (const p of wanted) {
+      const failed = failedAt.current.get(p);
+      if (failed === undefined || store.has(p)) continue;
+      const left = Math.max(RETRY_MS - (now - failed), 0);
+      retryIn = retryIn === null ? left : Math.min(retryIn, left);
+    }
+    if (retryIn !== null) {
+      retryTimer.current = setTimeout(() => {
+        retryTimer.current = null;
+        if (timer.current === null) run();
+      }, retryIn + 1);
     }
   }, []);
 
@@ -152,6 +180,8 @@ export function useRowPages(opts: RowPagesOptions): RowPagesApi {
       if (timer.current !== null) clearTimeout(timer.current);
       // StrictMode remounts with the same refs: a stale handle would block every later round.
       timer.current = null;
+      if (retryTimer.current !== null) clearTimeout(retryTimer.current);
+      retryTimer.current = null;
       for (const c of inflight.current.values()) c.abort();
       inflight.current.clear();
     },

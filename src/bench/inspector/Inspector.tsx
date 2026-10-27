@@ -333,6 +333,32 @@ function MultiInspector({ cols }: { cols: string[] }) {
   );
 }
 
+/** Quartiles, fences, skew and suggested params of a number column, each marked when approximate. */
+function numberSpreadStats(pr: ColumnProfile): [string, string, boolean?][] {
+  const approx = (field: string) => pr.approximate?.includes(field) ?? false;
+  const stats: [string, string, boolean?][] = [];
+    for (const q of ["q1", "median", "q3"] as const) {
+      const v = pr.stats?.[q];
+      if (v !== undefined) stats.push([q, String(v), approx(`stats.${q}`)]);
+    }
+    if (pr.iqr_bounds) {
+      const { lo, hi } = pr.iqr_bounds;
+      stats.push(["IQR bounds", `${lo} … ${hi}`, approx("iqr_bounds")]);
+    }
+    if (pr.skewed) stats.push(["skewed", "yes", approx("skewed")]);
+    if (pr.suggested_params) {
+      const sp = pr.suggested_params;
+      stats.push([
+        "suggested",
+        [sp.bins ? `${sp.bins} bins` : null, sp.log_scale ? "log scale" : null]
+          .filter(Boolean)
+          .join(", ") || `top ${sp.top_k}`,
+        approx("suggested_params"),
+      ]);
+    }
+  return stats;
+}
+
 /** Stat rows for the column header; numbers show sentinels / outliers. */
 function columnStats(pr: ColumnProfile | undefined, kind: ColumnKind) {
   if (!pr) return [];
@@ -349,8 +375,12 @@ function columnStats(pr: ColumnProfile | undefined, kind: ColumnKind) {
     const sent = pr.sentinel_candidates[0];
     if (sent) stats.push([String(sent.value), String(sent.count), approx("sentinel_candidates")]);
     if (pr.outliers) stats.push(["outliers", String(pr.outliers), approx("outliers")]);
+    stats.push(...numberSpreadStats(pr));
   } else if (top) {
     stats.push(["top", `${String(top.value)} (${top.count})`, approx("top_values")]);
+  }
+  if (pr.variants && isTextKind(kind)) {
+    stats.push(["spellings", `${pr.variants.raw} → ${pr.variants.normalized}`, approx("variants")]);
   }
   return stats;
 }

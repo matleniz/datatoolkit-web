@@ -433,6 +433,11 @@ function rowNumClass(selected: boolean, removed: boolean): string {
   return removed ? "grid-rn removed" : "grid-rn";
 }
 
+/** Windowed body: the grid knows its row count (the header row is row 1, data rows start at 2). */
+function windowedGridAria(windowed: boolean, total: number) {
+  return windowed ? { role: "grid", "aria-rowcount": total + 1 } : {};
+}
+
 /** Height reserved under the windowed rows for the position line. */
 const WINDOW_FOOTER_PX = 28;
 
@@ -544,6 +549,7 @@ function WindowedBody({
     seed,
     resetKey,
     onError: (message) => dispatch({ type: "SET_BENCH_ERROR", message }),
+    onRecover: () => dispatch({ type: "SET_BENCH_ERROR", message: null }),
   });
 
   const windowPx = Math.max(0, geo.clientH - geo.headerPx - WINDOW_FOOTER_PX);
@@ -581,6 +587,8 @@ function WindowedBody({
       <div
         key={i}
         className="grid-row"
+        role="row"
+        aria-rowindex={i + 2}
         data-rid={row.rid}
         data-row-index={i}
         data-agent-touched={agentTouch?.rows.includes(row.rid) ? "1" : undefined}
@@ -1041,6 +1049,7 @@ export function Grid() {
         className="grid"
         aria-label="Data grid"
         aria-busy={loading}
+        {...windowedGridAria(isWindowed, total)}
         // Placeholder rows hold nothing focusable: keep the scroll area reachable by keyboard.
         tabIndex={showSkeleton || isWindowed ? 0 : undefined}
         data-identity={rowsIdentity ?? ""}

@@ -503,6 +503,8 @@ export interface ColumnProfile {
     percent: boolean;
   } | null;
   skewed: boolean;
+  /** Number columns of the `duckdb` engine: quartiles etc. (`stats.median` in `approximate`). */
+  stats?: { min?: number; max?: number; mean?: number; std?: number; q1?: number; median?: number; q3?: number };
   /** Engine smart defaults for analysis keys (bins, log_scale, top_k). */
   suggested_params?: SuggestedParams;
   /**
