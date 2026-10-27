@@ -46,6 +46,28 @@ cached Studio build) lives in the engine's data home `~/.datatoolkit`
 and the Studio build, i.e. `uv tool run --refresh --from … dtk-studio --refresh`.
 More in [Run without Docker](#run-without-docker-uv).
 
+## Desktop shortcut
+
+A "datatoolkit Studio" icon that starts the engine + Studio, opens the browser
+and stops when you close its window. Windows (no WSL), one line in PowerShell:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/studio-shortcut.ps1)))
+```
+
+It puts `datatoolkit Studio.lnk` on your Desktop (found with
+`[Environment]::GetFolderPath('Desktop')`, so `OneDrive\Bureau` works) and runs the
+[uv launcher](#run-without-docker-uv) above. From a checkout inside **WSL** (Studio
+and engine in `~/datatoolkit-web` and `~/datatoolkit`), run
+`scripts/install-shortcut.sh`: the Windows shortcut runs
+`wsl.exe -d <distro> -- bash -lc scripts/studio-wsl.sh`, which serves your local
+engine + Studio build under `systemd-run --user --scope -p MemoryMax=3G`
+(`DTK_MEM_MAX=none` drops the cap, `DTK_ENGINE_DIR` moves the engine checkout).
+On plain **Linux** the same command writes a `.desktop` file. `--target DIR` puts
+the shortcut elsewhere, `--print` shows it without creating anything.
+
+![The shortcut and its properties](screenshots/studio-shortcut-lnk.png)
+
 ## Run with Docker
 
 The launchers above wrap this. `scripts/datatoolkit.sh` / `.ps1` check Docker,
