@@ -8,6 +8,7 @@ import {
   type FileRole,
   type SourceFileItem,
 } from "./sourcesLogic";
+import { Skeleton } from "../../placeholder/Skeleton";
 import { fileWarning } from "./sourcesScreenLogic";
 import { SourceOptionsEditor } from "./SourceOptionsEditor";
 import { SourcesDocuments } from "./SourcesDocuments";
@@ -46,6 +47,8 @@ function RoleChips({ file, currentRole, isGuessed, onPickRole }: RoleChipsProps)
 }
 
 interface FileBlockProps {
+  /** The files are being inspected: the column list is a placeholder. */
+  loading: boolean;
   file: SourceFileItem;
   currentRole: FileRole | "ignore";
   isGuessed: boolean | undefined;
@@ -80,6 +83,7 @@ function FileLoadError({ file, role }: { file: SourceFileItem; role: FileRole | 
 }
 
 function FileBlock({
+  loading,
   file: fl,
   currentRole,
   isGuessed,
@@ -97,12 +101,21 @@ function FileBlock({
         <div className="file-info">
           <span className="file-name">{fl.name}</span>
           <span className="file-cols" title={fl.cols.join(", ")}>
-            {fl.cols.join(", ")}
+            {loading && fl.cols.length === 0 ? (
+              <Skeleton width="70%" height={9} />
+            ) : (
+              fl.cols.join(", ")
+            )}
           </span>
         </div>
 
         <div className="file-detected">
-          {fl.detected || formatDetectedFromSpec(fl.spec, null)}
+          <span
+            className="file-detected-text"
+            title={fl.detected || formatDetectedFromSpec(fl.spec, null)}
+          >
+            {fl.detected || formatDetectedFromSpec(fl.spec, null)}
+          </span>
           <button
             type="button"
             className={`btn-file-options ${optsOpen ? "on" : ""}`}
@@ -171,6 +184,7 @@ function useCsvEngines(): string[] {
 }
 
 interface SourcesFilesCardProps {
+  loading: boolean;
   files: SourceFileItem[];
   roles: Record<string, FileRole>;
   guessedMap: Record<string, boolean>;
@@ -188,6 +202,7 @@ interface SourcesFilesCardProps {
 }
 
 export function SourcesFilesCard({
+  loading,
   files,
   roles,
   guessedMap,
@@ -214,6 +229,7 @@ export function SourcesFilesCard({
       {files.map((fl) => (
         <FileBlock
           key={fl.id}
+          loading={loading}
           file={fl}
           currentRole={roles[fl.id] || "ignore"}
           isGuessed={guessedMap[fl.id]}

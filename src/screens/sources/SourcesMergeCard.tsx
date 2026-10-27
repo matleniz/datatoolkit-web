@@ -1,3 +1,4 @@
+import { PendingRegion, Skeleton } from "../../placeholder/Skeleton";
 import type { SourceFileItem, WorkspaceSourcesState } from "./sourcesLogic";
 
 interface SourcesMergeCardProps {
@@ -5,6 +6,8 @@ interface SourcesMergeCardProps {
   commonMergeCols: string[];
   mergeKey: WorkspaceSourcesState["mergeKey"];
   mergeInTest: boolean;
+  /** The files are being inspected: the key candidates are a placeholder. */
+  loading: boolean;
   infoText: string | undefined;
   patch: (
     p: (s: WorkspaceSourcesState) => Partial<WorkspaceSourcesState>,
@@ -16,6 +19,7 @@ export function SourcesMergeCard({
   commonMergeCols,
   mergeKey,
   mergeInTest,
+  loading,
   infoText,
   patch,
 }: SourcesMergeCardProps) {
@@ -36,7 +40,12 @@ export function SourcesMergeCard({
             </strong>{" "}
             on key
           </div>
-          <div className="chips-row">
+          <div className="chips-row res-chips">
+            {loading && commonMergeCols.length === 0 ? (
+              <PendingRegion label="Reading the merge key candidates">
+                <Skeleton width={96} height={24} radius={4} />
+              </PendingRegion>
+            ) : null}
             {commonMergeCols.map((col) => {
               const isSelected = mergeKey === col;
               return (

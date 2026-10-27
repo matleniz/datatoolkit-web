@@ -607,7 +607,7 @@
 .grid-th {
   flex-shrink: 0;
   box-sizing: border-box;
-  height: 100px;
+  height: var(--dtk-grid-header-h);
   padding: 7px 8px 5px;
   display: flex;
   flex-direction: column;
@@ -764,7 +764,7 @@
 .grid-rn {
   width: 44px;
   flex-shrink: 0;
-  height: 30px;
+  height: var(--dtk-grid-row-h);
   position: sticky;
   left: 0;
   z-index: 1;
@@ -791,7 +791,7 @@
 .grid-td {
   flex-shrink: 0;
   box-sizing: border-box;
-  height: 30px;
+  height: var(--dtk-grid-row-h);
   padding: 0 8px;
   border: none;
   border-right: 1px solid #f0efea;
@@ -845,9 +845,48 @@
 }
 
 .grid-more {
+  min-height: 32px; /* reserved: the footer line does not appear late */
   padding: 8px 16px;
   font-size: 11px;
   color: var(--dtk-muted);
+}
+
+/* Placeholder rows: the same box as a real row (height, row-number column,
+   column widths, borders), under their own class so nothing counts them as data. */
+.sk-grid-row {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--dtk-hairline);
+}
+.sk-grid-th {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  height: var(--dtk-grid-header-h);
+  padding: 12px 8px 5px;
+  border-right: 1px solid var(--dtk-border);
+  border-top: 3px solid transparent;
+}
+.sk-grid-rn {
+  display: block;
+  width: 44px;
+  flex-shrink: 0;
+  height: var(--dtk-grid-row-h);
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  border-right: 1px solid var(--dtk-border);
+  background: var(--dtk-bg-subtle);
+}
+.sk-grid-td {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border-right: 1px solid var(--dtk-hairline);
+  background: var(--dtk-surface);
 }
 
 .grid-empty-state {
@@ -1673,27 +1712,6 @@
   font-size: 12px;
   color: var(--dtk-muted);
   flex-shrink: 0;
-}
-
-.busy-spinner {
-  width: 12px;
-  height: 12px;
-  border: 2px solid #c9c5ba;
-  border-top-color: #1d5b86;
-  border-radius: 50%;
-  animation: busy-spin 0.8s linear infinite;
-}
-
-@keyframes busy-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .busy-spinner {
-    animation-duration: 2.4s;
-  }
 }
 
 /* Overlaid (absolute) in bars of fixed height: no layout shift. */

@@ -376,6 +376,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   width: 235px;
+  min-height: 14px; /* the line is reserved while the columns are read */
 }
 
 .file-detected {
@@ -389,6 +390,13 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
+}
+
+.file-detected-text {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* one line: its height never depends on the engine text */
 }
 
 .btn-file-options {
@@ -617,6 +625,16 @@
   font-family: var(--dtk-font-mono);
   font-size: 12px;
   color: var(--dtk-ink);
+}
+
+.res-chips {
+  min-height: 22px; /* one chip row, reserved while the columns load */
+}
+
+.res-shape-sk {
+  display: inline-block;
+  vertical-align: middle;
+  width: 56px;
 }
 
 .res-legend {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Spinner } from "./placeholder/Skeleton";
 import { cancelInFlight, type BusyScope } from "./api/inflight";
 import { useInFlight } from "./useInFlight";
 
@@ -41,7 +42,7 @@ export function BusyIndicator({ scope, label, cancellable = true }: BusyIndicato
     >
       {busy ? (
         <>
-          <span className="busy-spinner" aria-hidden="true" />
+          <Spinner />
           <span className="busy-label">{label}</span>
           {cancellable ? (
             <button
