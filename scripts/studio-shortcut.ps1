@@ -25,15 +25,28 @@ $name = 'datatoolkit Studio'
 $launcherUrl = 'https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/datatoolkit.ps1'
 
 if (-not $Target) { $Target = [Environment]::GetFolderPath('Desktop') }
-$iconDir = Join-Path $env:LOCALAPPDATA 'datatoolkit'
+# Fallbacks keep -Print working where these are unset (e.g. PowerShell on Linux).
+$localApp = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { [Environment]::GetFolderPath('LocalApplicationData') }
+$sysRoot = if ($env:SystemRoot) { $env:SystemRoot } else { 'C:\Windows' }
+$iconDir = Join-Path $localApp 'datatoolkit'
 $iconPath = Join-Path $iconDir 'datatoolkit.ico'
+
+# One argument of a Windows command line (CommandLineToArgvW rules): quoted only
+# when needed, inner quotes and backslashes before them escaped.
+function Quote-Arg([string]$a) {
+    if ($a -ne '' -and $a -notmatch '[\s"]') { return $a }
+    $a = $a -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1'
+    return '"' + $a + '"'
+}
 
 if ($Wsl) {
     if (-not $WslScript) { throw '-Wsl needs -WslScript <linux path of scripts/studio-wsl.sh>' }
-    $exe = Join-Path $env:SystemRoot 'System32\wsl.exe'
-    $arguments = "-d $Distro -- bash -lc '$WslScript'"
+    $exe = Join-Path $sysRoot 'System32\wsl.exe'
+    # --exec skips wsl.exe's own shell, so argv is exactly what is quoted here; the
+    # script path is an argument of `bash -l`, never part of a shell string.
+    $arguments = "-d $(Quote-Arg $Distro) --exec bash -l $(Quote-Arg $WslScript)"
 } else {
-    $exe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $exe = Join-Path $sysRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     # Same launcher as the one-liner in docs/running.md, uv mode; the window stays
     # open while the app runs and closing it stops the process.
     $inner = "& ([scriptblock]::Create((irm $launcherUrl))) -Uv"

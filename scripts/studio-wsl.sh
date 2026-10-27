@@ -38,13 +38,17 @@ if [ "$mem" != none ]; then
   cmd=(systemd-run --user --scope --quiet -p "MemoryMax=$mem" "${run[@]}")
 fi
 
+die() { echo "datatoolkit: $1" >&2; read -r -t 30 -p "Press Enter to close." _ || true; exit 1; }
+if [ "$print" = 0 ] && [ "$mem" != none ] && ! systemd-run --user --scope --quiet -p "MemoryMax=$mem" true >/dev/null 2>&1; then
+  die "cannot cap the engine's memory: 'systemd-run --user' is not available in this WSL (enable systemd in /etc/wsl.conf and run 'wsl --shutdown'). Not starting uncapped. To run without the cap on purpose, set DTK_MEM_MAX=none."
+fi
+
 if [ "$print" = 1 ]; then
   printf '%q ' env "DTK_STUDIO_URL=file://$rel" "${cmd[@]}"
   echo
   exit 0
 fi
 
-die() { echo "datatoolkit: $1" >&2; read -r -t 30 -p "Press Enter to close." _ || true; exit 1; }
 [ -f "$engine/pyproject.toml" ] || echo "No engine checkout at $engine (DTK_ENGINE_DIR): using the pinned engine."
 command -v uv >/dev/null || die "uv is not installed (https://docs.astral.sh/uv/)"
 

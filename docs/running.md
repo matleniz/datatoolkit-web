@@ -48,29 +48,15 @@ More in [Run without Docker](#run-without-docker-uv).
 
 ## Desktop shortcut
 
-A "datatoolkit Studio" icon that starts the engine + Studio, opens the browser
-and stops when you close its window. Windows (no WSL), one line in PowerShell:
+A "datatoolkit Studio" icon that starts the engine + Studio (agent on), opens the
+browser and stops when you close its window. Windows, one line in PowerShell:
 
 ```powershell
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/studio-shortcut.ps1)))
 ```
 
-It puts `datatoolkit Studio.lnk` on your Desktop (found with
-`[Environment]::GetFolderPath('Desktop')`, so `OneDrive\Bureau` works) and runs the
-[uv launcher](#run-without-docker-uv) above. From a checkout inside **WSL** (Studio
-and engine in `~/datatoolkit-web` and `~/datatoolkit`), run
-`scripts/install-shortcut.sh`: the Windows shortcut runs
-`wsl.exe -d <distro> -- bash -lc scripts/studio-wsl.sh`, which serves your local
-engine + Studio build under `systemd-run --user --scope -p MemoryMax=3G`
-(`DTK_MEM_MAX=none` drops the cap, `DTK_ENGINE_DIR` moves the engine checkout).
-The agent is on in that Studio: chat panel with Claude (Agent SDK, your own
-`claude` login, nothing stored), terminal packs (Claude Code, opencode, Gemini
-when installed; `DTK_AGENT_TERMINAL=1`), and a `DTK_UI_TOKEN` generated at each
-launch, never stored ([agent.md](agent.md)). On plain **Linux** the same command writes a `.desktop` file. `--target DIR` puts
-the shortcut elsewhere, `--print` shows it without creating anything.
-
-![The shortcut and its properties](screenshots/studio-shortcut-lnk.png)
-![Agent and terminal panels in the launched Studio](screenshots/studio-shortcut-agent.png)
+Studio and engine in WSL, or plain Linux: `scripts/install-shortcut.sh`. Details
+(WSL memory cap, agent, quoting, options) in [shortcut.md](shortcut.md).
 
 ## Run with Docker
 

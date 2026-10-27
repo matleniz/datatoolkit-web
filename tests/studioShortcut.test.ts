@@ -3,8 +3,9 @@
 // printed by the shell scripts; the .lnk spec of the ps1 is checked as text and,
 // when a PowerShell is on the machine, by running it with -Print.
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 const root = resolve(__dirname, "..");
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
@@ -39,6 +40,17 @@ describe("studio-wsl.sh", () => {
     expect(src).not.toMatch(/ANTHROPIC_API_KEY\s*=/);
   });
 
+  it("refuses to start uncapped when systemd-run --user does not work", () => {
+    const fake = mkdtempSync(join(tmpdir(), "dtk-nosystemd-"));
+    writeFileSync(join(fake, "systemd-run"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const r = run("scripts/studio-wsl.sh", [], { PATH: `${fake}:${process.env.PATH}` });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("cannot cap the engine's memory");
+    expect(r.stderr).toContain("Not starting uncapped");
+    expect(r.stderr).toContain("DTK_MEM_MAX=none");
+    expect(r.stdout).not.toContain("Building Studio");
+  });
+
   it("DTK_MEM_MAX sets or drops the cap", () => {
     expect(run("scripts/studio-wsl.sh", ["--print"], { DTK_MEM_MAX: "1G" }).stdout).toContain("MemoryMax=1G");
     expect(run("scripts/studio-wsl.sh", ["--print"], { DTK_MEM_MAX: "none" }).stdout).not.toContain("systemd-run");
@@ -70,7 +82,8 @@ describe("studio-shortcut.ps1", () => {
 
   it("WSL shortcut starts studio-wsl.sh through wsl.exe in the chosen distro", () => {
     expect(ps1).toContain("wsl.exe");
-    expect(ps1).toMatch(/-d \$Distro -- bash -lc '\$WslScript'/);
+    expect(ps1).toContain("--exec bash -l");
+    expect(ps1).not.toMatch(/bash -lc '/); // single quotes are not quoting for wsl.exe
   });
 
   it("ships a valid icon and holds no credential", () => {
@@ -83,22 +96,36 @@ describe("studio-shortcut.ps1", () => {
     "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
     "/usr/bin/pwsh",
   ].find(existsSync);
-  it.skipIf(!winPs)("-Print gives the spec for both modes", () => {
-    const spec = (extra: string[]) =>
-      JSON.parse(
-        spawnSync(winPs!, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", winPath("scripts/studio-shortcut.ps1"), "-Print", "-Target", "X", ...extra], {
-          encoding: "utf8",
-        }).stdout,
+  it.skipIf(!winPs)("-Print gives the spec for both modes, whatever the paths", () => {
+    const spec = (extra: string[]) => {
+      const r = spawnSync(
+        winPs!,
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", winPath("scripts/studio-shortcut.ps1"), "-Print", ...extra],
+        { encoding: "utf8" },
       );
-    const std = spec([]);
+      expect(r.stdout, `stderr: ${r.stderr}`).not.toBe("");
+      return JSON.parse(r.stdout);
+    };
+    const std = spec(["-Target", "X"]);
     expect(std.path).toMatch(/datatoolkit Studio\.lnk$/);
     expect(std.target).toMatch(/powershell\.exe$/i);
     expect(std.arguments).toContain("datatoolkit.ps1");
     expect(std.icon).toMatch(/datatoolkit\.ico,0$/);
-    const wsl = spec(["-Wsl", "-Distro", "Debian", "-WslScript", "/h/s.sh"]);
+
+    const wsl = spec(["-Target", "X", "-Wsl", "-Distro", "Debian", "-WslScript", "/h/s.sh"]);
     expect(wsl.target).toMatch(/wsl\.exe$/i);
-    expect(wsl.arguments).toBe("-d Debian -- bash -lc '/h/s.sh'");
+    expect(wsl.arguments).toBe("-d Debian --exec bash -l /h/s.sh");
+
+    // spaces, an apostrophe and a distro with a space: each is one quoted argument
+    const odd = spec(["-Target", "X", "-Wsl", "-Distro", "My Distro", "-WslScript", "/home/o'neil/my dir/s.sh"]);
+    expect(odd.arguments).toBe('-d "My Distro" --exec bash -l "/home/o\'neil/my dir/s.sh"');
+
+    // a OneDrive desktop with a space in the name
+    const od = spec(["-Target", "C:\\Users\\Zoë Dupont\\OneDrive - Acme\\Bureau"]);
+    expect(od.path).toContain("OneDrive - Acme");
+    expect(od.path).toMatch(/Bureau.datatoolkit Studio\.lnk$/);
   });
+
 });
 
 function winPath(rel: string): string {
