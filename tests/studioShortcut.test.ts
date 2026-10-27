@@ -124,7 +124,7 @@ describe("studio-shortcut.ps1", () => {
     const od = spec(["-Target", "C:\\Users\\Zoë Dupont\\OneDrive - Acme\\Bureau"]);
     expect(od.path).toContain("OneDrive - Acme");
     expect(od.path).toMatch(/Bureau.datatoolkit Studio\.lnk$/);
-  });
+  }, 60_000); // five PowerShell starts, ~1-2 s each on a CI runner
 
 });
 
