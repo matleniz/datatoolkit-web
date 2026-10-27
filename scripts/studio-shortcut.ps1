@@ -28,8 +28,10 @@ if (-not $Target) { $Target = [Environment]::GetFolderPath('Desktop') }
 # Fallbacks keep -Print working where these are unset (e.g. PowerShell on Linux).
 $localApp = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { [Environment]::GetFolderPath('LocalApplicationData') }
 $sysRoot = if ($env:SystemRoot) { $env:SystemRoot } else { 'C:\Windows' }
-$iconDir = Join-Path $localApp 'datatoolkit'
-$iconPath = Join-Path $iconDir 'datatoolkit.ico'
+if (-not $localApp) { $localApp = 'C:\Users\Public\AppData\Local' }
+# Plain string joins (Windows paths): Join-Path throws on an empty part and joins with / off Windows.
+$iconDir = "$localApp\datatoolkit"
+$iconPath = "$iconDir\datatoolkit.ico"
 
 # One argument of a Windows command line (CommandLineToArgvW rules): quoted only
 # when needed, inner quotes and backslashes before them escaped.
@@ -41,19 +43,19 @@ function Quote-Arg([string]$a) {
 
 if ($Wsl) {
     if (-not $WslScript) { throw '-Wsl needs -WslScript <linux path of scripts/studio-wsl.sh>' }
-    $exe = Join-Path $sysRoot 'System32\wsl.exe'
+    $exe = "$sysRoot\System32\wsl.exe"
     # --exec skips wsl.exe's own shell, so argv is exactly what is quoted here; the
     # script path is an argument of `bash -l`, never part of a shell string.
     $arguments = "-d $(Quote-Arg $Distro) --exec bash -l $(Quote-Arg $WslScript)"
 } else {
-    $exe = Join-Path $sysRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $exe = "$sysRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
     # Same launcher as the one-liner in docs/running.md, uv mode; the window stays
     # open while the app runs and closing it stops the process.
     $inner = "& ([scriptblock]::Create((irm $launcherUrl))) -Uv"
     $arguments = "-NoProfile -ExecutionPolicy Bypass -Command `"$inner`""
 }
 $spec = [ordered]@{
-    path        = Join-Path $Target "$name.lnk"
+    path        = "$($Target.TrimEnd('\'))\$name.lnk"
     target      = $exe
     arguments   = $arguments
     icon        = "$iconPath,0"
