@@ -48,6 +48,8 @@ export interface WorkbenchDataValue {
   identity: DataIdentity;
   /** Identity of the frame currently held in `rows` / `columns` (null = none). */
   rowsIdentity: string | null;
+  /** `gridViewKey` of the view-only filter / sort `rows` were fetched with. */
+  rowsGridKey: string | null;
   /** Identity of the frame currently held in `profiles` (null = none). */
   profilesIdentity: string | null;
   columns: WorkspaceRowsColumn[];
@@ -56,6 +58,8 @@ export interface WorkbenchDataValue {
   total: number;
   /** Rows before the view-only filter. */
   totalUnfiltered: number;
+  /** Very large CSV: the grid pages `rows` (the first response) by window. */
+  windowed: boolean;
   profiles: Map<string, ColumnProfile>;
   /** Set when `profiles` come from a row sample (large frames). */
   profileSample: ProfileSample | null;
@@ -149,11 +153,13 @@ export function WorkbenchDataProvider({ children }: { children: ReactNode }) {
       atEditBase: atBase,
       identity: frame.identity,
       rowsIdentity: frame.rowsIdentity,
+      rowsGridKey: frame.rowsGridKey,
       profilesIdentity: frame.profilesIdentity,
       columns,
       rows,
       total: frame.total,
       totalUnfiltered: frame.totalUnfiltered,
+      windowed: frame.windowed,
       profiles: frame.profiles,
       profileSample: frame.profileSample,
       display,

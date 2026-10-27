@@ -590,7 +590,7 @@
 }
 
 .grid-corner {
-  width: 44px;
+  width: var(--dtk-grid-rn-w, 44px);
   flex-shrink: 0;
   position: sticky;
   left: 0;
@@ -762,7 +762,7 @@
 }
 
 .grid-rn {
-  width: 44px;
+  width: var(--dtk-grid-rn-w, 44px);
   flex-shrink: 0;
   height: var(--dtk-grid-row-h);
   position: sticky;
@@ -844,6 +844,40 @@
   box-shadow: inset 0 0 0 2px #1d5b86;
 }
 
+/* Continuous scroll (very large CSV): a body as tall as the scrollbar needs, a
+   window that sticks under the header and holds the mounted rows. `clip`, not
+   `hidden`: the row-number column stays sticky to the horizontal scroll. */
+.grid-vbody {
+  position: relative;
+}
+.grid-vwindow {
+  position: sticky;
+  overflow: clip;
+}
+.grid-vrows {
+  will-change: transform;
+}
+.grid-vfooter {
+  position: sticky;
+  bottom: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  background: var(--dtk-surface);
+  border-top: 1px solid var(--dtk-hairline);
+  font-size: 11px;
+  color: var(--dtk-muted);
+}
+.grid-vfooter-text {
+  position: sticky;
+  left: 0;
+  padding: 0 16px;
+  font-variant-numeric: tabular-nums;
+}
+.approx-mark {
+  color: var(--dtk-muted);
+}
+
 .grid-more {
   min-height: 32px; /* reserved: the footer line does not appear late */
   padding: 8px 16px;
@@ -871,7 +905,7 @@
 }
 .sk-grid-rn {
   display: block;
-  width: 44px;
+  width: var(--dtk-grid-rn-w, 44px);
   flex-shrink: 0;
   height: var(--dtk-grid-row-h);
   position: sticky;

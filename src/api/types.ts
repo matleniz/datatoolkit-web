@@ -427,11 +427,18 @@ export interface WorkspaceRowsColumn {
   kind: ColumnKind;
   /** Engine `semantic_type` (e.g. `group_id`); absent on older engines. */
   semantic?: string;
+  /**
+   * Very large CSV (engine `duckdb`): the fields of this column computed on the
+   * whole table rather than on the rows shown (`["kind", "semantic"]`).
+   */
+  approximate?: string[];
 }
 
 export type WorkspaceRow = Record<string, JsonValue> & { _rid: number };
 
 export interface WorkspaceRows {
+  /** `"duckdb"` for a windowed very large CSV; absent on the pandas path. */
+  engine?: "duckdb";
   columns: WorkspaceRowsColumn[];
   rows: WorkspaceRow[];
   /** Row count after the view-only filter (= `total_unfiltered` without one). */
@@ -496,8 +503,16 @@ export interface ColumnProfile {
     percent: boolean;
   } | null;
   skewed: boolean;
+  /** Number columns of the `duckdb` engine: quartiles etc. (`stats.median` in `approximate`). */
+  stats?: { min?: number; max?: number; mean?: number; std?: number; q1?: number; median?: number; q3?: number };
   /** Engine smart defaults for analysis keys (bins, log_scale, top_k). */
   suggested_params?: SuggestedParams;
+  /**
+   * Engine `duckdb` only: names of the fields of this column whose value is
+   * approximate or derived from one (`distinct`, `stats.median`, ...).
+   * A field not listed is exact.
+   */
+  approximate?: string[];
 }
 
 /** POST /workspace/profiles → { columns, version } (+ sample fields when `sample_rows` was sent). */

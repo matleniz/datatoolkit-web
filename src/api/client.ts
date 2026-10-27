@@ -65,6 +65,8 @@ interface ApiClient {
     signal?: AbortSignal,
     /** View-only filter / sort, run by the engine on the full frame. */
     view?: GridView,
+    /** Scroll pages: not reported to the busy indicator (no Cancel for each page). */
+    quiet?: boolean,
   ): Promise<WorkspaceRows>;
   columnProfiles(
     workspace: Workspace,
@@ -308,6 +310,7 @@ class HttpApiClient implements ApiClient {
     rawBody?: BodyInit,
     signal?: AbortSignal,
     extraHeaders?: Record<string, string>,
+    track = true,
   ): Promise<T> {
     const headers: Record<string, string> = { ...extraHeaders };
     let payload: BodyInit | undefined = rawBody;
@@ -320,7 +323,7 @@ class HttpApiClient implements ApiClient {
     // Do not dedupe raw uploads (binary body is not a stable string key).
     // Do not dedupe abortable calls — a shared promise cannot be half-aborted.
     if (rawBody !== undefined || signal) {
-      return this.execute<T>(method, path, headers, payload, signal);
+      return this.execute<T>(method, path, headers, payload, signal, track);
     }
     const key = this.dedupe.key(method, path, bodyKey);
     // A write to the workspace store makes every in-flight workspace read
@@ -601,6 +604,7 @@ class HttpApiClient implements ApiClient {
     limit: number,
     signal?: AbortSignal,
     view?: GridView,
+    quiet = false,
   ): Promise<WorkspaceRows> {
     return this.request(
       "POST",
@@ -615,6 +619,8 @@ class HttpApiClient implements ApiClient {
       },
       undefined,
       signal,
+      undefined,
+      !quiet,
     );
   }
 

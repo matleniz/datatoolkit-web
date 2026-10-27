@@ -52,6 +52,11 @@ interface Frame {
   total: number;
   /** Rows before the view-only filter (= `total` without one). */
   totalUnfiltered: number;
+  /**
+   * Engine `duckdb` very large CSV: `rows` is only the first response; the grid
+   * pages the rest by window (#329).
+   */
+  windowed: boolean;
   profiles: Map<string, ColumnProfile>;
   /** Identity of the frame held in `rows` / `columns` (null = none). */
   rowsIdentity: string | null;
@@ -90,6 +95,7 @@ const EMPTY_FRAME: Frame = {
   rows: [],
   total: 0,
   totalUnfiltered: 0,
+  windowed: false,
   profiles: new Map(),
   rowsIdentity: null,
   rowsGridKey: null,
@@ -355,6 +361,7 @@ export function useBenchFrame(
           rows: res.rows,
           total: res.total,
           totalUnfiltered,
+          windowed: res.engine === "duckdb",
           rowsIdentity: idKey,
           rowsGridKey: gridViewKey(view),
         }));
@@ -458,7 +465,7 @@ export function useBenchFrame(
     if (!workspace || !workspace.datasets.train.x.path) return;
     if (loading || loadingMore) return;
     const { rows, columns, total } = frameRef.current;
-    if (rows.length >= total) return;
+    if (frameRef.current.windowed || rows.length >= total) return;
     const offset = rows.length;
     const gen = fetchGen.current;
     setLoadingMore(true);
@@ -498,7 +505,7 @@ export function useBenchFrame(
     shapes,
     stepErrors,
     loading,
-    hasMore: frame.rows.length < frame.total,
+    hasMore: !frame.windowed && frame.rows.length < frame.total,
     // The row count of the frame AND grid view on screen; null while they load
     // (never the previous view's count, datatoolkit-issues#110).
     shownTotal:

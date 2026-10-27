@@ -9,8 +9,14 @@ import {
 
 import { BusyIndicator } from "../../BusyIndicator";
 import { apiClient } from "../../api/client";
-import { CANCELLED_MESSAGE, type ColumnProfile, type Step } from "../../api/types";
+import {
+  CANCELLED_MESSAGE,
+  type ColumnProfile,
+  type Step,
+  type WorkspaceRow,
+} from "../../api/types";
 import { useAppDispatch, useAppState } from "../../state/AppStore";
+import { gridViewKey } from "../../state/gridView";
 import {
   colAlerts,
   isOutlierValue,
@@ -30,6 +36,8 @@ import { colWidth, isNumericKind, KIND_BAR, KIND_LABEL } from "../kinds";
 import { stepSummary } from "../stages";
 import { useWorkbenchData } from "../WorkbenchData";
 import { columnWindow } from "./columnWindow";
+import { rowNumWidth, viewport } from "./rowWindow";
+import { useRowPages } from "./useRowPages";
 import { dropOrder, planReorder, type ReorderParams } from "./reorderDrag";
 import { NoteIcon } from "../notes/NotePopover";
 import { GridViewBar } from "./GridViewBar";
@@ -256,7 +264,7 @@ export function ColumnHeader({
         reorder.drop(c.name, dropSide(e));
       }}
       onDragEnd={reorder.end}
-      title={`${c.name} · ${KIND_LABEL[c.kind]} · ${pr?.distinct ?? "?"} distinct · ${pr?.missing ?? "?"} missing · right-click for actions · drag to reorder`}
+      title={`${c.name} · ${KIND_LABEL[c.kind]} · ${pr?.approximate?.includes("distinct") ? "≈" : ""}${pr?.distinct ?? "?"} distinct · ${pr?.missing ?? "?"} missing · right-click for actions · drag to reorder`}
       onClick={(e) =>
         dispatch({
           type: "PICK_COL",
@@ -301,7 +309,17 @@ export function ColumnHeader({
         ) : null}
       </span>
       <span className="th-meta">
-        <span className="kind-chip">{KIND_LABEL[c.kind] ?? c.kind}</span>
+        <span
+          className="kind-chip"
+          title={
+            c.approximate?.includes("kind")
+              ? "Kind computed on the whole table, not on the rows shown (approximate)"
+              : undefined
+          }
+        >
+          {KIND_LABEL[c.kind] ?? c.kind}
+          {c.approximate?.includes("kind") ? <span className="approx-mark"> ≈</span> : null}
+        </span>
         <span className="miss-label">{miss ? `${miss}% ∅` : ""}</span>
       </span>
       <span className="th-bars">
@@ -415,6 +433,226 @@ function rowNumClass(selected: boolean, removed: boolean): string {
   return removed ? "grid-rn removed" : "grid-rn";
 }
 
+/** Windowed body: the grid knows its row count (the header row is row 1, data rows start at 2). */
+function windowedGridAria(windowed: boolean, total: number) {
+  return windowed ? { role: "grid", "aria-rowcount": total + 1 } : {};
+}
+
+/** Height reserved under the windowed rows for the position line. */
+const WINDOW_FOOTER_PX = 28;
+
+/** A row whose page is still on its way: the box of a real row. */
+function WindowRowPlaceholder({
+  index,
+  widths,
+  leftPad,
+}: {
+  index: number;
+  widths: number[];
+  leftPad: number;
+}) {
+  return (
+    <SkeletonRow
+      className="sk-grid-row"
+      cellClassName="sk-grid-td"
+      height="var(--dtk-grid-row-h)"
+      seed={index}
+      lead={
+        <>
+          <span className="sk-grid-rn" />
+          <ColSpacer width={leftPad} />
+        </>
+      }
+      widths={widths}
+    />
+  );
+}
+
+/**
+ * Continuous-scroll rows of a very large CSV (#329): only the rows under the
+ * viewport are mounted, their pages are fetched with a look-ahead and a
+ * bounded set stays in memory. A row whose page is missing is a placeholder
+ * with the box of a real row, so the scrollbar and the layout never move.
+ */
+function WindowedBody({
+  scrollRef,
+  cols,
+  leftPad,
+  rightPad,
+  total,
+  seed,
+  resetKey,
+  enabled,
+  profiles,
+  selection,
+  agentTouch,
+  dispatch,
+}: {
+  scrollRef: React.RefObject<HTMLDivElement>;
+  cols: DisplayCol[];
+  leftPad: number;
+  rightPad: number;
+  total: number;
+  seed: WorkspaceRow[];
+  resetKey: string;
+  enabled: boolean;
+  profiles: Map<string, ColumnProfile>;
+  selection: Selection;
+  agentTouch: ReturnType<typeof useAppState>["agentTouch"];
+  dispatch: Dispatch;
+}) {
+  const { workspace, role, gridView } = useAppState();
+  const { version } = useWorkbenchData();
+  const [geo, setGeo] = useState({ scrollTop: 0, clientH: 0, headerPx: 101 });
+  const lastFirst = useRef(0);
+  const dir = useRef<1 | -1>(1);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const read = () => {
+      const headerPx =
+        el.querySelector<HTMLElement>(".grid-header-row")?.offsetHeight ?? 101;
+      setGeo((g) =>
+        g.scrollTop === el.scrollTop &&
+        g.clientH === el.clientHeight &&
+        g.headerPx === headerPx
+          ? g
+          : { scrollTop: el.scrollTop, clientH: el.clientHeight, headerPx },
+      );
+    };
+    read();
+    el.addEventListener("scroll", read, { passive: true });
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(read);
+    ro?.observe(el);
+    return () => {
+      el.removeEventListener("scroll", read);
+      ro?.disconnect();
+    };
+  }, [scrollRef]);
+
+  // A new sort / filter is a new list: back to its first row.
+  const prevReset = useRef(resetKey);
+  useEffect(() => {
+    if (prevReset.current === resetKey) return;
+    prevReset.current = resetKey;
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [resetKey, scrollRef]);
+
+  const pages = useRowPages({
+    workspace: workspace!,
+    role,
+    version,
+    view: gridView,
+    total,
+    enabled,
+    seed,
+    resetKey,
+    onError: (message) => dispatch({ type: "SET_BENCH_ERROR", message }),
+    onRecover: () => dispatch({ type: "SET_BENCH_ERROR", message: null }),
+  });
+
+  const windowPx = Math.max(0, geo.clientH - geo.headerPx - WINDOW_FOOTER_PX);
+  const vp = viewport(geo.scrollTop, windowPx, total);
+  if (vp.first !== lastFirst.current) {
+    dir.current = vp.first > lastFirst.current ? 1 : -1;
+    lastFirst.current = vp.first;
+  }
+  const { want } = pages;
+  const { first, end } = vp;
+  useEffect(() => {
+    want(first, end, dir.current);
+  }, [want, first, end]);
+
+  const widths = placeholderWidths(cols);
+  const out: React.ReactNode[] = [];
+  let missing = false;
+  for (let i = first; i < end; i++) {
+    const r = pages.row(i);
+    if (!r) {
+      missing = true;
+      out.push(
+        <WindowRowPlaceholder key={i} index={i} widths={widths} leftPad={leftPad} />,
+      );
+      continue;
+    }
+    const row: DisplayRow = {
+      rid: r._rid,
+      vals: r,
+      prev: r,
+      status: "",
+      changed: {},
+    };
+    out.push(
+      <div
+        key={i}
+        className="grid-row"
+        role="row"
+        aria-rowindex={i + 2}
+        data-rid={row.rid}
+        data-row-index={i}
+        data-agent-touched={agentTouch?.rows.includes(row.rid) ? "1" : undefined}
+      >
+        <button
+          type="button"
+          className={rowNumClass(selection.row === row.rid, false)}
+          aria-label={`Select row ${i + 1}`}
+          onClick={() => dispatch({ type: "PICK_ROW", rid: row.rid })}
+        >
+          {i + 1}
+        </button>
+        <ColSpacer width={leftPad} />
+        {cols.map((c) => (
+          <DataCell
+            key={c.name}
+            row={row}
+            c={c}
+            profile={profiles.get(c.name)}
+            selection={selection}
+            touched={
+              !!agentTouch?.cells.some((t) => t.rid === row.rid && t.column === c.name)
+            }
+            dispatch={dispatch}
+          />
+        ))}
+        <ColSpacer width={rightPad} />
+      </div>,
+    );
+  }
+
+  return (
+    <>
+      <div
+        className="grid-vbody"
+        data-window={`${first}:${end}/${total}`}
+        data-pages={pages.loadedPages().length}
+        style={{ height: vp.bodyPx }}
+      >
+        <div
+          className="grid-vwindow"
+          style={{ top: geo.headerPx, height: windowPx }}
+        >
+          <div
+            className="grid-vrows"
+            style={{ transform: `translateY(${-vp.offsetPx}px)` }}
+          >
+            {out}
+          </div>
+        </div>
+      </div>
+      <div className="grid-vfooter" style={{ height: WINDOW_FOOTER_PX }}>
+        <span className="grid-vfooter-text">
+          Rows {(first + 1).toLocaleString("en-US")}–{end.toLocaleString("en-US")} of{" "}
+          {total.toLocaleString("en-US")}
+        </span>
+        <span className="sr-only" role="status" aria-live="polite">
+          {missing ? "Loading rows" : ""}
+        </span>
+      </div>
+    </>
+  );
+}
+
 /** Placeholder rows shown while the first page of rows is awaited. */
 const SKELETON_ROWS = 14;
 /** Placeholder columns when the column list itself is not known yet. */
@@ -439,7 +677,8 @@ function BenchErrorBanner({ message }: { message: string | null }) {
 }
 
 export function Grid() {
-  const { selection, targetColumn, benchError, editor, agentTouch, role } = useAppState();
+  const { selection, targetColumn, benchError, editor, agentTouch, role, gridView } =
+    useAppState();
   const dispatch = useAppDispatch();
   const {
     display,
@@ -455,6 +694,9 @@ export function Grid() {
     loading,
     hasMore,
     loadMore,
+    windowed: isWindowed,
+    rows: seedRows,
+    rowsGridKey,
     reportVisibleColumns,
     identity,
     rowsIdentity,
@@ -479,8 +721,10 @@ export function Grid() {
   const editLabel =
     editIndex === undefined ? "" : `v${editIndex + 1} · ${steps[editIndex]?.op ?? ""}`;
 
+  // A 7-digit row number needs more than the usual 44px column.
+  const rnW = isWindowed ? rowNumWidth(total) : 44;
   const totalW =
-    44 + display.cols.reduce((w, c) => w + colWidth(c.kind), 0);
+    rnW + display.cols.reduce((w, c) => w + colWidth(c.kind), 0);
 
   const selText = selectionText(selection);
 
@@ -602,8 +846,8 @@ export function Grid() {
   }, [measureViewport, display.cols.length]);
 
   const windowed = useMemo(
-    () => columnWindow(display.cols, scrollLeft, Math.max(0, viewportW - 44)),
-    [display.cols, scrollLeft, viewportW],
+    () => columnWindow(display.cols, scrollLeft, Math.max(0, viewportW - rnW)),
+    [display.cols, scrollLeft, viewportW, rnW],
   );
 
   // Rows not loaded yet: placeholder rows with the real row height and column
@@ -656,8 +900,8 @@ export function Grid() {
     for (const c of display.cols) {
       if (c.name === col) {
         const w = colWidth(c.kind);
-        if (left < el.scrollLeft || left + w > el.scrollLeft + el.clientWidth - 44) {
-          el.scrollLeft = Math.max(0, left - 44);
+        if (left < el.scrollLeft || left + w > el.scrollLeft + el.clientWidth - rnW) {
+          el.scrollLeft = Math.max(0, left - rnW);
         }
         break;
       }
@@ -805,13 +1049,15 @@ export function Grid() {
         className="grid"
         aria-label="Data grid"
         aria-busy={loading}
+        {...windowedGridAria(isWindowed, total)}
         // Placeholder rows hold nothing focusable: keep the scroll area reachable by keyboard.
-        tabIndex={showSkeleton ? 0 : undefined}
+        tabIndex={showSkeleton || isWindowed ? 0 : undefined}
         data-identity={rowsIdentity ?? ""}
         data-identity-current={identity.key}
         data-col-window={`${windowed.start}:${windowed.end}/${display.cols.length}`}
         ref={scrollRef}
         onScroll={onScroll}
+        style={isWindowed ? ({ "--dtk-grid-rn-w": `${rnW}px` } as React.CSSProperties) : undefined}
       >
         {!loading && total === 0 && display.cols.length > 0 ? (
           <div
@@ -845,7 +1091,25 @@ export function Grid() {
             {showSkeleton && display.cols.length === 0 ? <GridSkeletonHeader /> : null}
           </div>
 
-          {display.rows.map((row) => {
+          {isWindowed ? (
+            <WindowedBody
+              scrollRef={scrollRef}
+              cols={windowed.visible}
+              leftPad={windowed.leftPad}
+              rightPad={windowed.rightPad}
+              total={total}
+              seed={seedRows}
+              resetKey={`${rowsIdentity ?? ""}|${rowsGridKey ?? ""}`}
+              enabled={
+                rowsIdentity === identity.key && rowsGridKey === gridViewKey(gridView)
+              }
+              profiles={profiles}
+              selection={selection}
+              agentTouch={agentTouch}
+              dispatch={dispatch}
+            />
+          ) : null}
+          {(isWindowed ? [] : display.rows).map((row) => {
             const num = rowNum.get(row.rid) ?? 0;
             return (
               <div
@@ -891,7 +1155,7 @@ export function Grid() {
             <GridSkeletonRows cols={windowed.visible} leftPad={windowed.leftPad} />
           ) : null}
         </div>
-        <GridFooter skeleton={showSkeleton} shown={display.rows.length} total={total} hasMore={hasMore} />
+        {isWindowed ? null : <GridFooter skeleton={showSkeleton} shown={display.rows.length} total={total} hasMore={hasMore} />}
       </div>
     </div>
   );

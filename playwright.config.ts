@@ -47,8 +47,11 @@ const corsOrigins = [
   `http://localhost:${webPort}`,
 ].join(",");
 
-const webServers = [
-  {
+// DTK_E2E_EXTERNAL_API=1: dtk-api is already listening on the API port (started
+// by the caller, e.g. under a memory cap); only Vite is started here.
+const externalApi = process.env.DTK_E2E_EXTERNAL_API === "1";
+
+const apiServer = {
     command: dtkApiCommand,
     url: `http://127.0.0.1:${apiPort}/api/keys`,
     // Never reuse — other worktrees may be listening on shared ports with a
@@ -65,7 +68,10 @@ const webServers = [
       // Low upload cap so the 413 spec (#299) stays small; fixtures are < 1 MiB.
       DTK_MAX_UPLOAD_MB: process.env.DTK_MAX_UPLOAD_MB ?? "4",
     },
-  },
+};
+
+const webServers = [
+  ...(externalApi ? [] : [apiServer]),
   {
     command: `npx vite --config e2e/vite.e2e.config.ts --host 127.0.0.1 --port ${webPort}`,
     url: `http://127.0.0.1:${webPort}`,
