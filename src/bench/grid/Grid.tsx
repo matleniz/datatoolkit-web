@@ -617,6 +617,7 @@ function WindowedBody({
       <div
         className="grid-vbody"
         data-window={`${first}:${end}/${total}`}
+        data-pages={pages.loadedPages().length}
         style={{ height: vp.bodyPx }}
       >
         <div
