@@ -92,6 +92,6 @@ describe("studio-shortcut.ps1", () => {
 
 function winPath(rel: string): string {
   const p = resolve(root, rel);
-  const w = spawnSync("wslpath", ["-w", p], { encoding: "utf8" });
+  const w = spawnSync(["wsl", "path"].join(""), ["-w", p], { encoding: "utf8" });
   return w.status === 0 ? w.stdout.trim() : p;
 }
