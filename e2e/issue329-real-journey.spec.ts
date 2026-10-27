@@ -25,6 +25,7 @@ function serverRssMb(hwm = false): number {
 
 async function heapMb(page: Page): Promise<number> {
   const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Performance.enable");
   await cdp.send("HeapProfiler.collectGarbage");
   const { metrics } = await cdp.send("Performance.getMetrics");
   await cdp.detach();
