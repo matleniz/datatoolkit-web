@@ -46,6 +46,18 @@ cached Studio build) lives in the engine's data home `~/.datatoolkit`
 and the Studio build, i.e. `uv tool run --refresh --from … dtk-studio --refresh`.
 More in [Run without Docker](#run-without-docker-uv).
 
+## Desktop shortcut
+
+A "datatoolkit Studio" icon that starts the engine + Studio (agent on), opens the
+browser and stops when you close its window. Windows, one line in PowerShell:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/matleniz/datatoolkit-web/main/scripts/studio-shortcut.ps1)))
+```
+
+Studio and engine in WSL, or plain Linux: `scripts/install-shortcut.sh`. Details
+(WSL memory cap, agent, quoting, options) in [shortcut.md](shortcut.md).
+
 ## Run with Docker
 
 The launchers above wrap this. `scripts/datatoolkit.sh` / `.ps1` check Docker,
