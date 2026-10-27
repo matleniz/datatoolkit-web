@@ -19,13 +19,24 @@ describe("studio-wsl.sh", () => {
     const r = run("scripts/studio-wsl.sh", ["--print", "--no-open"]);
     expect(r.status).toBe(0);
     expect(r.stdout).toMatch(/systemd-run --user --scope --quiet -p MemoryMax=3G uv /);
-    expect(r.stdout).toContain("dtk-studio --no-open");
+    expect(r.stdout).toContain("dtk-studio --agent --no-open");
     expect(r.stdout).toMatch(/DTK_STUDIO_URL=file:\/\/\S+/);
   });
 
   it("falls back to the pinned engine without a checkout", () => {
     const pinned = run("scripts/studio-wsl.sh", ["--print"], { DTK_ENGINE_DIR: "/nonexistent" });
     expect(pinned.stdout).toContain("uv tool run --from");
+  });
+
+  it("turns the agent on: agent-sdk pack, terminal packs, a fresh token per launch", () => {
+    const r = run("scripts/studio-wsl.sh", ["--print"]);
+    expect(r.stdout).toContain("dtk-studio --agent");
+    expect(r.stdout).toContain("claude-agent-sdk");
+    const src = read("scripts/studio-wsl.sh");
+    expect(src).toContain('DTK_AGENT_TERMINAL="${DTK_AGENT_TERMINAL:-1}"');
+    expect(src).toContain("secrets.token_hex(24)");
+    expect(src).not.toMatch(/DTK_UI_TOKEN="[0-9a-f]{8,}/);
+    expect(src).not.toMatch(/ANTHROPIC_API_KEY\s*=/);
   });
 
   it("DTK_MEM_MAX sets or drops the cap", () => {

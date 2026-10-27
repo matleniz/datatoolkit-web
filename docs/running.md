@@ -63,10 +63,14 @@ and engine in `~/datatoolkit-web` and `~/datatoolkit`), run
 `wsl.exe -d <distro> -- bash -lc scripts/studio-wsl.sh`, which serves your local
 engine + Studio build under `systemd-run --user --scope -p MemoryMax=3G`
 (`DTK_MEM_MAX=none` drops the cap, `DTK_ENGINE_DIR` moves the engine checkout).
-On plain **Linux** the same command writes a `.desktop` file. `--target DIR` puts
+The agent is on in that Studio: chat panel with Claude (Agent SDK, your own
+`claude` login, nothing stored), terminal packs (Claude Code, opencode, Gemini
+when installed; `DTK_AGENT_TERMINAL=1`), and a `DTK_UI_TOKEN` generated at each
+launch, never stored ([agent.md](agent.md)). On plain **Linux** the same command writes a `.desktop` file. `--target DIR` puts
 the shortcut elsewhere, `--print` shows it without creating anything.
 
 ![The shortcut and its properties](screenshots/studio-shortcut-lnk.png)
+![Agent and terminal panels in the launched Studio](screenshots/studio-shortcut-agent.png)
 
 ## Run with Docker
 

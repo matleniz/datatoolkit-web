@@ -9,7 +9,10 @@
 # the dtk-studio launcher (launcher/), in the foreground: closing the window or
 # Ctrl+C stops it. The server runs under `systemd-run --user --scope -p
 # MemoryMax=$DTK_MEM_MAX` (3G) so a runaway engine cannot take WSL down;
-# DTK_MEM_MAX=none skips the cap (no user systemd). --print shows the commands.
+# DTK_MEM_MAX=none skips the cap (no user systemd). The agent is on: agent-sdk pack
+# (your own `claude` login, nothing stored here), terminal packs enabled with
+# DTK_AGENT_TERMINAL=1, and a DTK_UI_TOKEN generated at each launch (kept in the
+# environment of this process only, shared by engine and page). --print shows the commands.
 set -euo pipefail
 
 web="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -25,9 +28,10 @@ done
 
 # The engine checkout when there is one, else the engine the launcher pins.
 if [ -f "$engine/pyproject.toml" ]; then
-  run=(uv run --project "$engine" --extra api --with "$web/launcher" dtk-studio ${args[@]+"${args[@]}"})
+  run=(uv run --project "$engine" --extra api --extra agent-sdk --with "$web/launcher" dtk-studio --agent ${args[@]+"${args[@]}"})
 else
-  run=(uv tool run --from "$web/launcher" dtk-studio ${args[@]+"${args[@]}"})
+  run=(uv tool run --from "$web/launcher" --with "claude-agent-sdk<0.3,>=0.2.163" --with "mcp>=2.2,<3" --with websockets --with httpx
+    dtk-studio --agent ${args[@]+"${args[@]}"})
 fi
 cmd=("${run[@]}")
 if [ "$mem" != none ]; then
@@ -53,6 +57,9 @@ fi
 rm -rf "$rel" && mkdir -p "$rel"
 python3 scripts/pack-studio-dist.py dist "$rel" >/dev/null
 
+export DTK_AGENT_TERMINAL="${DTK_AGENT_TERMINAL:-1}"
+DTK_UI_TOKEN="${DTK_UI_TOKEN:-$(python3 -c 'import secrets; print(secrets.token_hex(24))')}"
+export DTK_UI_TOKEN
 # Under WSL the Windows default browser is opened through explorer.exe.
 if [ -n "${WSL_DISTRO_NAME:-}" ] && [ -z "${BROWSER:-}" ]; then
   if command -v wslview >/dev/null; then export BROWSER=wslview; else export BROWSER=explorer.exe; fi
