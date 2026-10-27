@@ -336,19 +336,21 @@ function MultiInspector({ cols }: { cols: string[] }) {
 /** Stat rows for the column header; numbers show sentinels / outliers. */
 function columnStats(pr: ColumnProfile | undefined, kind: ColumnKind) {
   if (!pr) return [];
-  const stats: [string, string][] = [
+  const approx = (field: string) => pr.approximate?.includes(field) ?? false;
+  // Third item: the engine marks the value approximate (very large CSV).
+  const stats: [string, string, boolean?][] = [
     ["non-null", String(pr.count)],
     ["missing", String(pr.missing)],
-    ["distinct", String(pr.distinct)],
+    ["distinct", String(pr.distinct), approx("distinct")],
   ];
   const top = pr.top_values?.[0];
   if (kind === "number" && pr.histogram) {
     /* mean etc. not in profile — show outliers / sentinels */
     const sent = pr.sentinel_candidates[0];
-    if (sent) stats.push([String(sent.value), String(sent.count)]);
-    if (pr.outliers) stats.push(["outliers", String(pr.outliers)]);
+    if (sent) stats.push([String(sent.value), String(sent.count), approx("sentinel_candidates")]);
+    if (pr.outliers) stats.push(["outliers", String(pr.outliers), approx("outliers")]);
   } else if (top) {
-    stats.push(["top", `${String(top.value)} (${top.count})`]);
+    stats.push(["top", `${String(top.value)} (${top.count})`, approx("top_values")]);
   }
   return stats;
 }
@@ -491,7 +493,7 @@ function ColumnInspector({ col }: { col: string }) {
         }
       />
       <div className="insp-stats">
-        {columnStats(pr, kind).map(([k, v]) => (
+        {columnStats(pr, kind).map(([k, v, approximate]) => (
           <div key={k} className="insp-stat">
             <span>{k}</span>
             <span
@@ -501,6 +503,14 @@ function ColumnInspector({ col }: { col: string }) {
                   : "mono"
               }
             >
+              {approximate ? (
+                <span
+                  className="approx-mark"
+                  title="Approximate: computed by the engine on the whole table"
+                >
+                  ≈{" "}
+                </span>
+              ) : null}
               {v}
             </span>
           </div>

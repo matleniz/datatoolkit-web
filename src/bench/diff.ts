@@ -15,6 +15,8 @@ export interface DisplayCol {
   name: string;
   kind: ColumnKind;
   status: ColStatus;
+  /** Fields the engine computed on the whole table (`kind`, `semantic`), very large CSV only. */
+  approximate?: string[];
 }
 
 export interface DisplayRow {
@@ -56,6 +58,7 @@ export function buildDisplay(
         name: c.name,
         kind: c.kind,
         status: "" as const,
+        ...(c.approximate ? { approximate: c.approximate } : {}),
       })),
       rows: baseRows.map((r) => ({
         rid: r._rid,
@@ -82,11 +85,19 @@ export function buildDisplay(
     nextColumns?.map((c) => c.name) ??
     preview.columns.filter((n) => !removed.has(n));
 
-  const cols: DisplayCol[] = nextNames.map((name) => ({
-    name,
-    kind: kindByName.get(name) ?? "text",
-    status: added.has(name) ? ("added" as const) : ("" as const),
-  }));
+  const approxByName = new Map<string, string[]>();
+  for (const c of baseColumns) {
+    if (c.approximate) approxByName.set(c.name, c.approximate);
+  }
+  const cols: DisplayCol[] = nextNames.map((name) => {
+    const approximate = approxByName.get(name);
+    return {
+      name,
+      kind: kindByName.get(name) ?? "text",
+      status: added.has(name) ? ("added" as const) : ("" as const),
+      ...(approximate ? { approximate } : {}),
+    };
+  });
 
   // Insert removed columns at their approximate base position.
   baseColumns.forEach((c, i) => {
