@@ -150,6 +150,8 @@ export function useRowPages(opts: RowPagesOptions): RowPagesApi {
   useEffect(
     () => () => {
       if (timer.current !== null) clearTimeout(timer.current);
+      // StrictMode remounts with the same refs: a stale handle would block every later round.
+      timer.current = null;
       for (const c of inflight.current.values()) c.abort();
       inflight.current.clear();
     },

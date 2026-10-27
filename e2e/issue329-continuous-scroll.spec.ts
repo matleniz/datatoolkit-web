@@ -39,8 +39,12 @@ async function open(page: Page, workspace: Workspace) {
   await expect(page.locator(".grid-vbody")).toBeVisible({ timeout: 120_000 });
 }
 
-const settled = (page: Page) =>
-  expect(page.locator(".grid-vwindow .sk-grid-row")).toHaveCount(0, { timeout: 30_000 });
+/** Real rows are mounted and no placeholder is left (the scroll event has been handled). */
+const settled = async (page: Page, movedFrom?: string | null) => {
+  if (movedFrom) await expect(page.locator(".grid-vbody")).not.toHaveAttribute("data-window", movedFrom);
+  await expect(page.locator(".grid-vwindow .sk-grid-row")).toHaveCount(0, { timeout: 30_000 });
+  await expect(page.locator(".grid-row").first()).toBeVisible();
+};
 
 test("duckdb frame: rows are windowed, prefetched and bounded in memory (#329)", async ({ page }) => {
   test.setTimeout(240_000);
@@ -70,8 +74,9 @@ test("duckdb frame: rows are windowed, prefetched and bounded in memory (#329)",
 
   // Jump deep, then to the end: rows load, and the cache stays bounded.
   for (const frac of [0.5, 0.83, 1]) {
+    const before = await body.getAttribute("data-window");
     await grid.evaluate((e, f) => (e.scrollTop = (e.scrollHeight - e.clientHeight) * f), frac);
-    await settled(page);
+    await settled(page, before);
     await checkRowsMatchIndex();
     expect(Number(await body.getAttribute("data-pages"))).toBeLessThanOrEqual(24);
   }
@@ -79,14 +84,15 @@ test("duckdb frame: rows are windowed, prefetched and bounded in memory (#329)",
   await page.screenshot({ path: join(shots, "end.png") });
 
   // Slow scrolling with look-ahead: after the first settle no placeholder shows.
+  const before = await body.getAttribute("data-window");
   await grid.evaluate((e) => (e.scrollTop = 0));
-  await settled(page);
+  await settled(page, before);
   const seen: number[] = [];
   const box = (await grid.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   for (let i = 0; i < 40; i++) {
     await page.mouse.wheel(0, 120);
-    await page.waitForTimeout(80);
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 80)));
     seen.push(await page.locator(".grid-vwindow .sk-grid-row").count());
   }
   expect(seen.filter((n) => n > 0).length).toBeLessThanOrEqual(2);
