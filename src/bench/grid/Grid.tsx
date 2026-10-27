@@ -805,6 +805,8 @@ export function Grid() {
         className="grid"
         aria-label="Data grid"
         aria-busy={loading}
+        // Placeholder rows hold nothing focusable: keep the scroll area reachable by keyboard.
+        tabIndex={showSkeleton ? 0 : undefined}
         data-identity={rowsIdentity ?? ""}
         data-identity-current={identity.key}
         data-col-window={`${windowed.start}:${windowed.end}/${display.cols.length}`}
